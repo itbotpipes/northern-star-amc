@@ -34,7 +34,9 @@ class Config:
         }
 
     UPLOAD_FOLDER = BASE_DIR / "nse" / "static" / "uploads"
-    MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16 MB per upload
+    # Raised from 16MB (#8g) — this is a whole-request cap, and forms now accept
+    # a short site video alongside photos, which is much larger than photos alone.
+    MAX_CONTENT_LENGTH = 60 * 1024 * 1024  # 60 MB per request (photos + one short video)
     ALLOWED_IMAGE_EXT = {"png", "jpg", "jpeg", "gif", "webp"}
     ALLOWED_DOC_EXT = {"pdf", "png", "jpg", "jpeg"}
 

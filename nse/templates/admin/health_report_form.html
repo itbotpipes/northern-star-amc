@@ -9,6 +9,14 @@
     {% if r %}<a href="{{ url_for('admin.health_report_pdf', report_id=r.id) }}" class="text-sm bg-navy-800 text-white px-4 py-2 rounded-lg hover:bg-navy-700">Download PDF</a>{% endif %}
   </div>
 
+  {% if is_lead %}
+  <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+    <p class="text-sm text-amber-800 font-medium">This report is the inspection for lead {{ contract.reference }}
+      ({{ contract.applicant_name or (contract.customer.name if contract.customer) }}).
+      Record the score/outcome below — saving as "Completed" will move the lead to its next step.</p>
+  </div>
+  {% endif %}
+
   <form method="post" enctype="multipart/form-data" class="space-y-6">
 
     <!-- Header / property -->
@@ -129,6 +137,47 @@
       <label class="block mt-3 text-sm"><span class="text-slate-500">Remarks</span>
         <textarea name="remarks" rows="4" class="mt-1 w-full px-3 py-2 rounded-lg border border-slate-300">{{ answers.get('remarks','') }}</textarea></label>
     </div>
+
+    {% if is_lead %}
+    <!-- #2/#3 rebuild — overall score + outcome that drives the lead branch -->
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+      <h2 class="font-bold text-navy-800 mb-3">Overall score &amp; outcome</h2>
+      <div class="grid sm:grid-cols-2 gap-4">
+        <label class="block text-sm"><span class="text-slate-500">Overall score (0–100, optional)</span>
+          <input type="number" name="score" min="0" max="100" value="{{ r.score if r and r.score is not none else '' }}"
+                 class="mt-1 w-full px-3 py-2 rounded-lg border border-slate-300"></label>
+        <div>
+          <span class="text-sm text-slate-500">Outcome</span>
+          <div class="mt-1 space-y-1.5">
+            <label class="flex items-center gap-2 text-sm"><input type="radio" name="outcome" value="ok" {{ 'checked' if r and r.outcome=='ok' }} required> Everything OK — no immediate issues</label>
+            <label class="flex items-center gap-2 text-sm"><input type="radio" name="outcome" value="issues" {{ 'checked' if r and r.outcome=='issues' }}> Issues found — needs a quotation</label>
+            {% if contract.project_type == 'existing' %}
+            <label class="flex items-center gap-2 text-sm"><input type="radio" name="outcome" value="needs_rework" {{ 'checked' if r and r.outcome=='needs_rework' }}> Needs rework the maintenance team can't do</label>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      <label class="block text-sm mt-3" id="reworkNotesWrap" style="display:none;"><span class="text-slate-500">Rework details</span>
+        <textarea name="rework_notes" rows="2" class="mt-1 w-full px-3 py-2 rounded-lg border border-slate-300" placeholder="What needs to be fixed before maintenance can take over?"></textarea></label>
+      {% if contract.project_type == 'existing' %}
+      <div class="grid sm:grid-cols-2 gap-4 mt-3 pt-3 border-t border-slate-100">
+        <label class="block text-sm"><span class="text-slate-500">Handed over by (engineer)</span>
+          <input name="handover_engineer" value="{{ contract.handover_engineer or '' }}" class="mt-1 w-full px-3 py-2 rounded-lg border border-slate-300"></label>
+        <label class="block text-sm"><span class="text-slate-500">Accepted by (maintenance)</span>
+          <input name="handover_technician" value="{{ contract.handover_technician or '' }}" class="mt-1 w-full px-3 py-2 rounded-lg border border-slate-300"></label>
+      </div>
+      {% endif %}
+      <p class="text-xs text-slate-400 mt-2">Set Status to "Completed" below and save to move this lead forward.</p>
+    </div>
+    <script>
+    document.querySelectorAll('input[name=outcome]').forEach(function(r){
+      r.addEventListener('change', function(){
+        document.getElementById('reworkNotesWrap').style.display =
+          (document.querySelector('input[name=outcome]:checked').value === 'needs_rework') ? 'block' : 'none';
+      });
+    });
+    </script>
+    {% endif %}
 
     <!-- Status + save -->
     <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 flex items-center justify-between flex-wrap gap-3">

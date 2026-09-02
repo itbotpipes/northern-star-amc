@@ -15,6 +15,30 @@
     <!-- Service type + client info -->
     <div class="card p-6 space-y-4">
       <h2 class="font-bold text-ink">1. Service &amp; Client</h2>
+
+      <!-- #1 — Pick an existing project to auto-fill the client details -->
+      <label class="block">
+        <span class="text-sm font-medium text-ink-muted">Project</span>
+        <select id="projectPicker" onchange="pickProject()" class="mt-1.5 w-full px-3 py-2.5">
+          <option value="">— New client (fill in manually) —</option>
+          {% for p in projects %}
+          <option value="{{ p.id }}"
+            data-cid="{{ p.customer_id or '' }}"
+            data-contract="{{ p.id }}"
+            data-name="{{ (p.customer.name if p.customer else p.applicant_name) or '' }}"
+            data-phone="{{ (p.customer.phone if p.customer else p.applicant_phone) or '' }}"
+            data-email="{{ (p.customer.email if p.customer else p.applicant_email) or '' }}"
+            data-project="{{ p.site_name or '' }}"
+            data-address="{{ p.site_address or '' }}"
+            {{ 'selected' if contract and contract.id == p.id }}>
+            {{ p.reference }} — {{ p.site_name or 'Site' }}{% if p.customer or p.applicant_name %} ({{ (p.customer.name if p.customer else p.applicant_name) }}){% endif %}
+          </option>
+          {% endfor %}
+        </select>
+        <span class="text-xs text-ink-subtle">Selecting a project fills the client fields below and shows past rates for that client under each item.</span>
+      </label>
+      <input type="hidden" name="client_id" id="clientId" value="{{ (contract.customer_id if contract else '') or '' }}">
+
       <div class="grid sm:grid-cols-2 gap-4">
         <label class="block">
           <span class="text-sm font-medium text-ink-muted">Service type</span>
@@ -47,7 +71,8 @@
         </label>
       </div>
       <!-- Hidden links -->
-      {% if contract %}<input type="hidden" name="contract_id" value="{{ contract.id }}">{% endif %}
+      <input type="hidden" name="contract_id" id="contractId" value="{{ contract.id if contract else '' }}">
+      {% if contract %}{% endif %}
       {% if sr %}<input type="hidden" name="service_request_id" value="{{ sr.id }}">{% endif %}
       {% if ro %}<input type="hidden" name="refill_order_id" value="{{ ro.id }}">{% endif %}
       {% if from_survey_id %}<input type="hidden" name="from_survey_id" value="{{ from_survey_id }}">{% endif %}
@@ -82,10 +107,10 @@
             <!-- Default 1 row -->
             <tr class="item-row border-b border-hairline">
               <td class="px-2 py-1.5"><input name="item_category" placeholder="e.g. Maintenance" class="w-full px-2 py-1.5 text-sm"></td>
-              <td class="px-2 py-1.5"><input name="item_desc" required list="sq-inv-list" oninput="sqFill(this)" placeholder="Type to search inventory…" class="w-full px-2 py-1.5 text-sm"></td>
+              <td class="px-2 py-1.5"><input name="item_desc" required list="sq-inv-list" oninput="sqFill(this);priceHint(this)" placeholder="Type to search inventory…" class="w-full px-2 py-1.5 text-sm"></td>
               <td class="px-2 py-1.5"><input name="item_unit" list="sq-unit-list" value="Nos" class="w-full px-2 py-1.5 text-sm text-center"></td>
               <td class="px-2 py-1.5"><input name="item_qty" type="number" step="0.01" value="1" class="w-full px-2 py-1.5 text-sm text-center" oninput="calcRow(this)"></td>
-              <td class="px-2 py-1.5"><input name="item_rate" type="number" step="0.01" value="0" class="w-full px-2 py-1.5 text-sm text-right" oninput="calcRow(this)"></td>
+              <td class="px-2 py-1.5"><input name="item_rate" type="number" step="0.01" value="0" class="w-full px-2 py-1.5 text-sm text-right" oninput="calcRow(this)"><div class="price-hint text-[11px] text-right leading-tight mt-0.5" style="opacity:.6"></div></td>
               <td class="px-2 py-1.5 text-center"><button type="button" onclick="removeRow(this)" class="text-danger text-lg leading-none hover:opacity-70">×</button></td>
             </tr>
           </tbody>
@@ -124,6 +149,44 @@
 </section>
 
 <script>
+// #1 — auto-fill client details from the chosen project
+function pickProject() {
+  var sel = document.getElementById('projectPicker');
+  var opt = sel.options[sel.selectedIndex];
+  if (!opt) return;
+  var set = function(name, val){ var el = document.querySelector('[name='+name+']'); if (el && val) el.value = val; };
+  set('customer_name', opt.dataset.name);
+  set('customer_phone', opt.dataset.phone);
+  set('customer_email', opt.dataset.email);
+  set('project_name', opt.dataset.project);
+  var addr = document.querySelector('[name=customer_address]');
+  if (addr && opt.dataset.address) addr.value = opt.dataset.address;
+  document.getElementById('clientId').value = opt.dataset.cid || '';
+  document.getElementById('contractId').value = opt.dataset.contract || '';
+  // Refresh any already-typed price hints for the new client
+  document.querySelectorAll('[name=item_desc]').forEach(function(inp){ if (inp.value.trim().length >= 3) priceHint(inp); });
+}
+
+// #10c — show the rate(s) this item was previously quoted to the selected client
+var _phTimers = new WeakMap();
+function priceHint(descInput) {
+  var row = descInput.closest('.item-row');
+  var hint = row ? row.querySelector('.price-hint') : null;
+  if (!hint) return;
+  var q = descInput.value.trim();
+  var clientId = document.getElementById('clientId').value;
+  if (q.length < 3) { hint.textContent = ''; return; }
+  clearTimeout(_phTimers.get(descInput));
+  _phTimers.set(descInput, setTimeout(function(){
+    var url = '{{ url_for("sq.price_history") }}?q=' + encodeURIComponent(q) + (clientId ? '&client_id=' + clientId : '');
+    fetch(url).then(function(r){ return r.json(); }).then(function(d){
+      if (!d.matches || !d.matches.length) { hint.textContent = ''; return; }
+      var parts = d.matches.map(function(m){ return '₹' + m.rate.toLocaleString('en-IN') + ' (' + m.date + ')'; });
+      hint.textContent = 'Previously: ' + parts.join(' · ');
+    }).catch(function(){ hint.textContent = ''; });
+  }, 400));
+}
+
 // Build a lookup map: inventory name → {cat, rate, unit}
 var SQ_INV = {};
 document.querySelectorAll('#sq-inv-list option').forEach(function(o){
@@ -144,10 +207,10 @@ function sqFill(descInput) {
 function rowTemplate() {
   return `<tr class="item-row border-b border-hairline">
     <td class="px-2 py-1.5"><input name="item_category" placeholder="Category" class="w-full px-2 py-1.5 text-sm"></td>
-    <td class="px-2 py-1.5"><input name="item_desc" list="sq-inv-list" oninput="sqFill(this)" placeholder="Type to search inventory…" class="w-full px-2 py-1.5 text-sm"></td>
+    <td class="px-2 py-1.5"><input name="item_desc" list="sq-inv-list" oninput="sqFill(this);priceHint(this)" placeholder="Type to search inventory…" class="w-full px-2 py-1.5 text-sm"></td>
     <td class="px-2 py-1.5"><input name="item_unit" list="sq-unit-list" value="Nos" class="w-full px-2 py-1.5 text-sm text-center"></td>
     <td class="px-2 py-1.5"><input name="item_qty" type="number" step="0.01" value="1" class="w-full px-2 py-1.5 text-sm text-center" oninput="calcRow(this)"></td>
-    <td class="px-2 py-1.5"><input name="item_rate" type="number" step="0.01" value="0" class="w-full px-2 py-1.5 text-sm text-right" oninput="calcRow(this)"></td>
+    <td class="px-2 py-1.5"><input name="item_rate" type="number" step="0.01" value="0" class="w-full px-2 py-1.5 text-sm text-right" oninput="calcRow(this)"><div class="price-hint text-[11px] text-right leading-tight mt-0.5" style="opacity:.6"></div></td>
     <td class="px-2 py-1.5 text-center"><button type="button" onclick="removeRow(this)" class="text-danger text-lg leading-none hover:opacity-70">×</button></td>
   </tr>`;
 }

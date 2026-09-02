@@ -1,0 +1,104 @@
+{% extends "base_ops.html" %}
+{% block title %}{{ c.reference }} — Lead{% endblock %}
+{% block content %}
+<section class="max-w-3xl mx-auto px-4 py-8">
+  <a href="{{ url_for('admin.leads') }}" class="text-sm text-ink-subtle hover:text-ink">← Leads</a>
+
+  <div class="flex items-center justify-between flex-wrap gap-3 mt-2 mb-6">
+    <div>
+      <h1 class="text-2xl font-extrabold text-ink mono">{{ c.reference }}</h1>
+      <p class="text-sm text-ink-subtle">{{ c.applicant_name or (c.customer.name if c.customer) }} · {{ c.site_name or c.site_address or '' }}
+        · {{ 'Project handover' if c.project_type == 'existing' else 'New enquiry' }}</p>
+    </div>
+    <span class="px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-800">{{ c.lead_stage|replace('_',' ')|title }}</span>
+  </div>
+
+  <!-- Details -->
+  <div class="card p-6 mb-6">
+    <h2 class="font-bold text-ink mb-3">Details</h2>
+    <div class="grid sm:grid-cols-2 gap-3 text-sm">
+      <div><span class="text-ink-subtle">Phone</span><div class="font-semibold">{{ c.applicant_phone or (c.customer.phone if c.customer) or '—' }}</div></div>
+      <div><span class="text-ink-subtle">Email</span><div class="font-semibold">{{ c.applicant_email or '—' }}</div></div>
+      <div><span class="text-ink-subtle">Area</span><div class="font-semibold">{{ c.area or '—' }}</div></div>
+      <div><span class="text-ink-subtle">Property type</span><div class="font-semibold">{{ c.property_type or '—' }}</div></div>
+      {% if c.project_type == 'existing' %}
+      <div><span class="text-ink-subtle">SPOC</span><div class="font-semibold">{{ c.spoc_name or '—' }}{% if c.spoc_role %} ({{ c.spoc_role }}){% endif %}{% if c.spoc_phone %} · {{ c.spoc_phone }}{% endif %}</div></div>
+      {% endif %}
+    </div>
+    {% if c.problem_description %}
+    <div class="mt-3 pt-3 border-t border-hairline"><span class="text-ink-subtle text-sm">Problem reported</span>
+      <p class="text-sm text-ink mt-1">{{ c.problem_description }}</p></div>
+    {% endif %}
+  </div>
+
+  <!-- Inspection scheduling -->
+  {% if c.lead_stage in ('new', 'inspection_scheduled') %}
+  <div class="card p-6 mb-6">
+    <h2 class="font-bold text-ink mb-3">{{ 'Reschedule' if c.inspection_scheduled_date else 'Schedule' }} inspection</h2>
+    <form method="post" action="{{ url_for('admin.schedule_inspection', lead_id=c.id) }}" class="grid sm:grid-cols-3 gap-3 items-end">
+      <label class="block"><span class="text-sm font-medium text-ink-muted">Date</span>
+        <input type="date" name="inspection_date" value="{{ c.inspection_scheduled_date.isoformat() if c.inspection_scheduled_date }}" class="mt-1.5 w-full px-3 py-2.5" required></label>
+      <label class="block"><span class="text-sm font-medium text-ink-muted">Technician / inspector</span>
+        <select name="technician_id" class="mt-1.5 w-full px-3 py-2.5">
+          <option value="">— Assign later —</option>
+          {% for t in technicians %}<option value="{{ t.id }}" {{ 'selected' if c.inspection_technician_id==t.id }}>{{ t.name }}</option>{% endfor %}
+        </select></label>
+      <button class="btn btn-primary">Schedule &amp; notify</button>
+    </form>
+  </div>
+  {% endif %}
+
+  <!-- FSHCR -->
+  {% if c.lead_stage == 'inspection_scheduled' %}
+  <div class="card p-6 mb-6 text-center">
+    <p class="text-sm text-ink-subtle mb-3">Once the inspection is done, fill the Fire Safety Health Check-up on site.</p>
+    <a href="{{ url_for('admin.health_report', contract_id=c.id) }}" class="btn btn-navy">Start inspection report</a>
+  </div>
+  {% elif fshcr %}
+  <div class="card p-6 mb-6">
+    <h2 class="font-bold text-ink mb-2">Inspection report</h2>
+    <div class="flex items-center justify-between text-sm">
+      <div>{{ fshcr.reference }} · {{ fshcr.status|title }}{% if fshcr.score is not none %} · Score {{ fshcr.score }}/100{% endif %}{% if fshcr.outcome %} · {{ fshcr.outcome|replace('_',' ')|title }}{% endif %}</div>
+      <a href="{{ url_for('admin.health_report', report_id=fshcr.id) }}" class="text-primary hover:underline">Open →</a>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Decision -->
+  {% if c.lead_stage == 'inspection_done' %}
+  <div class="card p-6 mb-6 text-center">
+    <p class="text-sm text-ink-subtle mb-3">Inspection complete — decide what happens next.</p>
+    <a href="{{ url_for('admin.lead_decide', lead_id=c.id) }}" class="btn btn-primary">Decide next step →</a>
+  </div>
+  {% endif %}
+
+  <!-- Rework flag -->
+  {% if c.lead_stage == 'rework' %}
+  <div class="card p-6 mb-6" style="border-color:#d23f3f">
+    <h2 class="font-bold" style="color:#d23f3f">Flagged for rework</h2>
+    {% for item in rework %}
+    <p class="text-sm text-ink mt-2">{{ item.reference }}: {{ item.description }} <span class="text-xs text-ink-subtle">({{ item.status }})</span></p>
+    {% endfor %}
+    <a href="{{ url_for('admin.rework_list') }}" class="text-sm text-primary hover:underline mt-2 inline-block">View rework queue →</a>
+  </div>
+  {% endif %}
+
+  <!-- Outcome quotation/audit -->
+  {% if quote %}
+  <div class="card p-6">
+    <h2 class="font-bold text-ink mb-2">Quotation</h2>
+    <div class="flex items-center justify-between text-sm">
+      <div>{{ quote.reference }} · {{ quote.service_type|upper }} · {{ quote.status_label }} · {{ quote.grand_total|rupees }}</div>
+      <a href="{{ url_for('sq.detail_quotation', sq_id=quote.id) }}" class="text-primary hover:underline">Open →</a>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if c.lead_stage is none and c.status == 'active' %}
+  <div class="card p-6 text-center">
+    <p class="text-sm text-ink-subtle mb-3">This lead is resolved — the AMC contract is active.</p>
+    <a href="{{ url_for('admin.contract', contract_id=c.id) }}" class="btn btn-navy">Open contract →</a>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

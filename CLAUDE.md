@@ -2,6 +2,198 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Post-revision-batch bug-fix round (latest)
+
+Three customer-reported bugs fixed after the lead-pipeline rebuild above:
+
+- **Quotation delete.** Neither `ServiceQuotation` nor the visit-linked material `Quotation` had a
+  delete route — genuinely missing, not a UI bug. Added `sq.delete_quotation`
+  (`POST /ops/sq/<id>/delete`, button on `admin/sq_detail.html`'s action row) and
+  `admin.quotation_delete` (`POST /ops/quotation/<id>/delete`, link next to Edit on
+  `admin/visit.html`'s per-quote row). Both hard-delete the row + its line items and are **blocked**
+  (flash + redirect, no-op) once money has moved: `sq.is_paid` or the linked contract is already
+  `active` for service quotations; `q.is_paid` or `q.status == 'approved'` for material quotes — those
+  must be left as a permanent record, not deleted.
+- **Fire Safety Score now driven by the FSHCR.** `Contract.safety_score` (`nse/models.py`) previously
+  never looked at the Fire Safety Health Checkup Report at all — it was pure visit/equipment/defect/
+  certificate/agreement bookkeeping. New `Contract.latest_health_report` property finds the most recent
+  **completed** `HealthCheckReport` for the contract; the score now spends 25 of its 100 points on that
+  report's `score` field (or a 100/60/20 mapping of `outcome` ok/issues/needs_rework when `score` wasn't
+  filled in), scaled down the other weights to make room (visit compliance 25, equipment 15, defects 15,
+  certificate 10, agreement 10), and — matching the existing pattern for equipment/visits — gives full
+  marks for that bucket when the site has never been inspected yet, so new contracts aren't penalised for
+  missing data. `safety_grade`'s return shape (`(letter, color)` tuple) and the score's `int 0-100` range
+  are unchanged, so `admin/contract.html`, `portal/contract.html`, and `admin/insights.html` needed no
+  changes.
+- **Customer profile save — root cause was a production schema gap, not the route.** The route/template
+  (`portal.profile` / `portal/profile.html`) were already correct (multipart form, matching field names,
+  try/except around the photo upload) from an earlier fix in this same batch. Locally, saving both text
+  fields and a photo works end-to-end. The far more likely real-world cause: **production Postgres was
+  never migrated** to add `users.company_name` / `gst_number` / `photo_path` (or any of the many other
+  columns added across waves via manual `ALTER TABLE` instructions in this file) — `db.create_all()`
+  only creates brand-new tables, never new columns on existing ones, so a forgotten migration step
+  makes the whole request 500 with nothing saved. Fixed two ways: (1) **`migrate_all.py`** (new, root) —
+  a dialect-agnostic (SQLite or Postgres) schema-diff migration: it inspects the live DB via SQLAlchemy's
+  `Inspector`, compares every table/column against `nse/models.py`, and issues `ALTER TABLE ... ADD
+  COLUMN` for anything missing (tested by faking a stale `users` table without those 3 columns — it
+  detected and fixed the gap). This replaces the old per-wave "copy this ALTER TABLE into CLAUDE.md"
+  approach — from now on, **run `migrate_all.py` after every deploy** instead of hunting for manual SQL.
+  (2) `portal.profile`'s `db.session.commit()` is now wrapped in try/except `SQLAlchemyError` — a schema
+  mismatch shows a clear "couldn't save, try again" flash instead of a raw 500 with the request's other
+  valid fields silently lost. **Action needed:** run `DATABASE_URL=<neon-url> .venv/bin/python
+  migrate_all.py` against the production database at least once.
+
+**Developer flow document (`build_flow_pdf.py` &rarr; `NSE_App_Flow.pdf`).** A root-level script that
+generates a 9-page, colour-coded, top-to-bottom **flowchart** of the entire app (architecture, auth, and
+Flows 1&ndash;8 + cross-cutting systems), one section per page, each box annotated with its route/model.
+Run `.venv/bin/python build_flow_pdf.py` to regenerate after flow changes. It renders with the app's own
+**xhtml2pdf** engine (no new dep). **xhtml2pdf gotchas** baked into the script's helpers (keep them if you
+edit it): build each page as ONE `<table>` of `<tr>` rows (separate table flowables get huge inter-element
+spacing, and a `<table>` nested in a `<td>` inflates the row); set fonts via **CSS `font-size`/`color`**,
+never `<font size="N">` (it mis-scales row height); use **no `padding`/`cellpadding`** (also mis-scaled) &mdash;
+border + `bgcolor` give the box look, thin spacer rows give vertical rhythm; side-by-side branches need
+exactly one level of table nesting.
+
+## Customer-feedback revision batch
+
+A batch of customer-requested changes. Implemented & tested items (see `REVISION_PLAN.md` for the full
+11-item tracker, and `MAINTENANCE_TERMS_AND_CONDITIONS.md` for the AMC T&C content):
+- **New-AMC form is now an inquiry** (`site/apply.html` + `public.apply`): the "Choose a plan" dropdown
+  and the payment radios were removed; the button reads **"Send inquiry"** with a message explaining a
+  technician will visit, inspect, and share a quotation. When a customer is logged in, name/phone/email/
+  area/address are **auto-filled** from their account (editable). A **"Use my current location"** button
+  (browser geolocation) captures lat/long into the application notes with a Google Maps link.
+- **Profile save bug fixed** (`portal.profile`): the photo upload is wrapped in try/except so a failed
+  upload (e.g. Vercel read-only FS without `BLOB_READ_WRITE_TOKEN`) no longer 500s and wipes the save;
+  text details always persist. An **Email** field was added to the form + route.
+- Visit dates were already unlocked (Wave 12); confirmed `admin/visit.html`'s `is_future` is banner-only.
+- **New Quotation — Project dropdown (#1):** `sq.new_quotation` passes `projects` (all contracts) to
+  `admin/sq_new.html`; a Project `<select>` auto-fills customer name/phone/email/project/address from
+  `data-*` attrs and sets hidden `client_id`+`contract_id` (`pickProject()` JS).
+- **Maintenance T&C on AMC quotes (#5):** `AMC_QUOTATION_TERMS` (18 clauses) in `utils.py`, passed via
+  `pdf_generator.generate_quotation_pdf`, and `pdf/quotation.html` branches on `q.service_type=='amc'`
+  (maintenance clauses) vs else (installation clauses).
+- **Historical rate hint (#10c):** `sq.price_history` (`/ops/sq/price-history?q=&client_id=`) returns up
+  to 5 `{rate,date,quote}` from past `ServiceQuotationItem` + visit `QuotationItem` for that client; the
+  new-quote item rows show a faded "Previously: ₹… (date)" hint under the rate (`priceHint()` JS,
+  debounced). TODO: add the same hint to `admin/visit.html`'s material-quote picker (endpoint ready).
+- **Three roles + geofencing + technician portfolio (#6):** `User.is_staff` now includes `manager`
+  (+ `is_manager`/`is_technician`); manager seeded (`manager@northernstar.example`/`manager123`).
+  `Contract.latitude`/`longitude` columns added (public apply GPS button stores them; **existing
+  Postgres needs `ALTER TABLE contracts ADD COLUMN latitude/longitude VARCHAR(32)`**).
+  `utils.meters_between()` haversine; `admin.visit_checkin` enforces a **100 m geofence** using the
+  technician's device location (captured by `admin/visit.html`'s check-in button) when the site has
+  coordinates. New **`admin.my_portfolio`** (`/ops/my-portfolio`, `admin/my_portfolio.html`, sidebar
+  link) — the logged-in technician's sites assigned, completed/upcoming, on-time %, avg customer rating
+  + per-dimension bars, industry mix by `property_type`, recent comments, site-wise work log; admins/
+  managers can pass `?tech_id=`.
+
+### Lead pipeline rebuild (#2/#3, superseded/corrected — read this, not the entry above)
+
+The first pass at #2/#3 (a single "Onboard Project" mega-form with a New/Existing toggle) **did not
+match the real operational flow** and was scrapped per explicit user correction. It is replaced by a
+sequential pipeline mirroring exactly how NSE runs both flows:
+
+**Flow 1 — new customer enquiry** (customer- or staff-initiated): intake (site, phone, problem) →
+manager assigns a technician + inspection date → Fire Safety Health Check-up (FSHCR) **with a score** →
+branch: **OK** → charge an audit fee only + defer AMC 4–6 months (a `next_followup_date` reminder) /
+**issues found** → raise a full AMC quotation → WhatsApp → payment → agreement → visits → client profile
+(the existing quote/pay/agreement pipeline, untouched, just now triggered from the FSHCR outcome).
+
+**Flow 2 — project handover** (engineer team → maintenance, **staff-only**, the client doesn't initiate
+this): intake with a **SPOC** contact (`spoc_name`/`spoc_phone`/`spoc_role`) → the same joint FSHCR,
+signed by both the engineer and the maintenance technician (`handover_engineer`/`handover_technician`/
+`handover_signed_at`) → branch: **needs rework** the maintenance team can't do → a manually-tracked
+**Rework queue** (no auto re-entry into inspection, per explicit choice) / **ready** → **Free AMC**
+(1 year complimentary from the handover date, explicit "valid until" shown = `contract.end_date`) or
+**Paid AMC** (same quote/pay pipeline as Flow 1).
+
+**Implementation** — `Contract` gained a parallel, nullable **`lead_stage`** field (`new` →
+`inspection_scheduled` → `inspection_done` → `audit_only`/`needs_quote`/`rework` → `None` once
+resolved) that tracks *only* this pre-activation pipeline; the pre-existing `status` field
+(pending/active/expired/cancelled) is untouched so no existing template/query breaks. Also added:
+`problem_description`, `related_contract_id` (links a new enquiry back to a prior site), 
+`inspection_scheduled_date`, `inspection_technician_id`, `next_followup_date`, `spoc_name`,
+`spoc_phone`, `spoc_role` (the `project_type`/`free_amc`/`handover_*`/`latitude`/`longitude` columns
+from the first pass are kept and reused). `HealthCheckReport` gained **`score`** (0–100, optional) and
+**`outcome`** (`ok`/`issues`/`needs_rework`) — set in `admin/health_report_form.html`'s new "Overall
+score & outcome" panel, shown only when the report is opened for an open lead (`is_lead` flag from the
+route). New model **`ReworkItem`** (`contract_id`, `description`, `status` open/done, `reference`
+`RWK-0001`) — a flagged list only, per explicit product decision.
+
+**Routes** (`admin.py`): `admin.leads` (`/ops/leads`, list + manual intake for phone-in enquiries or
+staff-created handovers) · `admin.lead_detail` (`/ops/lead/<id>`, timeline/actions) ·
+`admin.schedule_inspection` (POST, notifies customer + technician) · `admin.lead_decide`
+(`/ops/lead/<id>/decide` — the commercial decision screen: charge audit fee / raise AMC quote / activate
+free AMC, the last only for handover leads) · `admin.rework_list` + `admin.rework_toggle`
+(`/ops/rework`). `admin.health_report()` was extended: when linked to an open lead, saving with
+`status=completed` branches automatically — `needs_rework` creates a `ReworkItem` and stops (Flow 2
+only), otherwise it sets `lead_stage='inspection_done'` and redirects to `lead_decide`.
+
+**Customer-facing entry point** — the portal's "+ New AMC" button (`public.apply`, `site/apply.html`)
+was rewritten into a **"Send Enquiry"** form: a **project dropdown** (pick one of the customer's
+existing sites, which prefills/locks the site fields, or "a new site"), name/phone/email auto-filled
+when logged in, a **problem description** field (not a generic notes box), the GPS "Use my current
+location" button, and photo/video/voice upload. It always creates a `project_type='new'` lead (Flow 2 is
+staff-only) and calls **`notify_managers()`** (new helper in `utils.py`, alongside the existing
+`notify_staff` which now also includes the `manager` role) with a link straight to `lead_detail`. No
+quotation is auto-created here any more — quoting only happens after the FSHCR.
+
+**Photo/video uploads (#8g)**: `_save_attachments()` (`public.py`) now accepts video extensions
+(mp4/mov/webm/m4v/avi) and tags them `attachment_type='video'`; `photo_upload_widget` macro and its
+preview JS in `base.html` accept/preview video too; `admin/contract.html` renders video attachments with
+a `<video>` thumbnail instead of `<img>`. `MAX_CONTENT_LENGTH` raised 16MB → **60MB** (`config.py`) since
+video is much larger than photos — this is a whole-request cap, not per-file.
+
+**A real SQLAlchemy gotcha worth knowing**: `HealthCheckReport.contract_id` was being assigned the raw
+form string, and `r.contract` (the relationship) was then accessed *before* any flush/commit — this
+silently returns `None` even after casting to `int`, because SQLAlchemy's many-to-one lazy-loader does
+not resolve against an unflushed pending object's FK the way a plain filtered query does. Fixed by
+calling `db.session.flush()` immediately after setting `contract_id`/`visit_id` in `admin.health_report()`,
+before any `r.contract` access. This was a **latent bug in the original code** too (the pre-existing
+client-notification line at the bottom of that function has the identical pattern) — now fixed for both.
+
+**Production migration (existing Postgres — run once):**
+```sql
+ALTER TABLE contracts ADD COLUMN lead_stage VARCHAR(30);
+ALTER TABLE contracts ADD COLUMN problem_description TEXT;
+ALTER TABLE contracts ADD COLUMN related_contract_id INTEGER;
+ALTER TABLE contracts ADD COLUMN inspection_scheduled_date DATE;
+ALTER TABLE contracts ADD COLUMN inspection_technician_id INTEGER;
+ALTER TABLE contracts ADD COLUMN next_followup_date DATE;
+ALTER TABLE contracts ADD COLUMN spoc_name VARCHAR(120);
+ALTER TABLE contracts ADD COLUMN spoc_phone VARCHAR(20);
+ALTER TABLE contracts ADD COLUMN spoc_role VARCHAR(80);
+ALTER TABLE health_check_reports ADD COLUMN score INTEGER;
+ALTER TABLE health_check_reports ADD COLUMN outcome VARCHAR(20);
+```
+Plus the `project_type`/`free_amc`/`handover_*`/`latitude`/`longitude` columns from the first pass, and
+the new `rework_items` table (self-creates via `db.create_all()`).
+
+### Final polish batch — all remaining items done & tested
+
+- **#10c on the visit page too.** The historical-rate hint (already on `admin/sq_new.html`) is now also
+  wired into `admin/visit.html`'s on-site material-quote picker (same `sq.price_history` endpoint,
+  `v.contract.customer_id` as the client filter, debounced 400ms).
+- **#10b Material quotation edit.** New `admin.quotation_edit` (`/ops/quotation/<id>/edit`, GET+POST,
+  `admin/quotation_edit.html`) — a general-purpose item/description editor for any `pending` material
+  quote (distinct from `quotation_resend`'s revise-after-rejection flow), reusing the inventory
+  datalist. "Edit" link added next to pending quotes on `admin/visit.html`.
+- **#10a Camera scan on the service report.** `admin/visit.html` gained a one-tap camera-icon input
+  (`report_scan`, `accept="image/*" capture="environment"`) beside the regular file picker;
+  `admin.visit()` falls back to it when the regular field is empty.
+- **#8f Notification deep-links.** Audited all 61 `notify()`/`notify_staff()`/`notify_managers()` calls
+  app-wide; 7 in `api.py` (mobile layer, but shared with the web bell) were missing `link=` — fixed
+  (also added the missing `url_for` import there).
+- **#8d Tap-to-speak.** Two real bugs, not just a platform limitation: `rec.start()` had no try/catch
+  (a synchronous throw made the button silently do nothing), and the unsupported-browser message wrongly
+  told users to "use Safari" — Safari (and every iOS browser, since Apple mandates WebKit) never
+  implements the Web Speech API at all. Fixed both; iOS users are now pointed to their keyboard's native
+  dictation mic instead.
+
+No further items remain from the original 11-request list — see `REVISION_PLAN.md` for full detail on
+every item, including exact test evidence.
+
 ## What this is
 
 A web platform for **Northern Star Engineering** (fire & safety company, Surat) — a **"Blinkit for

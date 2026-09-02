@@ -64,6 +64,11 @@
           <span class="text-xs text-ink-tertiary">Login phone — cannot be changed</span>
         </label>
         <label class="block">
+          <span class="text-sm font-medium text-ink-muted">Email</span>
+          <input name="email" type="email" value="{{ current_user.email or '' }}" placeholder="you@example.com"
+                 class="mt-1 w-full px-3 py-2.5 rounded-lg border border-hairline-strong text-sm focus:border-primary outline-none">
+        </label>
+        <label class="block">
           <span class="text-sm font-medium text-ink-muted">Area / Locality</span>
           <input name="area" value="{{ current_user.area or '' }}" placeholder="e.g. Vesu"
                  class="mt-1 w-full px-3 py-2.5 rounded-lg border border-hairline-strong text-sm focus:border-primary outline-none">

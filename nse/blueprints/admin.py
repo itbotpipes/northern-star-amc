@@ -12,7 +12,8 @@ from ..models import (User, AMCPlan, Contract, Visit, VisitPhoto, Equipment,
                       VisitFeedback, CustomerJourneyEvent, ServiceQuotation,
                       ServiceQuotationItem, VisitChecklistItem, InventoryItem,
                       HealthCheckReport, SystemCheckList, SupportTicket,
-                      VisitDefect, Broadcast, Installment, MilestoneLog)
+                      VisitDefect, Broadcast, Installment, MilestoneLog,
+                      ReworkItem)
 from ..utils import (staff_required, save_upload, notify, notify_staff,
                      whatsapp_url, normalise_phone)
 from ..email_service import send_feedback_request, send_visit_confirmation
@@ -178,14 +179,230 @@ def contracts():
     return render_template("admin/contracts.html", contracts=items, status=status)
 
 
+# =========================================================================== #
+# #2/#3 — Onboard a project (Existing vs New) with engineer→maintenance handover
+# =========================================================================== #
+def _generate_visits(c, start, n_visits, tech_id=None):
+    """Create evenly-spaced scheduled visits across the year (mirrors activation).
+    Optionally pre-assigns a technician to every visit."""
+    if c.visits:
+        return
+    interval = max(1, 365 // max(1, n_visits))
+    for i in range(n_visits):
+        db.session.add(Visit(
+            contract_id=c.id, visit_number=i + 1,
+            scheduled_date=start + timedelta(days=interval * i),
+            status="scheduled",
+            technician_id=tech_id or None,
+        ))
+
+
+# --------------------------------------------------------------------------- #
+# LEADS list — every pre-activation enquiry (customer-submitted or staff-typed
+# phone-in enquiry / staff-created handover). Flow 1 (new customer) starts here
+# via the customer's own "Send Enquiry"; Flow 2 (engineer handover) is always
+# created here by staff since it's an internal process the client doesn't run.
+# --------------------------------------------------------------------------- #
+@admin_bp.route("/leads", methods=["GET", "POST"])
+@login_required
+@staff_required
+def leads():
+    if request.method == "POST":
+        f = request.form
+        project_type = f.get("project_type", "new")   # new / existing
+        phone = (f.get("phone") or "").strip()
+        customer = User.query.filter_by(phone=phone, role="customer").first() if phone else None
+
+        c = Contract(
+            status="pending", lead_stage="new", project_type=project_type,
+            site_name=f.get("site_name"), site_address=f.get("site_address"),
+            area=f.get("area"),
+            applicant_name=f.get("name"), applicant_phone=phone,
+            applicant_email=f.get("email"), property_type=f.get("property_type"),
+            problem_description=(f.get("problem_description") or "").strip() or None,
+            latitude=(f.get("latitude") or "").strip() or None,
+            longitude=(f.get("longitude") or "").strip() or None,
+            customer_id=customer.id if customer else None,
+        )
+        if project_type == "existing":
+            c.spoc_name = (f.get("spoc_name") or "").strip() or None
+            c.spoc_phone = (f.get("spoc_phone") or "").strip() or None
+            c.spoc_role = (f.get("spoc_role") or "").strip() or None
+        db.session.add(c)
+        db.session.commit()
+        flash(f"Lead created ({c.reference}). Schedule the inspection next.", "success")
+        return redirect(url_for("admin.lead_detail", lead_id=c.id))
+
+    open_leads = (Contract.query.filter(Contract.lead_stage.isnot(None))
+                  .order_by(Contract.created_at.desc()).all())
+    return render_template("admin/leads.html", leads=open_leads)
+
+
+@admin_bp.route("/lead/<int:lead_id>")
+@login_required
+@staff_required
+def lead_detail(lead_id):
+    c = db.session.get(Contract, lead_id) or abort(404)
+    technicians = User.query.filter_by(role="technician").order_by(User.name).all()
+    fshcr = (HealthCheckReport.query.filter_by(contract_id=c.id)
+             .order_by(HealthCheckReport.created_at.desc()).first())
+    rework = ReworkItem.query.filter_by(contract_id=c.id).order_by(ReworkItem.created_at.desc()).all()
+    quote = (ServiceQuotation.query.filter_by(contract_id=c.id)
+             .order_by(ServiceQuotation.created_at.desc()).first())
+    return render_template("admin/lead_detail.html", c=c, technicians=technicians,
+                           fshcr=fshcr, rework=rework, quote=quote)
+
+
+@admin_bp.route("/lead/<int:lead_id>/schedule-inspection", methods=["POST"])
+@login_required
+@staff_required
+def schedule_inspection(lead_id):
+    c = db.session.get(Contract, lead_id) or abort(404)
+    f = request.form
+    tech = db.session.get(User, f.get("technician_id", type=int)) if f.get("technician_id") else None
+    date_str = f.get("inspection_date")
+    c.inspection_technician_id = tech.id if tech else None
+    c.inspection_scheduled_date = (datetime.strptime(date_str, "%Y-%m-%d").date()
+                                   if date_str else None)
+    c.lead_stage = "inspection_scheduled"
+    db.session.commit()
+    when = c.inspection_scheduled_date.strftime("%d %b %Y") if c.inspection_scheduled_date else "soon"
+    if c.customer_id:
+        notify(c.customer_id, "Your site inspection is scheduled",
+               f"Our team will visit {c.site_name or 'your site'} on {when}.",
+               link=url_for("portal.contract", contract_id=c.id))
+    if tech:
+        notify(tech.id, f"Inspection assigned — {c.reference}",
+               f"Visit {c.site_name or c.site_address or 'the site'} on {when} for a fire "
+               f"safety health check-up.",
+               link=url_for("admin.lead_detail", lead_id=c.id))
+    flash(f"Inspection scheduled for {when}" + (f", assigned to {tech.name}." if tech else "."),
+          "success")
+    return redirect(url_for("admin.lead_detail", lead_id=c.id))
+
+
+@admin_bp.route("/lead/<int:lead_id>/decide", methods=["GET", "POST"])
+@login_required
+@staff_required
+def lead_decide(lead_id):
+    """After the FSHCR records outcome=ok/issues, the manager decides what
+    happens commercially: charge an audit fee only, raise a full AMC quotation,
+    or (handover leads only) activate a complimentary first-year AMC."""
+    c = db.session.get(Contract, lead_id) or abort(404)
+    plans = AMCPlan.query.filter_by(active=True).order_by(AMCPlan.category, AMCPlan.price).all()
+    technicians = User.query.filter_by(role="technician").order_by(User.name).all()
+
+    if request.method == "POST":
+        action = request.form.get("action")
+        f = request.form
+
+        if action == "audit_fee":
+            amount = float(f.get("amount") or 0)
+            sq = ServiceQuotation(
+                service_type="audit", customer_name=c.applicant_name,
+                customer_phone=c.applicant_phone, customer_email=c.applicant_email,
+                project_name=c.site_name, customer_address=c.site_address,
+                status="draft", contract_id=c.id, customer_id=c.customer_id,
+                gst_percent=18.0, valid_days=15,
+                notes="Fire Safety Audit Fee — site inspected, no immediate AMC required.",
+            )
+            sq.generate_number()
+            db.session.add(sq)
+            db.session.flush()
+            db.session.add(ServiceQuotationItem(
+                quotation_id=sq.id, category="Audit",
+                description="Fire Safety Health Check-up — audit fee",
+                unit="Job", quantity=1.0, rate=amount, sort_order=1))
+            c.lead_stage = "audit_only"
+            c.next_followup_date = date.today() + timedelta(days=150)
+            db.session.commit()
+            flash(f"Audit fee {sq.reference} created. A follow-up reminder for quarterly "
+                  f"maintenance is set for {c.next_followup_date:%d %b %Y}.", "success")
+            return redirect(url_for("sq.detail_quotation", sq_id=sq.id))
+
+        elif action == "raise_quote":
+            c.lead_stage = "needs_quote"
+            db.session.commit()
+            return redirect(url_for("sq.new_quotation", contract_id=c.id))
+
+        elif action == "free_amc" and c.project_type == "existing":
+            if not c.customer_id and c.applicant_phone:
+                cust = User.query.filter_by(phone=c.applicant_phone, role="customer").first()
+                if not cust:
+                    cust = User(role="customer", name=c.applicant_name or "Customer",
+                               phone=c.applicant_phone, email=c.applicant_email,
+                               area=c.area, address=c.site_address)
+                    db.session.add(cust)
+                    db.session.flush()
+                c.customer_id = cust.id
+            plan = db.session.get(AMCPlan, f.get("plan_id", type=int)) if f.get("plan_id") else None
+            start = (datetime.strptime(f.get("start_date"), "%Y-%m-%d").date()
+                    if f.get("start_date") else date.today())
+            n = int(f.get("total_visits") or (plan.visits_per_year if plan else 4))
+            c.plan_id = plan.id if plan else c.plan_id
+            c.free_amc = True
+            c.payment_status = "paid"
+            c.payment_date = date.today()
+            c.start_date = start
+            c.end_date = start + timedelta(days=365)
+            c.total_visits = n
+            c.status = "active"
+            c.lead_stage = None
+            tech_id = f.get("technician_id", type=int)
+            _generate_visits(c, start, n, tech_id)
+            db.session.add(CustomerJourneyEvent(
+                customer_id=c.customer_id, event_type="contract_activated",
+                description=f"Handover complete — complimentary AMC {c.reference} active "
+                            f"until {c.end_date:%d %b %Y} ({n} visits)",
+                ref_type="contract", ref_id=c.id, created_by_id=current_user.id))
+            db.session.commit()
+            notify(c.customer_id, "Your AMC is active (complimentary first year)",
+                   f"{c.reference} is active with {n} maintenance visits, valid free until "
+                   f"{c.end_date:%d %b %Y}.",
+                   link=url_for("portal.contract", contract_id=c.id))
+            flash(f"Complimentary AMC activated — valid until {c.end_date:%d %b %Y}, "
+                  f"{n} visits scheduled.", "success_chime")
+            return redirect(url_for("admin.contract", contract_id=c.id))
+
+        flash("Choose an action.", "warning")
+        return redirect(url_for("admin.lead_decide", lead_id=c.id))
+
+    return render_template("admin/lead_decide.html", c=c, plans=plans, technicians=technicians)
+
+
+# --------------------------------------------------------------------------- #
+# Rework queue — flagged list only (manager toggles by hand; no auto re-entry
+# into the inspection flow, per explicit product decision).
+# --------------------------------------------------------------------------- #
+@admin_bp.route("/rework")
+@login_required
+@staff_required
+def rework_list():
+    items = ReworkItem.query.order_by(ReworkItem.status, ReworkItem.created_at.desc()).all()
+    return render_template("admin/rework.html", items=items)
+
+
+@admin_bp.route("/rework/<int:item_id>/toggle", methods=["POST"])
+@login_required
+@staff_required
+def rework_toggle(item_id):
+    item = db.session.get(ReworkItem, item_id) or abort(404)
+    item.status = "done" if item.status == "open" else "open"
+    item.resolved_at = datetime.utcnow() if item.status == "done" else None
+    db.session.commit()
+    flash(f"{item.reference} marked {item.status}.", "success")
+    return redirect(url_for("admin.rework_list"))
+
+
 @admin_bp.route("/contract/<int:contract_id>")
 @login_required
 @staff_required
 def contract(contract_id):
     c = db.session.get(Contract, contract_id) or abort(404)
     techs = User.query.filter(User.role.in_(["technician", "admin"])).all()
-    attachments = FormAttachment.query.filter_by(
-        ref_type="contract", ref_id=contract_id, attachment_type="photo").all()
+    attachments = FormAttachment.query.filter(
+        FormAttachment.ref_type == "contract", FormAttachment.ref_id == contract_id,
+        FormAttachment.attachment_type.in_(["photo", "video"])).all()
     return render_template("admin/contract.html", c=c, techs=techs,
                            attachments=attachments)
 
@@ -303,8 +520,11 @@ def visit(visit_id):
         # client via the same path as an explicit reschedule.
         if v.status == "completed" and v.scheduled_date and v.scheduled_date > date.today():
             _apply_reschedule(v, date.today())
-        # Report upload
+        # Report upload — either the regular file picker or the #10a one-tap
+        # camera scan (report_scan); prefer whichever one actually has a file.
         report = request.files.get("report")
+        if not (report and report.filename):
+            report = request.files.get("report_scan")
         path = save_upload(report, f"reports/contract{v.contract_id}", {"pdf", "png", "jpg", "jpeg"})
         if path:
             v.service_report_path = path
@@ -420,6 +640,71 @@ def quotation_payment(quote_id):
         db.session.commit()
     flash(f"Quotation {q.reference} payment marked {q.payment_status}.", "success")
     return redirect(request.referrer or url_for("admin.visit", visit_id=q.visit_id))
+
+
+# --------------------------------------------------------------------------- #
+# #10b — Material quotation edit (item + description). Distinct from
+# quotation_resend's "revise" flag, which is specifically for a quote the client
+# has already rejected and re-opened; this is a general-purpose edit available
+# any time a quote is still pending, e.g. to fix a typo or add a missed item
+# before the client acts on it.
+# --------------------------------------------------------------------------- #
+@admin_bp.route("/quotation/<int:quote_id>/edit", methods=["GET", "POST"])
+@login_required
+@staff_required
+def quotation_edit(quote_id):
+    q = db.session.get(Quotation, quote_id) or abort(404)
+    if request.method == "POST":
+        f = request.form
+        descs  = f.getlist("item_desc")
+        qtys   = f.getlist("item_qty")
+        prices = f.getlist("item_price")
+        for item in list(q.items):
+            db.session.delete(item)
+        db.session.flush()
+        for d, qty, pr in zip(descs, qtys, prices):
+            if d.strip():
+                db.session.add(QuotationItem(
+                    quotation_id=q.id, description=d.strip(),
+                    quantity=int(qty or 1), unit_price=int(pr or 0)))
+        q.notes = f.get("notes", q.notes)
+        if not q.items:
+            db.session.rollback()
+            flash("A quotation needs at least one item.", "warning")
+            return redirect(url_for("admin.quotation_edit", quote_id=q.id))
+        db.session.commit()
+        if q.contract and q.contract.customer_id:
+            notify(q.contract.customer_id, f"Quotation {q.reference} updated",
+                   f"We've updated {q.reference} — now totalling ₹{q.total:,.0f}. "
+                   f"Please review.",
+                   link=url_for("portal.quotation", quote_id=q.id))
+        flash(f"Quotation {q.reference} updated.", "success")
+        return redirect(url_for("admin.visit", visit_id=q.visit_id))
+
+    inventory = InventoryItem.query.filter_by(active=True)\
+        .order_by(InventoryItem.category, InventoryItem.name).all()
+    return render_template("admin/quotation_edit.html", q=q, inventory=inventory)
+
+
+@admin_bp.route("/quotation/<int:quote_id>/delete", methods=["POST"])
+@login_required
+@staff_required
+def quotation_delete(quote_id):
+    """Delete a visit-linked material quotation — only while it's still
+    pending and unpaid. Approved/paid quotes must stay as a record."""
+    q = db.session.get(Quotation, quote_id) or abort(404)
+    visit_id = q.visit_id
+    contract_id = q.contract_id
+    if q.is_paid or q.status == "approved":
+        flash(f"Quotation {q.reference} has been approved/paid and cannot be deleted.", "danger")
+        return redirect(url_for("admin.visit", visit_id=visit_id) if visit_id else url_for("admin.contract", contract_id=contract_id))
+    ref = q.reference
+    for item in list(q.items):
+        db.session.delete(item)
+    db.session.delete(q)
+    db.session.commit()
+    flash(f"Quotation {ref} deleted.", "success")
+    return redirect(url_for("admin.visit", visit_id=visit_id) if visit_id else url_for("admin.contract", contract_id=contract_id))
 
 
 @admin_bp.route("/quotation/<int:quote_id>/resend", methods=["POST"])
@@ -614,8 +899,13 @@ def health_report(report_id=None):
         if r is None:
             r = HealthCheckReport(created_by_id=current_user.id)
             db.session.add(r)
-        r.contract_id = f.get("contract_id") or None
-        r.visit_id = f.get("visit_id") or None
+        r.contract_id = f.get("contract_id", type=int)
+        r.visit_id = f.get("visit_id", type=int)
+        # Flush now so r.contract (accessed below, and further down for the lead
+        # branch) resolves immediately — SQLAlchemy's relationship lazy-loader
+        # silently returns None for a pending/unflushed object's FK, even once
+        # correctly typed, until a flush or commit has happened.
+        db.session.flush()
         r.property_name = f.get("property_name", "").strip()
         r.property_address = f.get("property_address", "").strip()
         r.property_contact = f.get("property_contact", "").strip()
@@ -625,13 +915,52 @@ def health_report(report_id=None):
             r.report_date = datetime.strptime(f.get("report_date"), "%Y-%m-%d").date()
         r.status = f.get("status", "draft")
         r.set_answers(_collect_health_payload(f))
+        # #2/#3 rebuild — overall score + outcome, used to drive the lead branch
+        # when this FSHCR is the inspection for a lead (r.contract.lead_stage set).
+        score_raw = f.get("score", "").strip()
+        r.score = int(score_raw) if score_raw.isdigit() else None
+        r.outcome = f.get("outcome") or None
+        # Handover-only: joint sign-off by the engineer + maintenance technician
+        if r.contract and r.contract.project_type == "existing":
+            eng = (f.get("handover_engineer") or "").strip()
+            tech_name = (f.get("handover_technician") or "").strip()
+            if eng:
+                r.contract.handover_engineer = eng
+            if tech_name:
+                r.contract.handover_technician = tech_name
+            if r.contract.handover_engineer and r.contract.handover_technician and not r.contract.handover_signed_at:
+                r.contract.handover_signed_at = datetime.utcnow()
         # Optional scanned-copy upload (fallback when the app form isn't used)
         scan = request.files.get("scan")
         path = save_upload(scan, "health_reports", {"pdf", "png", "jpg", "jpeg"})
         if path:
             r.scan_path = path
         db.session.commit()
-        # Notify the client when finalised and linked to their contract
+
+        # ── Lead branch: only when this report belongs to an open lead ──────
+        lead = r.contract if (r.contract and r.contract.lead_stage) else None
+        if lead and r.status == "completed" and r.outcome:
+            lead.handover_report_id = r.id
+            if r.outcome == "needs_rework" and lead.project_type == "existing":
+                db.session.add(ReworkItem(
+                    contract_id=lead.id, health_check_report_id=r.id,
+                    description=(f.get("rework_notes") or "").strip()
+                                or "Rework required before AMC can start (see FSHCR).",
+                    created_by_id=current_user.id))
+                lead.lead_stage = "rework"
+                db.session.commit()
+                flash(f"Report saved. {lead.reference} flagged for rework — tracked in the "
+                      f"Rework list.", "warning")
+                return redirect(url_for("admin.lead_detail", lead_id=lead.id))
+            else:
+                lead.lead_stage = "inspection_done"
+                db.session.commit()
+                flash(f"Report saved (score {r.score if r.score is not None else '—'}, "
+                      f"outcome: {r.outcome}). Decide what happens next.", "success")
+                return redirect(url_for("admin.lead_decide", lead_id=lead.id))
+
+        # Notify the client when finalised and linked to their contract (normal,
+        # non-lead FSHCR use — unchanged behaviour).
         if r.status == "completed" and r.contract_id and r.contract and r.contract.customer_id:
             notify(r.contract.customer_id, "Fire Health Check report ready",
                    f"Your fire system health checkup report {r.reference} is available to view and download.",
@@ -645,9 +974,15 @@ def health_report(report_id=None):
     visit = db.session.get(Visit, vid) if vid else None
     if visit and not contract:
         contract = visit.contract
+    if not contract and r and r.contract_id:
+        contract = r.contract
     contracts = Contract.query.order_by(Contract.id.desc()).all()
+    # #2/#3 rebuild — when opened for an open lead, show the outcome/score panel
+    # and (for handover leads) the joint sign-off fields.
+    is_lead = bool(contract and contract.lead_stage)
     return render_template("admin/health_report_form.html", r=r, model=HealthCheckReport,
-                           contract=contract, visit=visit, contracts=contracts)
+                           contract=contract, visit=visit, contracts=contracts,
+                           is_lead=is_lead)
 
 
 @admin_bp.route("/health-report/<int:report_id>/pdf")
@@ -897,6 +1232,75 @@ def technician_performance():
     stats.sort(key=lambda s: (s["avg_overall"] or 0, s["completed"]), reverse=True)
 
     return render_template("admin/technician_performance.html", stats=stats)
+
+
+# --------------------------------------------------------------------------- #
+# #6 — Technician portfolio / self dashboard
+# The logged-in technician sees their own performance: sites assigned, work done,
+# industry mix, and their average rating from customer feedback. Admins/managers
+# can view any technician via ?tech_id=.
+# --------------------------------------------------------------------------- #
+@admin_bp.route("/my-portfolio")
+@login_required
+@staff_required
+def my_portfolio():
+    tech_id = request.args.get("tech_id", type=int)
+    if tech_id and (current_user.is_admin or current_user.is_manager):
+        tech = db.session.get(User, tech_id) or abort(404)
+    else:
+        tech = current_user
+
+    visits = Visit.query.filter_by(technician_id=tech.id).all()
+    completed = [v for v in visits if v.status == "completed"]
+    upcoming = [v for v in visits if v.status in ("scheduled", "in_progress")]
+
+    # Distinct sites (contracts) assigned to this technician
+    contracts = {}
+    for v in visits:
+        if v.contract:
+            contracts[v.contract_id] = v.contract
+    sites = list(contracts.values())
+
+    # Industry / property-type breakdown
+    industries = {}
+    for c in sites:
+        key = (c.property_type or "Other").strip() or "Other"
+        industries[key] = industries.get(key, 0) + 1
+    industries = dict(sorted(industries.items(), key=lambda kv: kv[1], reverse=True))
+
+    # Feedback + rating
+    feedbacks = (VisitFeedback.query.filter_by(technician_id=tech.id)
+                 .filter(VisitFeedback.rating_overall.isnot(None))
+                 .order_by(VisitFeedback.created_at.desc()).all())
+    avg_overall = round(sum(f.rating_overall for f in feedbacks) / len(feedbacks), 1) if feedbacks else None
+
+    def _avg(attr):
+        vals = [getattr(f, attr) for f in feedbacks if getattr(f, attr) is not None]
+        return round(sum(vals) / len(vals), 1) if vals else None
+
+    dims = {
+        "Quality": _avg("rating_quality"),
+        "Behaviour": _avg("rating_behaviour"),
+        "Punctuality": _avg("rating_punctuality"),
+        "Communication": _avg("rating_communication"),
+    }
+    recent_comments = [f for f in feedbacks if (f.comment or "").strip()][:5]
+
+    # On-time completion rate
+    on_time = sum(1 for v in completed
+                  if v.scheduled_date and v.completed_date and v.completed_date <= v.scheduled_date)
+    on_time_pct = round(on_time / len(completed) * 100) if completed else None
+
+    # Site-wise visit log (most recent first) with check-in/out
+    visit_log = sorted(visits, key=lambda v: (v.scheduled_date or date.min), reverse=True)
+
+    return render_template("admin/my_portfolio.html",
+                           tech=tech, sites=sites, visits=visits,
+                           completed=completed, upcoming=upcoming,
+                           industries=industries, feedbacks=feedbacks,
+                           avg_overall=avg_overall, dims=dims,
+                           recent_comments=recent_comments,
+                           on_time_pct=on_time_pct, visit_log=visit_log)
 
 
 # --------------------------------------------------------------------------- #
@@ -1362,8 +1766,25 @@ def renew_contract(contract_id):
 @staff_required
 def visit_checkin(visit_id):
     v = db.session.get(Visit, visit_id) or abort(404)
+    # #6 — geofence: if the site has a stored GPS location, the technician must be
+    # within 100 m to check in. Sites without coordinates are not blocked.
+    lat = (request.form.get("lat") or "").strip()
+    lng = (request.form.get("lng") or "").strip()
+    c = v.contract
+    note = (request.form.get("checkin_note", "") or "").strip()
+    if c and c.latitude and c.longitude and lat and lng:
+        from ..utils import meters_between
+        dist = meters_between(lat, lng, c.latitude, c.longitude)
+        if dist is not None and dist > 100:
+            flash(f"You appear to be about {int(dist)} m from the site. You must be "
+                  f"within 100 m of the site to check in.", "warning")
+            return redirect(url_for("admin.visit", visit_id=v.id))
+        if dist is not None:
+            note = (note + " " if note else "") + f"[GPS {lat},{lng} · {int(dist)}m from site]"
+    elif lat and lng:
+        note = (note + " " if note else "") + f"[GPS {lat},{lng}]"
     v.checkin_at = datetime.utcnow()
-    v.checkin_note = request.form.get("checkin_note", "").strip() or None
+    v.checkin_note = note or None
     if v.status == "scheduled":
         v.status = "in_progress"
     db.session.commit()

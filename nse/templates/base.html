@@ -289,15 +289,38 @@
   document.querySelectorAll('.voice-widget').forEach(widget=>{
     const btn=widget.querySelector('.voice-btn'),label=widget.querySelector('.voice-label'),micIcon=widget.querySelector('.voice-mic'),status=widget.querySelector('.voice-status'),box=widget.querySelector('.voice-transcript'),hidden=widget.querySelector('.voice-hidden-input'),noSupp=widget.querySelector('.voice-unsupported');
     const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-    if(!SR){if(noSupp)noSupp.classList.remove('hidden');if(btn)btn.classList.add('hidden');return;}
+    const showUnsupported=()=>{if(noSupp)noSupp.classList.remove('hidden');if(btn)btn.classList.add('hidden');};
+    // #8d — Web Speech API needs a secure context (https, or localhost for dev).
+    // Without this check, rec.start() throws and the button silently does nothing.
+    const secure=(location.protocol==='https:'||location.hostname==='localhost'||location.hostname==='127.0.0.1');
+    if(!SR||!secure){showUnsupported();if(SR&&!secure&&noSupp)noSupp.textContent='Voice typing needs a secure connection — please type your message below.';return;}
     const rec=new SR();rec.lang='en-IN';rec.interimResults=true;rec.continuous=false;let running=false,finalText='';
+    const ERR_MSG={
+      'not-allowed':'Microphone access denied — check your browser/site permissions.',
+      'service-not-allowed':'Microphone access denied — check your browser/site permissions.',
+      'no-speech':"Didn't catch that — tap and try speaking again.",
+      'audio-capture':'No microphone found on this device.',
+      'network':'Check your internet connection and try again.',
+      'aborted':'Recording stopped.',
+    };
+    const showError=code=>{status.textContent=ERR_MSG[code]||('Voice input error: '+code+'. Please type instead.');status.classList.remove('hidden');setTimeout(()=>status.classList.add('hidden'),5000);};
     rec.onstart=()=>{running=true;label.textContent='Tap to stop';micIcon.style.stroke='#d23f3f';status.textContent='Listening…';status.classList.remove('hidden');box.classList.remove('hidden');box.textContent='Listening…';};
     rec.onresult=e=>{let interim='';finalText='';for(let i=0;i<e.results.length;i++){if(e.results[i].isFinal)finalText+=e.results[i][0].transcript+' ';else interim+=e.results[i][0].transcript;}box.textContent=(finalText+interim)||'Listening…';};
     rec.onend=()=>{running=false;label.textContent='Tap to speak';micIcon.style.stroke='';status.classList.add('hidden');if(finalText.trim()){const prev=hidden.value?hidden.value+' ':'';hidden.value=(prev+finalText).trim();box.classList.remove('italic');box.textContent=hidden.value;}else{box.classList.add('hidden');}};
-    rec.onerror=err=>{running=false;label.textContent='Tap to speak';micIcon.style.stroke='';status.textContent=err.error==='not-allowed'?'Microphone access denied.':'Error: '+err.error;status.classList.remove('hidden');setTimeout(()=>status.classList.add('hidden'),4000);};
-    btn.addEventListener('click',()=>{if(running){rec.stop();}else{finalText='';rec.start();}});
+    rec.onerror=err=>{running=false;label.textContent='Tap to speak';micIcon.style.stroke='';showError(err.error);};
+    btn.addEventListener('click',()=>{
+      if(running){rec.stop();return;}
+      finalText='';
+      try{rec.start();}
+      catch(e){
+        // rec.start() can throw synchronously (e.g. already-running state, or a
+        // permissions/DOM exception) — without this catch the click did nothing
+        // visible at all, which is exactly the "tap to speak isn't working" bug.
+        running=false;label.textContent='Tap to speak';showError(e.name==='InvalidStateError'?'aborted':'not-allowed');
+      }
+    });
   });
-  document.querySelectorAll('.photo-input').forEach(input=>{input.addEventListener('change',()=>{const container=document.getElementById(input.dataset.preview);if(!container)return;container.innerHTML='';Array.from(input.files).forEach(file=>{if(!file.type.startsWith('image/'))return;const img=document.createElement('img');img.src=URL.createObjectURL(file);img.className='w-20 h-20 object-cover rounded-lg border border-hairline';container.appendChild(img);});});});
+  document.querySelectorAll('.photo-input').forEach(input=>{input.addEventListener('change',()=>{const container=document.getElementById(input.dataset.preview);if(!container)return;container.innerHTML='';Array.from(input.files).forEach(file=>{if(file.type.startsWith('image/')){const img=document.createElement('img');img.src=URL.createObjectURL(file);img.className='w-20 h-20 object-cover rounded-lg border border-hairline';container.appendChild(img);}else if(file.type.startsWith('video/')){const vid=document.createElement('video');vid.src=URL.createObjectURL(file);vid.className='w-20 h-20 object-cover rounded-lg border border-hairline';vid.muted=true;container.appendChild(vid);}});});});
   function nseChime(){try{var C=window.AudioContext||window.webkitAudioContext;if(!C)return;var c=new C(),notes=[[880,0],[1318.5,.12]];notes.forEach(function(n){var o=c.createOscillator(),g=c.createGain();o.type='sine';o.frequency.value=n[0];o.connect(g);g.connect(c.destination);var t=c.currentTime+n[1];g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.3,t+.02);g.gain.exponentialRampToValueAtTime(.0001,t+.5);o.start(t);o.stop(t+.55);});}catch(e){}}
   document.addEventListener('DOMContentLoaded',function(){if(!!document.querySelector('[data-nse-chime]')||new URLSearchParams(window.location.search).get('chime')==='1')nseChime();});
   function nseStar(el){var row=el.closest('.star-row'),val=parseInt(el.getAttribute('data-val'),10);row.querySelectorAll('.star').forEach(function(s){var v=parseInt(s.getAttribute('data-val'),10);s.classList.toggle('text-amber-400',v<=val);s.classList.toggle('text-slate-300',v>val);});row.querySelector('input[type=hidden]').value=val;}

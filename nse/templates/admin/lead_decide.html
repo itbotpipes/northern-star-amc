@@ -1,0 +1,57 @@
+{% extends "base_ops.html" %}
+{% block title %}Decide — {{ c.reference }}{% endblock %}
+{% block content %}
+<section class="max-w-2xl mx-auto px-4 py-8">
+  <a href="{{ url_for('admin.lead_detail', lead_id=c.id) }}" class="text-sm text-ink-subtle hover:text-ink">← {{ c.reference }}</a>
+  <h1 class="text-2xl font-extrabold text-ink mt-2 mb-1">What happens next?</h1>
+  <p class="text-sm text-ink-subtle mb-6">Inspection complete for {{ c.applicant_name or (c.customer.name if c.customer) }} — {{ c.site_name or c.site_address or '' }}. Choose one:</p>
+
+  <div class="space-y-4">
+
+    <!-- Audit fee only -->
+    <form method="post" class="card p-6">
+      <input type="hidden" name="action" value="audit_fee">
+      <h2 class="font-bold text-ink mb-1">Charge audit fee only</h2>
+      <p class="text-sm text-ink-subtle mb-3">Everything is OK — bill for the inspection, no AMC needed right now. A follow-up reminder is set for ~5 months out.</p>
+      <label class="block mb-3"><span class="text-sm font-medium text-ink-muted">Audit fee amount (₹)</span>
+        <input type="number" name="amount" min="0" step="1" class="mt-1.5 w-40 px-3 py-2.5" required></label>
+      <button class="btn btn-outline">Create audit fee quotation</button>
+    </form>
+
+    <!-- Raise AMC quotation -->
+    <form method="post" class="card p-6">
+      <input type="hidden" name="action" value="raise_quote">
+      <h2 class="font-bold text-ink mb-1">Raise an AMC quotation</h2>
+      <p class="text-sm text-ink-subtle mb-3">Issues were found — prepare a full quotation to send via WhatsApp for the client's approval and payment.</p>
+      <button class="btn btn-primary">Go to New Quotation →</button>
+    </form>
+
+    {% if c.project_type == 'existing' %}
+    <!-- Free AMC (handover only) -->
+    <form method="post" class="card p-6" style="border-color:#f59e0b">
+      <input type="hidden" name="action" value="free_amc">
+      <h2 class="font-bold text-ink mb-1">Activate complimentary 1-year AMC</h2>
+      <p class="text-sm text-ink-subtle mb-3">This project was completed by Northern Star — the first year of AMC is free from today. Activates immediately and schedules visits.</p>
+      <div class="grid sm:grid-cols-3 gap-3">
+        <label class="block"><span class="text-sm font-medium text-ink-muted">Plan</span>
+          <select name="plan_id" class="mt-1.5 w-full px-3 py-2.5">
+            <option value="">— No plan (custom) —</option>
+            {% for p in plans %}<option value="{{ p.id }}">{{ p.name }} ({{ p.visits_per_year }} visits)</option>{% endfor %}
+          </select></label>
+        <label class="block"><span class="text-sm font-medium text-ink-muted">Start date</span>
+          <input type="date" name="start_date" class="mt-1.5 w-full px-3 py-2.5"></label>
+        <label class="block"><span class="text-sm font-medium text-ink-muted">Visits</span>
+          <input type="number" name="total_visits" value="4" class="mt-1.5 w-full px-3 py-2.5"></label>
+      </div>
+      <label class="block mt-3"><span class="text-sm font-medium text-ink-muted">Assign technician</span>
+        <select name="technician_id" class="mt-1.5 w-full px-3 py-2.5">
+          <option value="">— Unassigned —</option>
+          {% for t in technicians %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}
+        </select></label>
+      <button class="btn btn-amber mt-4">Activate free AMC — valid 1 year from start date</button>
+    </form>
+    {% endif %}
+
+  </div>
+</section>
+{% endblock %}

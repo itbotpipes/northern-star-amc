@@ -1,0 +1,44 @@
+{% extends "base_ops.html" %}
+{% block title %}Rework Queue — Ops{% endblock %}
+{% block content %}
+<section class="max-w-4xl mx-auto px-4 py-8">
+  <h1 class="text-2xl font-extrabold text-ink mb-1">Rework queue</h1>
+  <p class="text-sm text-ink-subtle mb-6">Handover sites where the joint inspection found work maintenance can't do. Tracked manually — mark done once the engineering team has fixed it.</p>
+
+  <div class="card overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-slate-50 text-xs uppercase text-ink-subtle">
+        <tr>
+          <th class="px-4 py-2 text-left">Ref</th>
+          <th class="px-4 py-2 text-left">Site / Client</th>
+          <th class="px-4 py-2 text-left">Description</th>
+          <th class="px-4 py-2 text-left">Status</th>
+          <th class="px-4 py-2"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr class="border-t border-hairline hover:bg-slate-50">
+          <td class="px-4 py-2 mono">{{ item.reference }}</td>
+          <td class="px-4 py-2">
+            <a href="{{ url_for('admin.lead_detail', lead_id=item.contract_id) }}" class="text-primary hover:underline">{{ item.contract.reference }}</a>
+            <div class="text-xs text-ink-subtle">{{ item.contract.site_name or item.contract.applicant_name or '' }}</div>
+          </td>
+          <td class="px-4 py-2">{{ item.description }}</td>
+          <td class="px-4 py-2">
+            <span class="px-2 py-0.5 rounded-full text-xs font-semibold" style="background:{{ '#e7f4ec' if item.status=='done' else '#fdecea' }};color:{{ '#17864a' if item.status=='done' else '#d23f3f' }}">{{ item.status|title }}</span>
+          </td>
+          <td class="px-4 py-2 text-right">
+            <form method="post" action="{{ url_for('admin.rework_toggle', item_id=item.id) }}">
+              <button class="text-sm text-primary hover:underline">{{ 'Reopen' if item.status=='done' else 'Mark done' }}</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="px-4 py-8 text-center text-ink-subtle">No rework items — every handover site is clear.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

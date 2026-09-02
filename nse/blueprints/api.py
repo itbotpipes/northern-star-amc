@@ -25,7 +25,7 @@ To wire it up it is registered in nse/__init__.py:  app.register_blueprint(api_b
 from datetime import date, datetime
 from functools import wraps
 
-from flask import Blueprint, request, jsonify, current_app, g
+from flask import Blueprint, request, jsonify, current_app, g, url_for
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
 from ..extensions import db
@@ -530,7 +530,8 @@ def visit_rate(visit_id):
     db.session.commit()
     if v.technician_id:
         notify(v.technician_id, "Visit rated",
-               f"{v.contract.reference}: client rated {fb.avg_rating}/5.")
+               f"{v.contract.reference}: client rated {fb.avg_rating}/5.",
+               link=url_for("admin.visit", visit_id=v.id))
     return jsonify(ok=True, feedback=feedback_json(fb))
 
 
@@ -588,7 +589,8 @@ def service_quotation_accept(sq_id):
         ref_type="service_quotation", ref_id=sq.id))
     db.session.commit()
     notify_staff("Quotation accepted",
-                 f"{g.current_user.name} accepted {sq.reference}.")
+                 f"{g.current_user.name} accepted {sq.reference}.",
+                 link=url_for("sq.detail_quotation", sq_id=sq.id))
     return jsonify(ok=True, quotation=service_quote_json(sq, full=True))
 
 
@@ -613,7 +615,8 @@ def service_quotation_negotiate(sq_id):
         ref_type="service_quotation", ref_id=sq.id))
     db.session.commit()
     notify_staff("Quotation — revision requested",
-                 f"{g.current_user.name} on {sq.reference}: {note[:120]}")
+                 f"{g.current_user.name} on {sq.reference}: {note[:120]}",
+                 link=url_for("sq.detail_quotation", sq_id=sq.id))
     return jsonify(ok=True, quotation=service_quote_json(sq, full=True))
 
 
@@ -644,11 +647,14 @@ def material_quotation_decide(q_id):
         return jsonify(error="Quotation not found."), 404
     body = request.get_json(silent=True) or {}
     decision = (body.get("decision") or "").strip()   # approve / reject
+    quote_link = (url_for("admin.visit", visit_id=q.visit_id) if q.visit_id
+                 else url_for("admin.contract", contract_id=q.contract_id))
     if decision == "approve":
         q.status = "approved"
         q.decided_at = datetime.utcnow()
         db.session.commit()
-        notify_staff("Material quote approved", f"{q.reference} approved by client.")
+        notify_staff("Material quote approved", f"{q.reference} approved by client.",
+                     link=quote_link)
     elif decision == "reject":
         if not body.get("waiver_accepted"):
             return jsonify(error="waiver_required", waiver_text=WAIVER_TEXT), 400
@@ -657,7 +663,8 @@ def material_quotation_decide(q_id):
         q.rejection_acknowledged = True
         q.waiver_text = WAIVER_TEXT
         db.session.commit()
-        notify_staff("Material quote declined", f"{q.reference} declined (waiver signed).")
+        notify_staff("Material quote declined", f"{q.reference} declined (waiver signed).",
+                     link=quote_link)
     else:
         return jsonify(error="decision must be 'approve' or 'reject'."), 400
     return jsonify(ok=True, quotation=material_quote_json(q, full=True))
@@ -810,7 +817,8 @@ def submit_referral(contract_id):
         customer_id=g.current_user.id, event_type="referral_submitted",
         description=f"Referred {name}", ref_type="contract", ref_id=c.id))
     db.session.commit()
-    notify_staff("New referral", f"{g.current_user.name} referred {name} ({phone}).")
+    notify_staff("New referral", f"{g.current_user.name} referred {name} ({phone}).",
+                 link=url_for("admin.contract", contract_id=c.id))
     return jsonify(ok=True, message="Thank you! Our team will contact your referral.")
 
 
@@ -846,7 +854,8 @@ def agreement_accept(contract_id):
         ref_type="contract", ref_id=c.id))
     db.session.commit()
     notify_staff("Agreement accepted",
-                 f"{g.current_user.name} accepted the AMC agreement for {c.reference}.")
+                 f"{g.current_user.name} accepted the AMC agreement for {c.reference}.",
+                 link=url_for("admin.contract", contract_id=c.id))
     return jsonify(ok=True, message="Agreement accepted. Thank you!")
 
 

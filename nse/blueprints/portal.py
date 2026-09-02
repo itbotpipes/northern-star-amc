@@ -6,6 +6,7 @@ from flask import (Blueprint, render_template, request, redirect, url_for,
                    flash, abort, send_from_directory, send_file, current_app)
 from flask_login import login_required, current_user
 from sqlalchemy import or_
+from sqlalchemy.exc import SQLAlchemyError
 
 from ..extensions import db
 from ..models import (Contract, Visit, Quotation, ServiceRequest, Payment,
@@ -509,15 +510,41 @@ def profile():
         current_user.address      = f.get("address", "").strip() or None
         current_user.area         = f.get("area", "").strip() or None
         current_user.city         = f.get("city", "").strip() or "Surat, Gujarat"
-        # Optional photo / ID card upload
+        if "email" in f:
+            current_user.email    = f.get("email", "").strip() or current_user.email
+        # Optional photo / ID card upload. A failed upload (e.g. read-only FS on
+        # Vercel with no Blob token) must NOT block the rest of the profile from
+        # saving — wrap it so the text details always persist.
+        photo_warning = False
         photo_file = request.files.get("photo")
         if photo_file and photo_file.filename:
-            path = save_upload(photo_file, f"profiles/user{current_user.id}",
-                               {"png", "jpg", "jpeg", "gif", "webp", "pdf"})
-            if path:
-                current_user.photo_path = path
-        db.session.commit()
-        flash("Profile updated.", "success")
+            try:
+                path = save_upload(photo_file, f"profiles/user{current_user.id}",
+                                   {"png", "jpg", "jpeg", "gif", "webp", "pdf"})
+                if path:
+                    current_user.photo_path = path
+                else:
+                    photo_warning = True
+            except Exception:
+                photo_warning = True
+        try:
+            db.session.commit()
+        except SQLAlchemyError:
+            # Almost always means the DB schema is missing a column this route
+            # writes (company_name/gst_number/photo_path etc.) — e.g. a fresh
+            # migration wasn't run against production Postgres yet. Without this
+            # guard the whole request 500s and *nothing* on the page saves,
+            # which looks like "the profile page just doesn't work."
+            db.session.rollback()
+            current_app.logger.exception("portal.profile: failed to save profile for user %s", current_user.id)
+            flash("Sorry, we couldn't save your profile — please try again in a moment "
+                  "or contact support if this keeps happening.", "danger")
+            return redirect(url_for("portal.profile"))
+        if photo_warning:
+            flash("Your details were saved, but the photo could not be uploaded. "
+                  "Please try a smaller image.", "warning")
+        else:
+            flash("Profile updated.", "success")
         return redirect(url_for("portal.profile"))
     from ..reminders import payment_reminders
     my_reminders = payment_reminders(customer_id=current_user.id)

@@ -21,10 +21,28 @@
       {% endif %}
     </div>
     {% if not v.checkin_at %}
-    <form method="post" action="{{ url_for('admin.visit_checkin', visit_id=v.id) }}" class="flex items-center gap-2">
+    <form method="post" action="{{ url_for('admin.visit_checkin', visit_id=v.id) }}" class="flex items-center gap-2" id="checkinForm" onsubmit="return grabGeoThenSubmit(event)">
       <input type="text" name="checkin_note" placeholder="Location / note (optional)" class="px-3 py-2 rounded-lg border border-slate-300 text-sm w-52">
-      <button class="bg-navy-800 text-white font-semibold px-4 py-2 rounded-xl hover:bg-navy-700 text-sm">Check in</button>
+      <input type="hidden" name="lat" id="ci_lat"><input type="hidden" name="lng" id="ci_lng">
+      <button type="submit" class="bg-navy-800 text-white font-semibold px-4 py-2 rounded-xl hover:bg-navy-700 text-sm">Check in</button>
     </form>
+    {% if v.contract and v.contract.latitude and v.contract.longitude %}
+    <p class="text-xs text-slate-500 mt-1">You must be within 100 m of the site to check in — we'll use your device location.</p>
+    {% endif %}
+    <script>
+    function grabGeoThenSubmit(e){
+      var f = e.target;
+      if (f._geoDone || !navigator.geolocation) return true;   // no GPS → submit as-is
+      e.preventDefault();
+      var btn = f.querySelector('button[type=submit]'); btn.disabled = true; btn.textContent = 'Locating…';
+      navigator.geolocation.getCurrentPosition(function(pos){
+        document.getElementById('ci_lat').value = pos.coords.latitude.toFixed(6);
+        document.getElementById('ci_lng').value = pos.coords.longitude.toFixed(6);
+        f._geoDone = true; f.submit();
+      }, function(){ f._geoDone = true; f.submit(); }, {enableHighAccuracy:true, timeout:10000});
+      return false;
+    }
+    </script>
     {% elif not v.checkout_at %}
     <form method="post" action="{{ url_for('admin.visit_checkout', visit_id=v.id) }}">
       <button class="bg-green-600 text-white font-semibold px-4 py-2 rounded-xl hover:bg-green-700 text-sm">Check out</button>
@@ -65,7 +83,20 @@
 
     <div class="grid sm:grid-cols-2 gap-4 border-t border-slate-100 pt-4">
       <label class="block"><span class="text-sm font-medium text-slate-700">Service report (PDF/image)</span>
-        <input type="file" name="report" accept=".pdf,.png,.jpg,.jpeg" class="mt-1 w-full text-sm">
+        <div class="mt-1 flex items-center gap-2">
+          <input type="file" name="report" accept=".pdf,.png,.jpg,.jpeg" class="flex-1 text-sm">
+          <!-- #10a — one-tap camera capture: capture="environment" opens the rear
+               camera directly on a phone instead of the file-picker menu. Posted
+               under a separate field (report_scan) so it can't collide with the
+               regular file picker above; admin.visit() prefers whichever has a file. -->
+          <label class="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-slate-300 cursor-pointer hover:bg-slate-50 shrink-0" title="Scan with camera">
+            <svg class="w-4 h-4 text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+              <circle cx="12" cy="13" r="4"/>
+            </svg>
+            <input type="file" name="report_scan" accept="image/*" capture="environment" class="hidden">
+          </label>
+        </div>
         {% if v.service_report_path %}<span class="text-xs text-green-600">Current report uploaded ✓</span>{% endif %}</label>
       <label class="block"><span class="text-sm font-medium text-slate-700">Site photos (multiple)</span>
         <input type="file" name="photos" accept="image/*" multiple class="mt-1 w-full text-sm">
@@ -154,9 +185,9 @@
         </tr></thead>
         <tbody id="qbody">
           <tr class="qrow">
-            <td class="py-1 pr-2"><input name="item_desc" list="inv-list" oninput="invFill(this)" class="w-full px-2 py-1.5 rounded-lg border border-slate-300" placeholder="e.g. ABC Dry Powder Refill (6 kg)"></td>
+            <td class="py-1 pr-2"><input name="item_desc" list="inv-list" oninput="invFill(this);priceHint(this)" class="w-full px-2 py-1.5 rounded-lg border border-slate-300" placeholder="e.g. ABC Dry Powder Refill (6 kg)"></td>
             <td class="py-1 px-1"><input name="item_qty" type="number" min="1" value="1" oninput="qcalc()" class="w-full px-2 py-1.5 rounded-lg border border-slate-300 text-center"></td>
-            <td class="py-1 px-1"><input name="item_price" type="number" min="0" value="0" oninput="qcalc()" class="w-full px-2 py-1.5 rounded-lg border border-slate-300 text-right"></td>
+            <td class="py-1 px-1"><input name="item_price" type="number" min="0" value="0" oninput="qcalc()" class="w-full px-2 py-1.5 rounded-lg border border-slate-300 text-right"><div class="price-hint text-[11px] text-right leading-tight mt-0.5" style="opacity:.6"></div></td>
             <td class="py-1 text-right amt-cell text-slate-700">₹0</td>
             <td class="py-1 text-center"><button type="button" onclick="this.closest('.qrow').remove();qcalc()" class="text-slate-400 hover:text-red-500 text-lg leading-none">×</button></td>
           </tr>
@@ -181,7 +212,16 @@
       <div class="border border-slate-200 rounded-xl p-3">
         <div class="flex items-center justify-between text-sm">
           <span class="font-medium text-navy-800">{{ q.reference }} <span class="text-slate-500 font-normal">· {{ q.items|length }} item(s) · {{ q.created_at|datefmt }}</span></span>
-          <span class="flex items-center gap-2"><span class="font-semibold">{{ q.total|rupees }}</span>{{ status_badge(q.status) }}</span>
+          <span class="flex items-center gap-2">
+            <span class="font-semibold">{{ q.total|rupees }}</span>{{ status_badge(q.status) }}
+            {% if q.status == 'pending' %}<a href="{{ url_for('admin.quotation_edit', quote_id=q.id) }}" class="text-xs text-navy-700 hover:underline">Edit</a>{% endif %}
+            {% if q.status != 'approved' and not q.is_paid %}
+            <form method="post" action="{{ url_for('admin.quotation_delete', quote_id=q.id) }}"
+                  onsubmit="return confirm('Delete {{ q.reference }}? This cannot be undone.');" class="inline">
+              <button type="submit" class="text-xs text-danger hover:underline">Delete</button>
+            </form>
+            {% endif %}
+          </span>
         </div>
         {% if q.status == 'rejected' and q.rejection_acknowledged %}
         <p class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 mt-2">Client declined and accepted the liability waiver. Next visit proceeds as scheduled.</p>
@@ -437,7 +477,31 @@ function addQRow() {
     else if (i.name === 'item_price') i.value = '0';
     else i.value = '';
   });
+  var hint = row.querySelector('.price-hint'); if (hint) hint.textContent = '';
   body.appendChild(row); qcalc();
+}
+
+// #10c — same historical-rate hint used on the Service Quotation form, wired
+// into the on-site material-quote picker so the technician sees what this
+// client was charged before for the same item while quoting on site.
+var _phTimers = new WeakMap();
+function priceHint(descInput) {
+  var row = descInput.closest('.qrow');
+  var hint = row ? row.querySelector('.price-hint') : null;
+  if (!hint) return;
+  var q = descInput.value.trim();
+  if (q.length < 3) { hint.textContent = ''; return; }
+  clearTimeout(_phTimers.get(descInput));
+  _phTimers.set(descInput, setTimeout(function () {
+    var url = '{{ url_for("sq.price_history") }}?q=' + encodeURIComponent(q)
+      + '{{ ("&client_id=" ~ v.contract.customer_id) if v.contract and v.contract.customer_id else "" }}';
+    fetch(url).then(function (r) { return r.json(); }).then(function (d) {
+      if (!d.matches || !d.matches.length) { hint.textContent = ''; return; }
+      hint.textContent = 'Previously: ' + d.matches.map(function (m) {
+        return '₹' + m.rate.toLocaleString('en-IN') + ' (' + m.date + ')';
+      }).join(' · ');
+    }).catch(function () { hint.textContent = ''; });
+  }, 400));
 }
 </script>
 {% endblock %}

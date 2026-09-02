@@ -8,22 +8,28 @@ from ..extensions import db
 from ..models import (AMCPlan, Contract, ServiceRequest, Enquiry, User,
                       RefillOrder, RefillItem, FormAttachment, VisitFeedback,
                       CustomerJourneyEvent, ServiceQuotation, ServiceQuotationItem)
-from ..utils import notify, notify_staff, save_upload, upi_qr_data_uri
+from ..utils import notify, notify_staff, notify_managers, save_upload, upi_qr_data_uri
 
 public_bp = Blueprint("public", __name__)
 
 
 def _save_attachments(files, ref_type, ref_id, att_type="photo"):
-    """Save a list of FileStorage objects as FormAttachment rows."""
+    """Save a list of FileStorage objects as FormAttachment rows. Accepts both
+    images and short video clips (#8g) — the attachment_type is set to 'video'
+    for video files so templates can render them with a <video> tag."""
+    image_ext = {"png", "jpg", "jpeg", "gif", "webp"}
+    video_ext = {"mp4", "mov", "webm", "m4v", "avi"}
     for f in files:
         if not f or not f.filename:
             continue
+        ext = f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else ""
+        kind = "video" if ext in video_ext else att_type
         path = save_upload(f, f"form/{ref_type}/{ref_id}",
-                           {"png", "jpg", "jpeg", "gif", "webp", "pdf"})
+                           image_ext | video_ext | {"pdf"})
         if path:
             db.session.add(FormAttachment(
                 ref_type=ref_type, ref_id=ref_id,
-                file_path=path, attachment_type=att_type))
+                file_path=path, attachment_type=kind))
 
 
 @public_bp.route("/")
@@ -100,111 +106,72 @@ def plans():
 
 @public_bp.route("/apply", methods=["GET", "POST"])
 def apply():
-    plans = AMCPlan.query.filter_by(active=True).order_by(AMCPlan.category, AMCPlan.price).all()
+    """Customer 'Send Enquiry' entry point (the '+ New AMC' button). This is
+    always Flow 1 (customer-initiated) — no plan is picked here; a technician
+    inspects the site first and a quotation follows only after that. Project
+    handovers (Flow 2) are staff-only and created from admin.leads instead."""
+    cu = current_user if current_user.is_authenticated and current_user.role == "customer" else None
+    my_sites = (Contract.query.filter_by(customer_id=cu.id)
+                .order_by(Contract.created_at.desc()).all()) if cu else []
+
     if request.method == "POST":
         f = request.form
-        plan = db.session.get(AMCPlan, int(f.get("plan_id"))) if f.get("plan_id") else None
-        # Merge voice note into notes (prepend so staff see it clearly)
         voice = (f.get("voice_note") or "").strip()
-        notes = (f.get("notes") or "").strip()
-        combined_notes = (f"[Voice note] {voice}\n\n{notes}".strip() if voice else notes) or None
+        lat = (f.get("latitude") or "").strip()
+        lng = (f.get("longitude") or "").strip()
+
+        related_id = f.get("existing_site_id", type=int)
+        related = db.session.get(Contract, related_id) if related_id else None
+        if related and cu and related.customer_id == cu.id:
+            site_name = related.site_name
+            site_address = related.site_address
+            area = related.area
+        else:
+            related = None
+            site_name = f.get("site_name")
+            site_address = f.get("site_address")
+            area = f.get("area")
+
+        name = f.get("name") or (cu.name if cu else "")
+        phone = f.get("phone") or (cu.phone if cu else "")
+        email = f.get("email") or (cu.email if cu else "")
+
         contract = Contract(
-            plan_id=plan.id if plan else None,
-            status="pending",
-            site_name=f.get("site_name"),
-            site_address=f.get("site_address"),
-            area=f.get("area"),
-            applicant_name=f.get("name"),
-            applicant_phone=f.get("phone"),
-            applicant_email=f.get("email"),
+            status="pending", lead_stage="new", project_type="new",
+            site_name=site_name, site_address=site_address, area=area,
+            applicant_name=name, applicant_phone=phone, applicant_email=email,
             property_type=f.get("property_type"),
-            application_notes=combined_notes,
+            problem_description=(f.get("problem_description") or "").strip() or None,
             voice_note=voice or None,
-            total_visits=plan.visits_per_year if plan else 4,
-            price=plan.price if plan else 0,
             payment_mode=f.get("payment_mode", "cash"),
+            latitude=lat or None, longitude=lng or None,
+            related_contract_id=related.id if related else None,
+            customer_id=cu.id if cu else None,
         )
-        existing = User.query.filter_by(phone=f.get("phone"), role="customer").first()
-        if existing:
-            contract.customer_id = existing.id
+        if not contract.customer_id and phone:
+            existing = User.query.filter_by(phone=phone, role="customer").first()
+            if existing:
+                contract.customer_id = existing.id
         db.session.add(contract)
         db.session.commit()
 
-        # Save uploaded site photos
+        # Save uploaded site photos/videos + voice note
         _save_attachments(request.files.getlist("site_photos"), "contract", contract.id, "photo")
 
-        # ── Auto-generate a ServiceQuotation so customer can view it immediately ──
-        sq_ref = None
-        if plan:
-            from datetime import datetime as _dt
-            sq = ServiceQuotation(
-                service_type="amc",
-                customer_name=f.get("name"),
-                customer_phone=f.get("phone"),
-                customer_email=f.get("email") or None,
-                project_name=f.get("site_name") or None,
-                customer_address=f.get("site_address") or None,
-                status="sent",
-                sent_at=_dt.utcnow(),
-                contract_id=contract.id,
-                customer_id=existing.id if existing else None,
-                gst_percent=18.0,
-                valid_days=7,
-                notes=f"Property type: {f.get('property_type') or 'Not specified'}",
-            )
-            sq.generate_number()
-            db.session.add(sq)
-            db.session.flush()   # need sq.id before adding items
+        notify_managers(
+            f"New enquiry — {contract.reference}",
+            f"{name} · {site_name or area or 'site not named'}"
+            + (f" — \"{contract.problem_description[:80]}\"" if contract.problem_description else ""),
+            link=url_for("admin.lead_detail", lead_id=contract.id))
 
-            # Build the description from plan features if available
-            feature_lines = plan.feature_list[:4] if plan.feature_list else []
-            detail = (
-                f"{plan.visits_per_year} maintenance visits/year | "
-                f"{plan.response_time} response time"
-            )
-            if feature_lines:
-                detail += " | " + " | ".join(feature_lines)
-
-            db.session.add(ServiceQuotationItem(
-                quotation_id=sq.id,
-                category="AMC Services",
-                description=f"{plan.name} — Annual Maintenance Contract\n{detail}",
-                unit="Year",
-                quantity=1.0,
-                rate=float(plan.price),
-                sort_order=1,
-            ))
-
-            # Log journey event if customer already has an account
-            if existing:
-                db.session.add(CustomerJourneyEvent(
-                    customer_id=existing.id,
-                    event_type="quote_sent",
-                    description=f"Quotation {sq.quotation_number} auto-generated for {plan.name}",
-                    ref_type="service_quotation", ref_id=sq.id,
-                ))
-                notify(existing.id,
-                       f"Your quotation {sq.quotation_number} is ready",
-                       f"View and accept or negotiate your {plan.name} AMC quote in the portal.",
-                       link=url_for("portal.service_quotation", sq_id=sq.id))
-
-            sq_ref = sq.quotation_number
-
-        db.session.commit()
-
-        if sq_ref:
-            msg = ("Your quotation has been prepared based on your selected plan. "
-                   "Log in with your phone number to view it, accept the price, "
-                   "or request a negotiation.")
-        else:
-            msg = ("Our maintenance team will review your application and "
-                   "call you to confirm the schedule and activate your contract.")
-
+        msg = ("Thank you — your enquiry has been sent. Our maintenance manager will "
+               "review it and schedule a site inspection. We'll let you know the "
+               "inspection date, and share a full report and quotation afterwards.")
         return render_template("site/submitted.html",
-                               kind="AMC application", reference=contract.reference,
-                               sq_ref=sq_ref, message=msg)
-    selected = request.args.get("plan_id", type=int)
-    return render_template("site/apply.html", plans=plans, selected=selected)
+                               kind="Enquiry", reference=contract.reference,
+                               sq_ref=None, message=msg)
+
+    return render_template("site/apply.html", my_sites=my_sites)
 
 
 @public_bp.route("/emergency", methods=["GET", "POST"])

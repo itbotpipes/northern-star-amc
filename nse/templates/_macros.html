@@ -116,7 +116,8 @@
       Listening…
     </div>
     <p class="voice-unsupported text-xs text-amber-700 hidden">
-      Voice input is not supported on this browser. Please use Chrome or Safari on your phone, or type your message below.
+      Voice typing isn't available in this browser. On iPhone/iPad, tap the microphone icon on your
+      keyboard when typing below — it works the same way. On Android, try Chrome.
     </p>
     <input type="hidden" name="{{ transcript_field }}" class="voice-hidden-input">
   </div>
@@ -138,8 +139,8 @@
       <polyline points="17 8 12 3 7 8"/>
       <line x1="12" y1="3" x2="12" y2="15"/>
     </svg>
-    <span class="text-sm text-ink-subtle text-center">Click to choose photos or drag &amp; drop<br><span class="text-xs text-ink-tertiary">JPG, PNG, WebP — up to 10 MB each</span></span>
-    <input type="file" name="{{ field_name }}" accept="image/*" {% if multiple %}multiple{% endif %} class="hidden photo-input" data-preview="preview-{{ field_name }}">
+    <span class="text-sm text-ink-subtle text-center">Click to choose photos/videos or drag &amp; drop<br><span class="text-xs text-ink-tertiary">JPG, PNG, WebP, MP4, MOV — up to 50 MB total</span></span>
+    <input type="file" name="{{ field_name }}" accept="image/*,video/*" {% if multiple %}multiple{% endif %} class="hidden photo-input" data-preview="preview-{{ field_name }}">
   </label>
   <div id="preview-{{ field_name }}" class="mt-2 flex flex-wrap gap-2"></div>
 </div>

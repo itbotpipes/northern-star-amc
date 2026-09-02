@@ -280,6 +280,15 @@
 
 <!-- ── Terms & Conditions ───────────────────────────────────────── -->
 <div class="terms-heading">TERMS AND CONDITIONS</div>
+{% if q.service_type == 'audit' and audit_terms %}
+<ol class="terms-list">
+  {% for t in audit_terms %}<li>{{ t }}</li>{% endfor %}
+</ol>
+{% elif q.service_type == 'amc' and amc_terms %}
+<ol class="terms-list">
+  {% for t in amc_terms %}<li>{{ t }}</li>{% endfor %}
+</ol>
+{% else %}
 <ol class="terms-list">
   <li>Material taken in consideration is the ISI and original. We will provide certificate of materials if necessary.</li>
   <li>50% advance, 50% against delivery.</li>
@@ -301,6 +310,7 @@
   <li>NOC will be given only after successful completion of work and subject to fire officer inspection.</li>
   <li>Any dispute will fall under the jurisdiction of Surat.</li>
 </ol>
+{% endif %}
 
 <!-- ── Footer tagline ───────────────────────────────────────────── -->
 <div class="footer-tag">

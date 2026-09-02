@@ -26,9 +26,16 @@
     {% if attachments %}
     <div class="mt-4 grid grid-cols-4 sm:grid-cols-6 gap-2">
       {% for a in attachments %}
+      {% if a.attachment_type == 'video' %}
+      <a href="{{ a.file_path|upload_url }}" target="_blank" class="relative block">
+        <video src="{{ a.file_path|upload_url }}" class="w-full h-16 object-cover rounded-lg border border-hairline hover:opacity-80 transition"></video>
+        <svg class="absolute inset-0 m-auto w-5 h-5 text-white drop-shadow" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+      </a>
+      {% else %}
       <a href="{{ a.file_path|upload_url }}" target="_blank">
         <img src="{{ a.file_path|upload_url }}" class="w-full h-16 object-cover rounded-lg border border-hairline hover:opacity-80 transition">
       </a>
+      {% endif %}
       {% endfor %}
     </div>
     {% endif %}

@@ -3,6 +3,21 @@ import random
 import uuid
 from datetime import datetime, timedelta
 from functools import wraps
+from math import radians, sin, cos, asin, sqrt
+
+
+def meters_between(lat1, lon1, lat2, lon2):
+    """Great-circle distance in metres between two lat/long points (haversine).
+    Returns None if any coordinate is missing/invalid — used by the technician's
+    100m geofenced check-in (#6)."""
+    try:
+        lat1, lon1, lat2, lon2 = float(lat1), float(lon1), float(lat2), float(lon2)
+    except (TypeError, ValueError):
+        return None
+    r = 6371000  # earth radius, metres
+    dlat, dlon = radians(lat2 - lat1), radians(lon2 - lon1)
+    a = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2) ** 2
+    return 2 * r * asin(sqrt(a))
 
 import requests
 from flask import abort, current_app, flash, redirect, url_for
@@ -20,6 +35,40 @@ WAIVER_TEXT = (
     "by the company and hereby, I take full responsibility if any fire incident happens "
     "after this AMC visit, and Northern Star Engineering is not responsible."
 )
+
+
+# Terms & Conditions printed on an **AMC quotation** PDF (service_type == 'amc').
+# These are maintenance-specific and replace the installation/project clauses for
+# AMC quotes. See MAINTENANCE_TERMS_AND_CONDITIONS.md for the full rationale.
+AMC_QUOTATION_TERMS = [
+    "This Annual Maintenance Contract covers periodic inspection, testing and routine servicing of the fire-safety equipment listed above, at the registered site only, for 12 months from activation.",
+    "The contract includes the number of scheduled maintenance visits stated above, spaced evenly across the year. Additional visits requested outside this schedule are chargeable.",
+    "Reactive breakdown visits between scheduled visits are provided on a priority basis; travel and labour are covered, but any spare parts or materials are chargeable separately.",
+    "Routine maintenance consumables and standard servicing labour for the covered equipment are included in the AMC fee.",
+    "Not included: replacement of expired/damaged/non-functional parts; extinguisher refilling; hydro-testing; replacement of cylinders, hoses, glass or heads; civil/electrical/plumbing infrastructure; and equipment added after activation without prior written intimation.",
+    "Where replacement is required, a separate material quotation is raised for your approval. You may decline, but Northern Star Engineering bears no liability for any fire incident attributable to equipment you have declined to repair or replace; a waiver is recorded on decline.",
+    "You must ensure safe, unobstructed access to all equipment on the scheduled visit date along with power and water. If access is denied or the site is not ready, that visit is treated as completed and is not carried forward.",
+    "Rescheduling requests must be made at least 48 hours before the scheduled visit; we will accommodate a mutually convenient date within the contract period.",
+    "For equipment already installed (by NSE or a third party), the AMC covers upkeep only. Any pre-existing defect found at the first inspection will be reported; its rectification is chargeable and outside routine maintenance.",
+    "Warranties on any parts or equipment supplied are limited to the respective manufacturer's warranty.",
+    "Maintenance is carried out in line with applicable Indian standards (NBC, BIS/IS and relevant NFPA guidance). NOC assistance, if required, is a separate service subject to fire-officer inspection.",
+    "You shall keep equipment clean and accessible between visits, report faults promptly, not permit any third party to service the covered equipment during the contract period, and use all equipment as per standard procedure.",
+    "A service report is issued after each completed visit; please verify and acknowledge it. Digital reports shared via the portal/email are valid records.",
+    "The AMC fee is due within 7 days of contract activation (or as stated above). Services may be suspended for non-payment until cleared. All amounts are subject to GST as applicable (GST No. 24ALQPD0899P1ZD).",
+    "This quotation is valid for the number of days stated above. Spare-part and consumable rates are subject to prevailing market prices at the time of actual replacement.",
+    "Northern Star Engineering's total liability under this contract shall not exceed the annual AMC fee paid, and excludes consequential loss, property damage or injury where a notified fault was not authorised for repair/replacement.",
+    "The contract does not auto-renew. Either party may terminate with 30 days' written notice; a pro-rata refund is payable only for scheduled visits not yet performed.",
+    "This contract is governed by the laws of India; any dispute is subject to the exclusive jurisdiction of the courts at Surat, Gujarat.",
+]
+
+# Short terms printed on a stand-alone Fire Safety Audit Fee slip (service_type
+# == 'audit') — the site was inspected and found satisfactory, no AMC quoted yet.
+AUDIT_TERMS = [
+    "This charge covers the on-site Fire System Health Check-up (FSHCR) inspection only and does not constitute an Annual Maintenance Contract.",
+    "The findings reflect the condition of the fire-safety systems as observed on the inspection date only.",
+    "We recommend a full maintenance visit at the interval noted in the report; a separate AMC quotation will be shared closer to that date.",
+    "Amount is inclusive of applicable GST (GST No. 24ALQPD0899P1ZD).",
+]
 
 
 # AMC maintenance agreement — the click-through Terms & Conditions a customer
@@ -211,15 +260,26 @@ def notify(user_id, title, body=None, link=None):
 
 
 def notify_staff(title, body=None, link=None):
-    """Fan a notification out to every staff member (admin + technician).
+    """Fan a notification out to every staff member (admin + technician + manager).
 
     Used for events the Ops Console must surface — e.g. a customer accepting or
     requesting negotiation on a quotation. Each staff user gets their own
     Notification row so the unread badge / bell works per-account.
     """
     from .models import User
-    staff = User.query.filter(User.role.in_(["admin", "technician"])).all()
+    staff = User.query.filter(User.role.in_(["admin", "technician", "manager"])).all()
     for u in staff:
+        db.session.add(Notification(user_id=u.id, title=title, body=body, link=link))
+    db.session.commit()
+
+
+def notify_managers(title, body=None, link=None):
+    """Notify managers (+ admin, who often doubles as manager on a small team)
+    specifically — used for events that are the maintenance manager's job to act
+    on, e.g. a new customer enquiry that needs an inspection scheduled."""
+    from .models import User
+    mgrs = User.query.filter(User.role.in_(["manager", "admin"])).all()
+    for u in mgrs:
         db.session.add(Notification(user_id=u.id, title=title, body=body, link=link))
     db.session.commit()
 

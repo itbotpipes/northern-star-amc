@@ -58,6 +58,13 @@ def run():
                         email="tech@northernstar.example", city="Surat, Gujarat")
             tech.set_password("tech123")
             db.session.add(tech)
+
+        manager = User.query.filter_by(email="manager@northernstar.example").first()
+        if not manager:
+            manager = User(role="manager", name="Ops Manager",
+                           email="manager@northernstar.example", city="Surat, Gujarat")
+            manager.set_password("manager123")
+            db.session.add(manager)
         db.session.commit()
 
         # ---- Inventory (spare parts for visit-linked quotations) --------- #

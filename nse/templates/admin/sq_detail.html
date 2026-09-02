@@ -46,6 +46,12 @@
       {% if sq.status == 'negotiation_requested' %}
       <a href="tel:{{ sq.customer_phone }}" class="btn btn-emergency text-sm">Call Customer</a>
       {% endif %}
+      {% if not sq.is_paid and not (sq.contract and sq.contract.status == 'active') %}
+      <form method="post" action="{{ url_for('sq.delete_quotation', sq_id=sq.id) }}"
+            onsubmit="return confirm('Delete {{ sq.reference }}? This cannot be undone.');" class="ml-auto">
+        <button class="btn btn-ghost text-sm text-danger">Delete</button>
+      </form>
+      {% endif %}
     </div>
   </div>
 

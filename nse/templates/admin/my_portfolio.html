@@ -1,0 +1,117 @@
+{% extends "base_ops.html" %}
+{% block title %}My Portfolio — {{ tech.name }}{% endblock %}
+{% block content %}
+<section class="max-w-5xl mx-auto px-4 py-8">
+
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-extrabold text-ink">{{ tech.name }}</h1>
+      <p class="text-sm text-ink-subtle">{{ tech.role|title }} · performance & work portfolio</p>
+    </div>
+    {% if avg_overall %}
+    <div class="text-right">
+      <div class="text-3xl font-extrabold" style="color:#b45309">{{ avg_overall }}<span class="text-lg text-ink-subtle">/5</span></div>
+      <div class="text-xs text-ink-subtle">{{ feedbacks|length }} customer rating{{ 's' if feedbacks|length != 1 }}</div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- KPI strip -->
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+    <div class="card p-4"><div class="text-2xl font-extrabold text-ink">{{ sites|length }}</div><div class="text-xs text-ink-subtle">Sites assigned</div></div>
+    <div class="card p-4"><div class="text-2xl font-extrabold text-ink">{{ completed|length }}</div><div class="text-xs text-ink-subtle">Visits completed</div></div>
+    <div class="card p-4"><div class="text-2xl font-extrabold text-ink">{{ upcoming|length }}</div><div class="text-xs text-ink-subtle">Upcoming visits</div></div>
+    <div class="card p-4"><div class="text-2xl font-extrabold text-ink">{{ on_time_pct if on_time_pct is not none else '—' }}{% if on_time_pct is not none %}%{% endif %}</div><div class="text-xs text-ink-subtle">On-time rate</div></div>
+  </div>
+
+  <div class="grid md:grid-cols-2 gap-6">
+
+    <!-- Rating breakdown -->
+    <div class="card p-6">
+      <h2 class="font-bold text-ink mb-4">Customer rating</h2>
+      {% if avg_overall %}
+        {% for label, val in dims.items() %}
+        <div class="mb-3">
+          <div class="flex justify-between text-sm mb-1"><span class="text-ink-muted">{{ label }}</span><span class="font-semibold">{{ val if val is not none else '—' }}</span></div>
+          <div class="h-2 rounded-full bg-slate-100 overflow-hidden">
+            <div class="h-2 rounded-full" style="width:{{ ((val or 0)/5*100)|round }}%;background:#f59e0b"></div>
+          </div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <p class="text-sm text-ink-subtle">No customer feedback yet. Ratings appear here after customers rate completed visits.</p>
+      {% endif %}
+    </div>
+
+    <!-- Industry mix -->
+    <div class="card p-6">
+      <h2 class="font-bold text-ink mb-4">Industries served</h2>
+      {% if industries %}
+        {% set maxc = industries.values()|list|max %}
+        {% for name, count in industries.items() %}
+        <div class="mb-3">
+          <div class="flex justify-between text-sm mb-1"><span class="text-ink-muted">{{ name }}</span><span class="font-semibold">{{ count }}</span></div>
+          <div class="h-2 rounded-full bg-slate-100 overflow-hidden">
+            <div class="h-2 rounded-full" style="width:{{ (count/maxc*100)|round }}%;background:#072076"></div>
+          </div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <p class="text-sm text-ink-subtle">No sites assigned yet.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Recent feedback comments -->
+  {% if recent_comments %}
+  <div class="card p-6 mt-6">
+    <h2 class="font-bold text-ink mb-4">Recent customer comments</h2>
+    {% for f in recent_comments %}
+    <div class="border-l-2 border-amber-300 pl-3 py-1 mb-3">
+      <p class="text-sm text-ink">"{{ f.comment }}"</p>
+      <p class="text-xs text-ink-subtle mt-1">{{ f.rating_overall }}/5 · {{ f.created_at|datefmt }}</p>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- Site-wise visit log with check-in/out -->
+  <div class="card overflow-hidden mt-6">
+    <div class="p-5 border-b border-hairline"><h2 class="font-bold text-ink">Site-wise work log</h2></div>
+    <table class="w-full text-sm">
+      <thead class="bg-slate-50 text-xs uppercase text-ink-subtle">
+        <tr>
+          <th class="px-4 py-2 text-left">Site</th>
+          <th class="px-4 py-2 text-left">Visit</th>
+          <th class="px-4 py-2 text-left">Scheduled</th>
+          <th class="px-4 py-2 text-left">Status</th>
+          <th class="px-4 py-2 text-left">On-site</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for v in visit_log %}
+        <tr class="border-t border-hairline hover:bg-slate-50">
+          <td class="px-4 py-2">
+            <a href="{{ url_for('admin.visit', visit_id=v.id) }}" class="text-primary hover:underline">
+              {{ v.contract.site_name if v.contract else '—' }}
+            </a>
+            <div class="text-xs text-ink-subtle mono">{{ v.contract.reference if v.contract else '' }}</div>
+          </td>
+          <td class="px-4 py-2">{{ v.label }}</td>
+          <td class="px-4 py-2">{{ v.scheduled_date|datefmt if v.scheduled_date else '—' }}</td>
+          <td class="px-4 py-2">{{ v.status|replace('_',' ')|title }}</td>
+          <td class="px-4 py-2">
+            {% if v.checkin_at %}{{ v.onsite_duration_label or '—' }}
+              <div class="text-xs text-ink-subtle">{{ v.checkin_at.strftime('%d %b, %H:%M') }}{% if v.checkout_at %} – {{ v.checkout_at.strftime('%H:%M') }}{% endif %}</div>
+            {% else %}—{% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="px-4 py-6 text-center text-ink-subtle">No visits assigned yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+</section>
+{% endblock %}

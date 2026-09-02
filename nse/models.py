@@ -42,11 +42,19 @@ class User(UserMixin, db.Model):
 
     @property
     def is_staff(self):
-        return self.role in ("technician", "admin")
+        return self.role in ("technician", "admin", "manager")
 
     @property
     def is_admin(self):
         return self.role == "admin"
+
+    @property
+    def is_manager(self):
+        return self.role == "manager"
+
+    @property
+    def is_technician(self):
+        return self.role == "technician"
 
     # ----- Wave 11: Customer Health Score (0-100, retention risk) -----------
     @property
@@ -154,6 +162,43 @@ class Contract(db.Model):
     site_name = db.Column(db.String(160))
     site_address = db.Column(db.String(255))
     area = db.Column(db.String(120))
+    # Site GPS location (used for the technician's 100m geofenced check-in, #6)
+    latitude = db.Column(db.String(32))
+    longitude = db.Column(db.String(32))
+
+    # #2/#3 (rebuilt) — the pre-activation LEAD lifecycle: intake → inspection →
+    # FSHCR outcome → branch (audit-fee / AMC quote / rework). `status` above stays
+    # untouched (pending/active/expired/cancelled) for backward compatibility with
+    # every existing template; `lead_stage` tracks ONLY this new pipeline and is
+    # None once a contract is resolved into a normal AMC quote/contract.
+    lead_stage = db.Column(db.String(30), nullable=True)
+    # new -> inspection_scheduled -> inspection_done -> audit_only / needs_quote / rework -> None (resolved)
+    problem_description = db.Column(db.Text)                 # "the exact problem" from intake
+    related_contract_id = db.Column(db.Integer, db.ForeignKey("contracts.id"), nullable=True)
+    # ^ when a customer reports a new problem against a site they already have a
+    # contract for, this traces back to that prior contract for staff context.
+
+    inspection_scheduled_date = db.Column(db.Date)
+    inspection_technician_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    next_followup_date = db.Column(db.Date)    # quarterly-maintenance reminder after an "OK" audit
+
+    # Project type: 'new' (customer-initiated enquiry) vs 'existing' (engineer→
+    # maintenance handover, staff-created only). Handover-only fields below.
+    project_type = db.Column(db.String(20), default="new")   # new / existing
+    spoc_name  = db.Column(db.String(120))    # single point of contact at the client
+    spoc_phone = db.Column(db.String(20))
+    spoc_role  = db.Column(db.String(80))     # e.g. "AMC/PMC engineer", "Facility manager"
+    free_amc = db.Column(db.Boolean, default=False)          # first year AMC free
+    handover_engineer = db.Column(db.String(120))            # engineer who hands over
+    handover_technician = db.Column(db.String(120))          # maintenance tech who accepts
+    handover_signed_at = db.Column(db.DateTime)              # set when both sign off
+    handover_doc_path = db.Column(db.String(255))            # scanned FSHCR / handover doc
+    handover_report_id = db.Column(db.Integer,
+                                   db.ForeignKey("health_check_reports.id"), nullable=True)
+
+    inspection_technician = db.relationship("User", foreign_keys=[inspection_technician_id])
+    related_contract = db.relationship("Contract", remote_side=[id],
+                                       foreign_keys=[related_contract_id])
 
     # Captured on application before a user account may exist.
     applicant_name = db.Column(db.String(120))
@@ -330,33 +375,55 @@ class Contract(db.Model):
             yrs -= 1
         return max(0, yrs)
 
+    @property
+    def latest_health_report(self):
+        """Most recent *completed* Fire Safety Health Checkup Report (FSHCR)
+        for this contract, or None if the site has never been inspected."""
+        return (HealthCheckReport.query
+                .filter_by(contract_id=self.id, status="completed")
+                .order_by(HealthCheckReport.report_date.desc(), HealthCheckReport.id.desc())
+                .first())
+
     # ----- Wave 11: Property Fire Safety Score (0-100) ----------------------
+    # Post-launch fix: the score used to be blind to the actual inspection —
+    # it only looked at visit/equipment/defect/certificate bookkeeping. It is
+    # now anchored on the inspector's own Fire Safety Health Checkup Report
+    # (FSHCR) rating, which is the source of truth for "how safe is this site."
     @property
     def safety_score(self):
-        """A 0-100 compliance score for this property, weighting visit
-        compliance, equipment health, open defects, certificate & agreement."""
+        """A 0-100 compliance score for this property. The FSHCR inspection
+        rating is the primary signal; visit compliance, equipment health,
+        open defects, certificate & agreement fill out the rest."""
         score = 0
-        # Visit compliance — 35 pts
+        # FSHCR inspection rating — 25 pts (the actual site inspection result)
+        report = self.latest_health_report
+        if report and report.score is not None:
+            score += 25 * max(0, min(100, report.score)) / 100
+        elif report and report.outcome:
+            score += 25 * {"ok": 1.0, "issues": 0.6, "needs_rework": 0.2}.get(report.outcome, 0.6)
+        else:
+            score += 25  # no inspection yet — don't penalise, just no signal
+        # Visit compliance — 25 pts
         total = self.total_visits or len(self.visits) or 0
         if total:
-            score += 35 * min(1.0, self.completed_visits / total)
+            score += 25 * min(1.0, self.completed_visits / total)
         else:
-            score += 35
-        # Equipment health — 25 pts (penalise overdue/due-soon)
+            score += 25
+        # Equipment health — 15 pts (penalise overdue/due-soon)
         eq = list(self.equipment)
         if eq:
             ok = sum(1 for e in eq if e.refill_status in ("ok", "unknown"))
-            score += 25 * (ok / len(eq))
+            score += 15 * (ok / len(eq))
         else:
-            score += 25
-        # Open defects — 20 pts (any open high-severity defect hurts most)
+            score += 15
+        # Open defects — 15 pts (any open high-severity defect hurts most)
         defects = [d for v in self.visits for d in getattr(v, "defects", [])
                    if d.status not in ("resolved",)]
         if not defects:
-            score += 20
+            score += 15
         else:
             highs = sum(1 for d in defects if d.severity == "high")
-            score += max(0, 20 - highs * 8 - (len(defects) - highs) * 3)
+            score += max(0, 15 - highs * 6 - (len(defects) - highs) * 2)
         # Certificate issued — 10 pts
         if self.certificate_issued:
             score += 10
@@ -1158,6 +1225,13 @@ class HealthCheckReport(db.Model):
     scan_path  = db.Column(db.String(255))   # uploaded scanned copy (fallback to in-app form)
     status     = db.Column(db.String(20), default="draft")   # draft / completed
 
+    # #2/#3 rebuild — when this FSHCR is the inspection for a lead, the inspector
+    # records an overall score and a technical outcome that drives the branch:
+    # ok (nothing urgent) / issues (needs a quotation) / needs_rework (handover
+    # sites only — must go back to the engineering team first).
+    score   = db.Column(db.Integer, nullable=True)      # 0-100, inspector's overall rating
+    outcome = db.Column(db.String(20), nullable=True)   # ok / issues / needs_rework
+
     created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     created_at    = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at    = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -1595,6 +1669,33 @@ class VisitDefect(db.Model):
     @property
     def severity_color(self):
         return self.SEVERITY_META.get(self.severity, ("Medium", "amber"))[1]
+
+
+# --------------------------------------------------------------------------- #
+# #2/#3 rebuild — Rework queue. A handover (existing-project) lead whose joint
+# FSHCR finds work maintenance can't do lands here: a simple flagged list the
+# manager tracks by hand (open -> done), per the user's explicit choice — no
+# automatic re-entry into the inspection flow.
+# --------------------------------------------------------------------------- #
+class ReworkItem(db.Model):
+    __tablename__ = "rework_items"
+
+    id                    = db.Column(db.Integer, primary_key=True)
+    contract_id           = db.Column(db.Integer, db.ForeignKey("contracts.id"), nullable=False)
+    health_check_report_id = db.Column(db.Integer, db.ForeignKey("health_check_reports.id"), nullable=True)
+    description           = db.Column(db.Text, nullable=False)
+    status                = db.Column(db.String(20), default="open")   # open / done
+    created_by_id         = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    created_at            = db.Column(db.DateTime, default=datetime.utcnow)
+    resolved_at           = db.Column(db.DateTime)
+
+    contract   = db.relationship("Contract", backref="rework_items", foreign_keys=[contract_id])
+    report     = db.relationship("HealthCheckReport", foreign_keys=[health_check_report_id])
+    created_by = db.relationship("User", foreign_keys=[created_by_id])
+
+    @property
+    def reference(self):
+        return f"RWK-{self.id:04d}"
 
 
 # --------------------------------------------------------------------------- #

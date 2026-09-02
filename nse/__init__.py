@@ -65,6 +65,8 @@ def create_app(config_class=Config, root=None):
         reminder_count = 0
         open_ticket_count = 0
         renewal_count = 0
+        open_lead_count = 0
+        open_rework_count = 0
         if current_user and current_user.is_authenticated:
             unread = Notification.query.filter_by(
                 user_id=current_user.id, read=False).count()
@@ -96,6 +98,15 @@ def create_app(config_class=Config, root=None):
                     renewal_count = renewal_reminder_count()
                 except Exception:
                     renewal_count = 0
+                try:
+                    from .models import Contract, ReworkItem
+                    open_lead_count = Contract.query.filter(
+                        Contract.lead_stage.isnot(None),
+                        Contract.lead_stage != "rework").count()
+                    open_rework_count = ReworkItem.query.filter_by(status="open").count()
+                except Exception:
+                    open_lead_count = 0
+                    open_rework_count = 0
                 # Process visit reminders + renewal/anniversary milestones
                 # idempotently (fires notifications not yet sent).
                 try:
@@ -120,6 +131,8 @@ def create_app(config_class=Config, root=None):
             "payment_reminder_count": reminder_count,
             "open_ticket_count": open_ticket_count,
             "renewal_reminder_count": renewal_count,
+            "open_lead_count": open_lead_count,
+            "open_rework_count": open_rework_count,
             "RAZORPAY_ENABLED": Config.razorpay_enabled(),
             "now": datetime.utcnow(),
             "today": date.today(),

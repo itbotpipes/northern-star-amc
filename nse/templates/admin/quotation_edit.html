@@ -1,0 +1,58 @@
+{% extends "base_ops.html" %}
+{% block title %}Edit {{ q.reference }} — Ops{% endblock %}
+{% block content %}
+<section class="max-w-2xl mx-auto px-4 py-8">
+  <a href="{{ url_for('admin.visit', visit_id=q.visit_id) }}" class="text-sm text-ink-subtle hover:text-ink">← Back to visit</a>
+  <h1 class="text-2xl font-extrabold text-ink mt-2 mb-1 mono">{{ q.reference }}</h1>
+  <p class="text-sm text-ink-subtle mb-6">Edit the items on this material quotation. Saving notifies the client of the update.</p>
+
+  <datalist id="qedit-inv-list">
+    {% for it in inventory %}<option value="{{ it.name }}" data-rate="{{ it.rate }}">{{ it.category }} · ₹{{ it.rate }}</option>{% endfor %}
+  </datalist>
+
+  <form method="post" class="card p-6 space-y-4">
+    <div class="overflow-x-auto rounded-lg border border-hairline">
+      <table class="w-full text-sm" id="itemsTable">
+        <thead class="bg-slate-50 text-xs uppercase text-ink-subtle">
+          <tr><th class="px-2 py-2 text-left">Description</th><th class="px-2 py-2 w-20">Qty</th><th class="px-2 py-2 w-28">Rate (₹)</th><th class="px-2 py-2 w-8"></th></tr>
+        </thead>
+        <tbody id="itemsBody">
+          {% for it in q.items %}
+          <tr class="border-t border-hairline item-row">
+            <td class="px-2 py-1.5"><input name="item_desc" value="{{ it.description }}" list="qedit-inv-list" oninput="qedFill(this)" class="w-full px-2 py-1.5 text-sm"></td>
+            <td class="px-2 py-1.5"><input name="item_qty" type="number" min="1" value="{{ it.quantity }}" class="w-full px-2 py-1.5 text-sm text-center"></td>
+            <td class="px-2 py-1.5"><input name="item_price" type="number" min="0" value="{{ it.unit_price }}" class="w-full px-2 py-1.5 text-sm text-right"></td>
+            <td class="px-2 py-1.5 text-center"><button type="button" onclick="this.closest('tr').remove()" class="text-danger text-lg leading-none">×</button></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <button type="button" onclick="addRow()" class="btn btn-ghost text-sm px-3 py-1.5">+ Add item</button>
+
+    <label class="block"><span class="text-sm font-medium text-ink-muted">Notes</span>
+      <textarea name="notes" rows="2" class="mt-1.5 w-full px-3 py-2.5">{{ q.notes or '' }}</textarea></label>
+
+    <button class="btn btn-primary w-full">Save & notify client</button>
+  </form>
+</section>
+
+<script>
+var QED_INV = {};
+document.querySelectorAll('#qedit-inv-list option').forEach(function(o){ QED_INV[o.value] = parseFloat(o.dataset.rate)||0; });
+function qedFill(input) {
+  if (QED_INV[input.value] === undefined) return;
+  var row = input.closest('tr');
+  var rateIn = row.querySelector('[name=item_price]');
+  if (rateIn) rateIn.value = QED_INV[input.value];
+}
+function addRow() {
+  document.getElementById('itemsBody').insertAdjacentHTML('beforeend',
+    '<tr class="border-t border-hairline item-row">' +
+    '<td class="px-2 py-1.5"><input name="item_desc" list="qedit-inv-list" oninput="qedFill(this)" class="w-full px-2 py-1.5 text-sm"></td>' +
+    '<td class="px-2 py-1.5"><input name="item_qty" type="number" min="1" value="1" class="w-full px-2 py-1.5 text-sm text-center"></td>' +
+    '<td class="px-2 py-1.5"><input name="item_price" type="number" min="0" value="0" class="w-full px-2 py-1.5 text-sm text-right"></td>' +
+    '<td class="px-2 py-1.5 text-center"><button type="button" onclick="this.closest(\'tr\').remove()" class="text-danger text-lg leading-none">×</button></td></tr>');
+}
+</script>
+{% endblock %}

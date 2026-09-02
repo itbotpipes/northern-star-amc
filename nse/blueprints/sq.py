@@ -163,10 +163,68 @@ def new_quotation():
 
     inventory = InventoryItem.query.filter_by(active=True)\
         .order_by(InventoryItem.category, InventoryItem.name).all()
+    # #1 — Project dropdown: existing contracts staff can pick to auto-fill the
+    # client details (and link the quote + power price history #10c).
+    projects = Contract.query.order_by(Contract.created_at.desc()).all()
     return render_template("admin/sq_new.html",
                            contract=contract, sr=sr, ro=ro,
                            inventory=inventory, prefill=prefill,
-                           from_survey_id=from_survey_id)
+                           projects=projects, from_survey_id=from_survey_id)
+
+
+# --------------------------------------------------------------------------- #
+# #10c — Historical rate hint. Returns the rate(s) an item was previously quoted
+# to a specific client, from BOTH service quotations and visit-linked material
+# quotations. Powers the faded "previously quoted to this client" line on the
+# new-quotation form so pricing stays consistent.
+# --------------------------------------------------------------------------- #
+@sq_bp.route("/price-history")
+@login_required
+@staff_required
+def price_history():
+    q = (request.args.get("q") or "").strip()
+    client_id = request.args.get("client_id", type=int)
+    if len(q) < 3:
+        return {"matches": []}
+    like = f"%{q}%"
+    matches = []
+
+    sq_query = (db.session.query(ServiceQuotationItem, ServiceQuotation)
+                .join(ServiceQuotation,
+                      ServiceQuotationItem.quotation_id == ServiceQuotation.id)
+                .filter(ServiceQuotationItem.description.ilike(like)))
+    if client_id:
+        sq_query = sq_query.filter(ServiceQuotation.customer_id == client_id)
+    for item, quo in sq_query.order_by(ServiceQuotation.created_at.desc()).limit(8):
+        matches.append({
+            "rate": round(item.rate or 0, 2),
+            "date": quo.created_at.strftime("%b %Y") if quo.created_at else "",
+            "quote": quo.reference,
+        })
+
+    if client_id:
+        from ..models import Quotation, QuotationItem
+        mq = (db.session.query(QuotationItem, Quotation, Contract)
+              .join(Quotation, QuotationItem.quotation_id == Quotation.id)
+              .join(Contract, Quotation.contract_id == Contract.id)
+              .filter(Contract.customer_id == client_id,
+                      QuotationItem.description.ilike(like))
+              .order_by(Quotation.created_at.desc()).limit(8))
+        for item, quo, _c in mq:
+            matches.append({
+                "rate": round(item.unit_price or 0, 2),
+                "date": quo.created_at.strftime("%b %Y") if quo.created_at else "",
+                "quote": quo.reference,
+            })
+
+    seen, out = set(), []
+    for m in matches:
+        key = (m["rate"], m["date"])
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(m)
+    return {"matches": out[:5]}
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -388,6 +446,33 @@ def edit_quotation(sq_id):
     inventory = InventoryItem.query.filter_by(active=True)\
         .order_by(InventoryItem.category, InventoryItem.name).all()
     return render_template("admin/sq_edit.html", sq=sq, inventory=inventory)
+
+
+# ─────────────────────────────────────────────────────────────────
+# Delete (only when it's safe — never once money or a contract activation
+# has been tied to this quote; those must be cancelled/rejected instead)
+# ─────────────────────────────────────────────────────────────────
+
+@sq_bp.route("/<int:sq_id>/delete", methods=["POST"])
+@login_required
+@staff_required
+def delete_quotation(sq_id):
+    sq = db.session.get(ServiceQuotation, sq_id) or abort(404)
+
+    if sq.is_paid:
+        flash(f"{sq.reference} has a recorded payment and cannot be deleted.", "danger")
+        return redirect(url_for("sq.detail_quotation", sq_id=sq.id))
+    if sq.contract and sq.contract.status == "active":
+        flash(f"{sq.reference} was used to activate {sq.contract.reference} and cannot be deleted.", "danger")
+        return redirect(url_for("sq.detail_quotation", sq_id=sq.id))
+
+    ref = sq.reference
+    for item in sq.items:
+        db.session.delete(item)
+    db.session.delete(sq)
+    db.session.commit()
+    flash(f"{ref} deleted.", "success")
+    return redirect(url_for("sq.list_quotations"))
 
 
 # ─────────────────────────────────────────────────────────────────
