@@ -1,0 +1,36 @@
+{
+  "expo": {
+    "name": "Northern Star",
+    "slug": "nse-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "nse",
+    "userInterfaceStyle": "light",
+    "primaryColor": "#072076",
+    "splash": {
+      "backgroundColor": "#072076",
+      "resizeMode": "contain"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.northernstar.amc"
+    },
+    "android": {
+      "package": "com.northernstar.amc",
+      "adaptiveIcon": {
+        "backgroundColor": "#072076"
+      }
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-font"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "55dccb3d-59ad-447d-9f16-a6f3c2394830"
+      }
+    }
+  }
+}

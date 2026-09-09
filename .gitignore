@@ -27,5 +27,5 @@ nse/static/uploads/*
 .venv_old/
 
 # Mobile packages and duplicates in the backend folder
-mobile/
+# mobile/
 *.zip
