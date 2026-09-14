@@ -9,10 +9,7 @@ import * as SecureStore from "expo-secure-store";
 //   - Web Browser preview: http://127.0.0.1:5055/api/v1
 //   - Physical Phone / Expo Go: http://192.168.1.10:5055/api/v1
 // ---------------------------------------------------------------------------
-export const API_BASE =
-  Platform.OS === "web"
-    ? "http://127.0.0.1:5055/api/v1"
-    : "http://192.168.1.10:5055/api/v1";
+export const API_BASE = "https://northern-star-amc.vercel.app/api/v1";
 
 const TOKEN_KEY = "nse_token";
 
