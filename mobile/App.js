@@ -25,10 +25,12 @@ import VisitScreen from "./src/screens/VisitScreen";
 import QuotationDetailScreen from "./src/screens/QuotationDetailScreen";
 import MaterialQuoteScreen from "./src/screens/MaterialQuoteScreen";
 import RequestsScreen from "./src/screens/RequestsScreen";
+import RequestRefillScreen from "./src/screens/RequestRefillScreen";
 import RaiseTicketScreen from "./src/screens/RaiseTicketScreen";
 import TicketDetailScreen from "./src/screens/TicketDetailScreen";
 import JourneyScreen from "./src/screens/JourneyScreen";
 import AgreementScreen from "./src/screens/AgreementScreen";
+import CertificateScreen from "./src/screens/CertificateScreen";
 import ReferScreen from "./src/screens/ReferScreen";
 
 const Stack = createNativeStackNavigator();
@@ -93,10 +95,12 @@ function Routes() {
           <Stack.Screen name="QuotationDetail" component={QuotationDetailScreen} options={{ title: "Quotation" }} />
           <Stack.Screen name="MaterialQuote" component={MaterialQuoteScreen} options={{ title: "Material Quote" }} />
           <Stack.Screen name="Requests" component={RequestsScreen} options={{ title: "My Requests" }} />
+          <Stack.Screen name="RequestRefill" component={RequestRefillScreen} options={{ title: "Refill Request" }} />
           <Stack.Screen name="RaiseTicket" component={RaiseTicketScreen} options={{ title: "New Complaint" }} />
           <Stack.Screen name="TicketDetail" component={TicketDetailScreen} options={{ title: "Complaint" }} />
           <Stack.Screen name="Journey" component={JourneyScreen} options={{ title: "My Journey" }} />
           <Stack.Screen name="Agreement" component={AgreementScreen} options={{ title: "AMC Agreement" }} />
+          <Stack.Screen name="Certificate" component={CertificateScreen} options={{ title: "Fire Safety Certificate" }} />
           <Stack.Screen name="Refer" component={ReferScreen} options={{ title: "Refer a Friend" }} />
         </>
       ) : (
@@ -111,7 +115,7 @@ function Routes() {
 
 export default function App() {
   return (
-    <SafeAreaProvider>
+    <SafeAreaProvider style={{ flex: 1 }}>
       <AuthProvider>
         <StatusBar style="light" />
         <NavigationContainer>

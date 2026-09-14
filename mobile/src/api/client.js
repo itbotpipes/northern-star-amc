@@ -1,29 +1,50 @@
 // Thin fetch wrapper around the Flask JSON API (nse/blueprints/api.py).
 // All calls go through here so the base URL + auth header live in one place.
 
+import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
 
 // ---------------------------------------------------------------------------
-// Where the backend lives. Change this to your deployment.
-//   - Android emulator reaches your Mac's localhost at 10.0.2.2
-//   - iOS simulator can use 127.0.0.1
-//   - A physical phone must use your Mac's LAN IP (e.g. http://192.168.1.5:5055)
-//   - Production: the Vercel URL, e.g. https://app-amc-three.vercel.app
+// Where the backend lives:
+//   - Web Browser preview: http://127.0.0.1:5055/api/v1
+//   - Physical Phone / Expo Go: http://192.168.1.10:5055/api/v1
 // ---------------------------------------------------------------------------
-export const API_BASE = "https://northern-star-amc.vercel.app/api/v1";
-// For local dev against the Flask server, comment the line above and use e.g.:
-// export const API_BASE = "http://10.0.2.2:5055/api/v1";
+export const API_BASE =
+  Platform.OS === "web"
+    ? "http://127.0.0.1:5055/api/v1"
+    : "http://192.168.1.10:5055/api/v1";
 
 const TOKEN_KEY = "nse_token";
 
 export async function saveToken(token) {
-  await SecureStore.setItemAsync(TOKEN_KEY, token);
+  try {
+    await SecureStore.setItemAsync(TOKEN_KEY, token);
+  } catch (e) {
+    if (typeof window !== "undefined" && window.localStorage) {
+      window.localStorage.setItem(TOKEN_KEY, token);
+    }
+  }
 }
+
 export async function getToken() {
-  return SecureStore.getItemAsync(TOKEN_KEY);
+  try {
+    return await SecureStore.getItemAsync(TOKEN_KEY);
+  } catch (e) {
+    if (typeof window !== "undefined" && window.localStorage) {
+      return window.localStorage.getItem(TOKEN_KEY);
+    }
+    return null;
+  }
 }
+
 export async function clearToken() {
-  await SecureStore.deleteItemAsync(TOKEN_KEY);
+  try {
+    await SecureStore.deleteItemAsync(TOKEN_KEY);
+  } catch (e) {
+    if (typeof window !== "undefined" && window.localStorage) {
+      window.localStorage.removeItem(TOKEN_KEY);
+    }
+  }
 }
 
 async function request(path, { method = "GET", body, auth = false } = {}) {
@@ -34,11 +55,15 @@ async function request(path, { method = "GET", body, auth = false } = {}) {
   }
   let res;
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
     res = await fetch(`${API_BASE}${path}`, {
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
     });
+    clearTimeout(timeoutId);
   } catch (e) {
     throw new Error("Cannot reach the server. Check your connection.");
   }
@@ -77,6 +102,7 @@ export const api = {
   agreement: (id) => request(`/contracts/${id}/agreement`, { auth: true }),
   acceptAgreement: (id) =>
     request(`/contracts/${id}/agreement/accept`, { method: "POST", auth: true }),
+  certificate: (id) => request(`/contracts/${id}/certificate`, { auth: true }),
 
   // ----- Visits ------------------------------------------------------------
   visit: (id) => request(`/visits/${id}`, { auth: true }),
@@ -101,6 +127,10 @@ export const api = {
 
   // ----- Requests + refills ------------------------------------------------
   requests: () => request("/requests", { auth: true }),
+  createServiceRequest: (fields) =>
+    request("/requests", { method: "POST", auth: true, body: fields }),
+  createRefillOrder: (fields) =>
+    request("/refills", { method: "POST", auth: true, body: fields }),
 
   // ----- Support tickets / complaints --------------------------------------
   tickets: () => request("/tickets", { auth: true }),

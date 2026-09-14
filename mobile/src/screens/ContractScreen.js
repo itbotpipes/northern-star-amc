@@ -84,15 +84,28 @@ export default function ContractScreen({ route, navigation }) {
         </Card>
       ) : null}
 
-      {/* Certificate */}
-      {c.certificate_issued ? (
-        <Card style={{ borderColor: theme.amber }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-            <Ionicons name="ribbon" size={22} color={theme.amber} />
-            <Text style={styles.certText}>Your AMC Fire Safety Certificate has been issued.</Text>
+      {/* Certificate Card */}
+      <Card style={{ borderColor: c.certificate_issued ? theme.amber : theme.hair, backgroundColor: c.certificate_issued ? "#fffcf5" : "#fff" }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <View style={{ width: 42, height: 42, borderRadius: 12, backgroundColor: c.certificate_issued ? "#fff4df" : "#f0f2fa", justifyContent: "center", alignItems: "center" }}>
+            <Ionicons name="ribbon" size={24} color={c.certificate_issued ? theme.amber : theme.navy} />
           </View>
-        </Card>
-      ) : null}
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: "700", color: theme.navy }}>
+              {c.certificate_issued ? "Fire Safety Certificate Issued" : "AMC Fire Safety Certificate"}
+            </Text>
+            <Text style={{ fontSize: 12, color: theme.inkMuted, marginTop: 2 }}>
+              {c.certificate_issued ? "Official NBC, BIS & NFPA compliance certificate ready." : `Unlocks after 4th completed visit (${c.completed_visits || 0}/${c.total_visits || 4} done).`}
+            </Text>
+          </View>
+        </View>
+        <Btn
+          title={c.certificate_issued ? "View & Download Certificate" : "Check Certificate Status"}
+          variant={c.certificate_issued ? "primary" : "outline"}
+          style={{ marginTop: 12 }}
+          onPress={() => navigation.navigate("Certificate", { id: c.id, contract: c })}
+        />
+      </Card>
 
       {/* Facts */}
       <Card>

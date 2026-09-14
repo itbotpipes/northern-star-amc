@@ -1,7 +1,7 @@
 // Home / dashboard: greeting, quick counts, contract cards, quick actions.
 import React, { useState, useCallback } from "react";
 import {
-  View, Text, ScrollView, RefreshControl, TouchableOpacity, StyleSheet,
+  View, Text, ScrollView, RefreshControl, TouchableOpacity, StyleSheet, Linking, Alert,
 } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
@@ -32,6 +32,21 @@ export default function HomeScreen({ navigation }) {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
+  const handleCallEmergency = () => {
+    const phoneNumber = "tel:18008918565";
+    Linking.canOpenURL(phoneNumber)
+      .then((supported) => {
+        if (supported) {
+          Linking.openURL(phoneNumber);
+        } else {
+          Alert.alert("Emergency Hotline", "Call 1800-891-8565 for 24x7 Emergency Fire Response.");
+        }
+      })
+      .catch(() => {
+        Alert.alert("Emergency Hotline", "Call 1800-891-8565 for 24x7 Emergency Fire Response.");
+      });
+  };
+
   if (loading) return <Loading text="Loading your dashboard…" />;
   if (error) return <ErrorNote message={error} onRetry={() => { setLoading(true); load(); }} />;
 
@@ -48,6 +63,34 @@ export default function HomeScreen({ navigation }) {
       <Text style={styles.hi}>Hello, {firstName}</Text>
       <Text style={styles.sub}>Your fire-safety, all in one place.</Text>
 
+      {/* 24x7 Emergency SOS Card */}
+      <View style={styles.sosCard}>
+        <View style={styles.sosHeader}>
+          <View style={styles.sosTitleRow}>
+            <View style={styles.sosBadgeIcon}>
+              <Ionicons name="warning" size={18} color="#FFFFFF" />
+            </View>
+            <Text style={styles.sosTitle}>24x7 Emergency Response</Text>
+          </View>
+          <View style={styles.slaTag}>
+            <Text style={styles.slaText}>⚡ 4-Hr SLA</Text>
+          </View>
+        </View>
+        <Text style={styles.sosSub}>Immediate dispatch for active fire hazards & safety emergencies.</Text>
+
+        <View style={styles.sosBtnRow}>
+          <TouchableOpacity style={styles.sosCallBtn} activeOpacity={0.85} onPress={handleCallEmergency}>
+            <Ionicons name="call" size={16} color="#FFFFFF" />
+            <Text style={styles.sosCallTxt}>Call 1800-891-8565</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.sosReqBtn} activeOpacity={0.85} onPress={() => navigation.navigate("Requests")}>
+            <Ionicons name="flash-outline" size={16} color="#B91C1C" />
+            <Text style={styles.sosReqTxt}>Urgent Visit</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
       {/* Quick counts */}
       <View style={styles.stats}>
         <Stat icon="document-text" label="Contracts" value={counts.contracts ?? 0}
@@ -61,6 +104,13 @@ export default function HomeScreen({ navigation }) {
       {/* Quick actions */}
       <SectionTitle>Quick actions</SectionTitle>
       <View style={styles.actions}>
+        <Action icon="flame-outline" label="Refill order" onPress={() => navigation.navigate("RequestRefill")} />
+        <Action icon="ribbon-outline" label="Certificates" onPress={() => {
+          const activeContract = contracts.find((c) => c.status === "active") || contracts[0];
+          if (activeContract) {
+            navigation.navigate("Certificate", { id: activeContract.id, contract: activeContract });
+          }
+        }} />
         <Action icon="pricetags-outline" label="Quotations" onPress={() => navigation.navigate("Quotes")} />
         <Action icon="chatbox-ellipses-outline" label="Raise complaint" onPress={() => navigation.navigate("RaiseTicket", {})} />
         <Action icon="time-outline" label="My journey" onPress={() => navigation.navigate("Journey")} />
@@ -147,7 +197,99 @@ function Meta({ label, value }) {
 const styles = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: theme.canvas },
   hi: { fontSize: 24, fontWeight: "800", color: theme.ink },
-  sub: { color: theme.inkMuted, marginTop: 2, marginBottom: 18 },
+  sub: { color: theme.inkMuted, marginTop: 2, marginBottom: 14 },
+  sosCard: {
+    backgroundColor: "#FEF2F2",
+    borderWidth: 1.5,
+    borderColor: "#FCA5A5",
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 20,
+    shadowColor: "#B91C1C",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  sosHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  sosTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  sosBadgeIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#DC2626",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sosTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#991B1B",
+  },
+  slaTag: {
+    backgroundColor: "#FEE2E2",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#FECACA",
+  },
+  slaText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#991B1B",
+  },
+  sosSub: {
+    fontSize: 12.5,
+    color: "#7F1D1D",
+    lineHeight: 17,
+    marginBottom: 12,
+  },
+  sosBtnRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  sosCallBtn: {
+    flex: 1.2,
+    backgroundColor: "#DC2626",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  sosCallTxt: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  sosReqBtn: {
+    flex: 0.9,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#FCA5A5",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  sosReqTxt: {
+    color: "#991B1B",
+    fontSize: 13,
+    fontWeight: "700",
+  },
   stats: { flexDirection: "row", gap: 10, marginBottom: 20 },
   stat: {
     flex: 1, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.hair,
