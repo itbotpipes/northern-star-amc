@@ -53,7 +53,7 @@ async function request(path, { method = "GET", body, auth = false } = {}) {
   let res;
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
     res = await fetch(`${API_BASE}${path}`, {
       method,
       headers,
@@ -62,7 +62,8 @@ async function request(path, { method = "GET", body, auth = false } = {}) {
     });
     clearTimeout(timeoutId);
   } catch (e) {
-    throw new Error("Cannot reach the server. Check your connection.");
+    const detail = e.name === "AbortError" ? "Server request timed out" : (e.message || "Network error");
+    throw new Error(`Cannot reach the server (${detail}). Check your connection.`);
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {

@@ -19,7 +19,9 @@
       "package": "com.northernstar.amc",
       "adaptiveIcon": {
         "backgroundColor": "#072076"
-      }
+      },
+      "permissions": ["INTERNET"],
+      "usesCleartextTraffic": true
     },
     "web": {
       "bundler": "metro"
