@@ -22,7 +22,7 @@ Design choices (so the mobile dev can rely on them):
 To wire it up it is registered in nse/__init__.py:  app.register_blueprint(api_bp)
 """
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from functools import wraps
 
 from flask import Blueprint, request, jsonify, current_app, g, url_for
@@ -32,7 +32,7 @@ from ..extensions import db
 from ..models import (
     User, Contract, Visit, ServiceRequest, Notification,
     ServiceQuotation, Quotation, SupportTicket, VisitFeedback,
-    CustomerJourneyEvent, Referral, RefillOrder, AMCPlan,
+    CustomerJourneyEvent, Referral, RefillOrder, RefillItem, AMCPlan,
 )
 from ..utils import (
     generate_otp, verify_otp, notify, notify_staff,
@@ -97,7 +97,7 @@ def customer_only(fn):
 def _cors(resp):
     resp.headers["Access-Control-Allow-Origin"] = "*"
     resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
-    resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    resp.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
     return resp
 
 
@@ -177,6 +177,7 @@ def contract_json(c, full=False):
         "safety_grade_color": grade_color,
         "agreement_accepted": c.agreement_accepted,
         "certificate_issued": bool(getattr(c, "certificate_issued", False)),
+        "certificate_issued_at": _d(getattr(c, "certificate_issued_at", None)),
         "next_visit": visit_json(c.next_visit) if c.next_visit else None,
     }
     if full:
@@ -262,6 +263,30 @@ def contract_detail(contract_id):
     if not c or c.customer_id != g.current_user.id:
         return jsonify(error="Contract not found."), 404
     return jsonify(contract=contract_json(c, full=True))
+
+
+@api_bp.route("/contracts/<int:contract_id>/certificate")
+@customer_only
+def contract_certificate(contract_id):
+    c = db.session.get(Contract, contract_id)
+    if not c or c.customer_id != g.current_user.id:
+        return jsonify(error="Contract not found."), 404
+    cert_no = f"NSE-CERT-{c.id:04d}"
+    return jsonify(
+        contract_id=c.id,
+        contract_ref=c.reference,
+        site_name=c.site_name,
+        certificate_no=cert_no,
+        certificate_issued=bool(c.certificate_issued),
+        certificate_issued_at=_d(c.certificate_issued_at),
+        plan_name=c.plan_name,
+        client_name=g.current_user.name,
+        client_address=c.building_name or g.current_user.address or c.city or "Surat, Gujarat",
+        standards=["NBC (National Building Code)", "BIS Compliance", "IS Fire Safety Standards", "NFPA Guidelines"],
+        completed_visits=c.completed_visits,
+        total_visits=c.total_visits,
+        download_url=f"/portal/contract/{c.id}/certificate"
+    )
 
 
 @api_bp.route("/notifications")
@@ -374,12 +399,27 @@ def refill_json(o):
         "id": o.id,
         "reference": o.reference,
         "status": o.status,
+        "service_mode": o.service_mode,
+        "payment_mode": o.payment_mode,
         "summary": o.summary,
         "total_units": o.total_units,
         "amount": o.amount,
         "payment_status": o.payment_status,
         "scheduled_date": _d(o.scheduled_date),
+        "area": o.area,
+        "address": o.address,
+        "notes": o.notes,
         "created_at": _d(o.created_at),
+        "items": [
+            {
+                "id": i.id,
+                "ext_type": i.ext_type,
+                "capacity": i.capacity,
+                "quantity": i.quantity,
+                "notes": i.notes,
+            }
+            for i in o.items
+        ],
     }
 
 
@@ -687,6 +727,102 @@ def service_requests():
                .order_by(RefillOrder.created_at.desc()).all())
     return jsonify(requests=[request_json(r) for r in rows],
                    refills=[refill_json(o) for o in refills])
+
+
+@api_bp.route("/requests", methods=["POST"])
+@customer_only
+def create_service_request():
+    body = request.get_json(silent=True) or {}
+    req_type = (body.get("request_type") or "emergency").strip()
+    if req_type not in ("emergency", "noc"):
+        req_type = "emergency"
+
+    u = g.current_user
+    sr = ServiceRequest(
+        customer_id=u.id,
+        request_type=req_type,
+        name=u.name,
+        phone=u.phone,
+        email=u.email,
+        area=(body.get("area") or u.area or "").strip(),
+        location=(body.get("location") or u.address or "").strip(),
+        description=(body.get("description") or "").strip(),
+        payment_mode=(body.get("payment_mode") or "cash").strip(),
+        status="new",
+        sla_due_at=(datetime.utcnow() + timedelta(hours=4)) if req_type == "emergency" else None,
+    )
+    db.session.add(sr)
+    db.session.commit()
+
+    db.session.add(CustomerJourneyEvent(
+        customer_id=u.id,
+        event_type="emergency_requested" if req_type == "emergency" else "noc_requested",
+        description=f"{'Emergency 4h SLA' if req_type == 'emergency' else 'NOC'} request {sr.reference} submitted",
+        ref_type="service_request",
+        ref_id=sr.id,
+    ))
+    db.session.commit()
+
+    notify_staff(
+        f"{'EMERGENCY' if req_type == 'emergency' else 'NOC'} Request {sr.reference}",
+        f"{u.name} · {sr.area or sr.location or 'Site'} — {'Respond within 4h' if req_type == 'emergency' else 'Review request'}",
+        link=f"/admin/service-requests/{sr.id}"
+    )
+    return jsonify(ok=True, request=request_json(sr))
+
+
+@api_bp.route("/refills", methods=["POST"])
+@customer_only
+def create_refill_order():
+    body = request.get_json(silent=True) or {}
+    items_data = body.get("items") or []
+    if not items_data:
+        return jsonify(error="Please add at least one extinguisher item to refill."), 400
+
+    u = g.current_user
+    order = RefillOrder(
+        customer_id=u.id,
+        name=u.name,
+        phone=u.phone,
+        email=u.email,
+        area=(body.get("area") or u.area or "").strip(),
+        address=(body.get("address") or u.address or "").strip(),
+        service_mode=(body.get("service_mode") or "onsite").strip(),
+        payment_mode=(body.get("payment_mode") or "cash").strip(),
+        notes=(body.get("notes") or "").strip(),
+        status="new",
+    )
+    for item in items_data:
+        ext_type = (item.get("ext_type") or "").strip()
+        if not ext_type:
+            continue
+        cap = (item.get("capacity") or "").strip()
+        try:
+            qty = int(item.get("quantity") or 1)
+        except (TypeError, ValueError):
+            qty = 1
+        notes = (item.get("notes") or "").strip()
+        order.items.append(RefillItem(ext_type=ext_type, capacity=cap, quantity=max(1, qty), notes=notes))
+
+    if not order.items:
+        return jsonify(error="Please add at least one valid extinguisher item to refill."), 400
+
+    db.session.add(order)
+    db.session.commit()
+
+    db.session.add(CustomerJourneyEvent(
+        customer_id=u.id,
+        event_type="refill_requested",
+        description=f"Refill request {order.reference} submitted ({order.summary})",
+        ref_type="refill_order",
+        ref_id=order.id,
+    ))
+    db.session.commit()
+
+    notify_staff("New refill request",
+                 f"{u.name} requested refill ({order.summary})",
+                 link=f"/ops/refill/{order.id}")
+    return jsonify(ok=True, refill=refill_json(order))
 
 
 # --------------------------------------------------------------------------- #
