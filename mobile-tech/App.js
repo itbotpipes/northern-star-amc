@@ -110,15 +110,45 @@ function Routes() {
   );
 }
 
+class ErrorBoundary extends React.Component {
+  state = { hasError: false, error: null };
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, errorInfo) {
+    console.error("Technician App caught error:", error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <View style={{ flex: 1, backgroundColor: theme.navy, padding: 24, justifyContent: "center" }}>
+          <Text style={{ color: "#fff", fontSize: 20, fontWeight: "bold", marginBottom: 12 }}>
+            App Encountered an Issue
+          </Text>
+          <Text style={{ color: "#fca5a5", fontSize: 14, marginBottom: 16 }}>
+            {this.state.error?.toString()}
+          </Text>
+          <Text style={{ color: "#cbd5e1", fontSize: 12 }}>
+            Please restart Metro or scan again.
+          </Text>
+        </View>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
   return (
     <SafeAreaProvider style={{ flex: 1 }}>
-      <AuthProvider>
-        <StatusBar style="light" />
-        <NavigationContainer>
-          <Routes />
-        </NavigationContainer>
-      </AuthProvider>
+      <ErrorBoundary>
+        <AuthProvider>
+          <StatusBar style="light" />
+          <NavigationContainer>
+            <Routes />
+          </NavigationContainer>
+        </AuthProvider>
+      </ErrorBoundary>
     </SafeAreaProvider>
   );
 }
