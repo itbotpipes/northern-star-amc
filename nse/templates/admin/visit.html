@@ -69,6 +69,8 @@
         </select></label>
       <label class="block"><span class="text-sm font-medium text-slate-700">Scheduled date</span>
         <input type="date" name="scheduled_date" value="{{ v.scheduled_date.isoformat() if v.scheduled_date }}" class="mt-1 w-full px-3 py-2 rounded-lg border border-slate-300"></label>
+      <label class="block"><span class="text-sm font-medium text-slate-700">Scheduled time</span>
+        <input type="time" name="scheduled_time" value="{{ v.scheduled_time or '' }}" class="mt-1 w-full px-3 py-2 rounded-lg border border-slate-300"></label>
       <label class="block"><span class="text-sm font-medium text-slate-700">Technician</span>
         <select name="technician_id" class="mt-1 w-full px-3 py-2 rounded-lg border border-slate-300">
           <option value="">— Unassigned —</option>

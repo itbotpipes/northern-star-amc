@@ -192,3 +192,67 @@ Suggested order (all models already exist in `nse/models.py`):
 - The **first module (login + view contracts) is already built and working**; the
   rest of the screens reuse the same recipe.
 - No new servers or databases — it all runs on the existing Vercel deployment.
+
+---
+
+## 7. Technician App — `mobile-tech/`  ✅ built (full technician app)
+
+A second, separate Expo app for field technicians — same backend, same pattern
+as the customer app above, but staff-facing: bottom tabs **Today · Visits ·
+Scan · Alerts · Me**, built from the "Technician App" screens in
+`nse/App-design/Northern Star Fire Safety Platform/`.
+
+**Auth**: staff email + password (`POST /api/v1/auth/staff-login`, mirrors the
+existing `/auth/staff` web route) instead of customer OTP — same bearer-token
+scheme, same `expo-secure-store`. Log in with any seeded staff account, e.g.
+`tech@northernstar.example` / `tech123`.
+
+**Backend** — all new routes live under **"MODULE 3 — Technician App"** at the
+bottom of `nse/blueprints/api.py`, reusing the exact queries the Ops Console
+(`admin.py`: `day_plan`, `visit`, `my_portfolio`, `visit_checkin/out`,
+`visit_quotation`, `confirm_visit`) already uses — one source of truth across
+web, customer app, and technician app:
+
+| Method & path | Returns / does |
+|---|---|
+| `POST /auth/staff-login` | technician/admin/manager login → token |
+| `GET /tech/me` | profile + rating breakdown (same math as `my_portfolio`) |
+| `GET /tech/today` | today's route + visit counts + refill-pickup banner |
+| `GET /tech/visits` (`?status=today\|upcoming\|done\|all`) · `/tech/visits/<id>` | list / detail |
+| `POST /tech/visits/<id>/confirm` · `/checkin` · `/checkout` | accept/reject, geofenced check-in/out |
+| `POST /tech/visits/<id>/checklist` · `/photos` · `/complete` | save checklist+notes, upload a photo, close the visit |
+| `POST /tech/visits/<id>/quotation` | raise a material quotation on-site |
+| `GET /tech/equipment/lookup?code=` | QR-scanned asset lookup |
+| `GET /tech/refill-pickups` | pickups assigned to this technician |
+| `GET /tech/notifications` (+`/read`) | alerts (same `Notification` model as the customer app) |
+| `GET /tech/inventory/search?q=` | inventory search for the quotation screen |
+
+**Two small, additive schema changes** were needed — nothing else changed:
+- `RefillOrder.assigned_technician_id` — the design's "refill pickups assigned
+  to you" had no backing field; added the same way `ServiceRequest` already
+  does it. Ops can now assign a pickup from `/ops/refill/<id>`.
+- `Visit.scheduled_time` — `Visit.scheduled_date` was date-only, but the
+  Today screen's route list is built around time slots (10:30 AM, 12:00 PM…).
+  Nullable `HH:MM` string; set per-visit from `/ops/visit/<id>` (shows "Time
+  TBD" until filled in).
+
+Run **`migrate_technician_app.py`** once against the target database to add
+these two columns (same idempotent pattern as `migrate_wave11.py`) — **this
+still needs to be run against the live Supabase database**; it was only
+verified locally against `nse_amc.db` during development, deliberately not
+against the shared production database.
+
+**Run it:**
+```bash
+.venv/bin/python migrate_technician_app.py   # once, against the live DB
+.venv/bin/python run.py                       # backend, as usual
+cd mobile-tech && npm install && npx expo start
+```
+
+**Not implemented (flagged, not silent):** GPS capture on check-in (the API
+accepts `lat`/`lng` and enforces the existing 100 m geofence when a contract
+has coordinates and the app sends them, but the app itself doesn't yet read
+device location — `expo-location` would be the natural next add); a persisted
+"last scanned" history (kept as session-local state, since there's no backend
+concept of a scan log to persist against — every scan still does a real
+lookup against `Equipment`, nothing is mocked).

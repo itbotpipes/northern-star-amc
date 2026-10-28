@@ -9,6 +9,10 @@
   'resolved':    '#e7f4ec', 'closed':     '#f1f0ee', 'draft':      '#f1f0ee',
   'sent':        '#eef1fb', 'viewed':     '#ede9fe', 'accepted':   '#e7f4ec',
   'negotiation_requested':'#fbf0dc',
+  'assigned':    '#eef1fb', 'site_visit_scheduled':'#eef1fb',
+  'site_visit_in_progress':'#ede9fe', 'checklist_submitted':'#e0e7ff',
+  'quotation_generated':'#e7f4ec',
+  'pass':        '#e7f4ec', 'attention':  '#fbf0dc', 'fail':       '#fdecea', 'na': '#f1f0ee',
 }.get(status,'#f1f0ee') %}
 {% set fc = {
   'pending':     '#b45309', 'active':     '#17864a', 'expired':    '#6b6b72',
@@ -19,6 +23,10 @@
   'resolved':    '#17864a', 'closed':     '#6b6b72', 'draft':      '#6b6b72',
   'sent':        '#2f6fed', 'viewed':     '#5b21b6', 'accepted':   '#17864a',
   'negotiation_requested':'#b45309',
+  'assigned':    '#2f6fed', 'site_visit_scheduled':'#2f6fed',
+  'site_visit_in_progress':'#5b21b6', 'checklist_submitted':'#4338ca',
+  'quotation_generated':'#17864a',
+  'pass':        '#17864a', 'attention':  '#b45309', 'fail':       '#d23f3f', 'na': '#6b6b72',
 }.get(status,'#6b6b72') %}
 <span style="display:inline-flex;align-items:center;font-size:11px;font-weight:600;padding:3px 10px;border-radius:999px;background:{{ bg }};color:{{ fc }};">
   {{ status.replace('_',' ')|title }}

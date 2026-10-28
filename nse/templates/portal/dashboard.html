@@ -12,6 +12,7 @@
       <a href="{{ url_for('portal.profile') }}" class="btn btn-ghost text-sm px-3 py-2">My Profile</a>
       <a href="{{ url_for('portal.service_quotations') }}" class="btn btn-ghost text-sm px-3 py-2">My Quotes</a>
       <a href="{{ url_for('portal.journey') }}" class="btn btn-ghost text-sm px-3 py-2">My Journey</a>
+      <a href="{{ url_for('public.enquiry') }}" class="bg-surface-2 text-ink px-4 py-2 rounded-lg text-sm font-medium border border-hairline hover:border-primary transition">+ Request Site Inspection</a>
       <a href="{{ url_for('public.apply') }}" class="bg-primary text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-hover transition">+ New AMC</a>
       {% if has_refills %}<a href="{{ url_for('public.refill') }}" class="bg-surface-2 text-ink px-4 py-2 rounded-lg text-sm font-medium border border-hairline hover:border-primary transition">Book refill</a>{% endif %}
       {% if has_emergencies %}<a href="{{ url_for('public.emergency') }}" class="bg-danger text-white px-4 py-2 rounded-lg text-sm font-medium hover:opacity-90 transition">Emergency</a>{% endif %}
@@ -145,6 +146,58 @@
       {% endfor %}
       </tbody>
     </table>
+  </div>
+  {% endif %}
+
+  <!-- Customer Inquiries & Inspection Visits -->
+  <div class="flex items-center justify-between mt-10 mb-3">
+    <h2 class="text-lg font-bold text-navy-800">Service Inquiries & Site Inspections</h2>
+    <a href="{{ url_for('public.enquiry') }}" class="text-xs text-primary font-semibold hover:underline flex items-center gap-1">
+      <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+      New Inquiry / Site Visit
+    </a>
+  </div>
+  {% if inquiries %}
+  <div class="bg-white rounded-2xl border border-slate-200 overflow-x-auto shadow-sm">
+    <table class="w-full text-sm min-w-[600px]">
+      <thead class="bg-slate-50 text-slate-500 text-left text-xs uppercase">
+        <tr>
+          <th class="px-4 py-2.5">Reference</th>
+          <th class="px-4 py-2.5">Service Required</th>
+          <th class="px-4 py-2.5">Status</th>
+          <th class="px-4 py-2.5">Scheduled Visit</th>
+          <th class="px-4 py-2.5">Assigned Tech</th>
+          <th class="px-4 py-2.5">Submitted</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for inq in inquiries %}
+        <tr class="border-t border-slate-100 hover:bg-slate-50/50 transition">
+          <td class="px-4 py-2.5 font-bold text-navy-700">{{ inq.ref_code }}</td>
+          <td class="px-4 py-2.5 text-slate-700 font-medium">{{ inq.service_requirement }}</td>
+          <td class="px-4 py-2.5">{{ status_badge(inq.status) }}</td>
+          <td class="px-4 py-2.5 text-slate-600">
+            {% if inq.visit_scheduled_date %}
+              {{ inq.visit_scheduled_date|datefmt }}
+              {% if inq.visit_time_slot %}<span class="text-xs text-slate-400 block">{{ inq.visit_time_slot }}</span>{% endif %}
+            {% else %}
+              <span class="text-slate-400">Scheduling...</span>
+            {% endif %}
+          </td>
+          <td class="px-4 py-2.5 text-slate-600">{{ inq.assigned_to.name if inq.assigned_to else 'Pending' }}</td>
+          <td class="px-4 py-2.5 text-slate-500">{{ inq.created_at|datefmt }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="bg-white border border-dashed border-slate-300 rounded-2xl p-6 text-center text-slate-500 text-sm shadow-sm">
+    <p class="font-medium text-slate-700">No active site inspection inquiries</p>
+    <p class="text-xs text-slate-500 mt-1">Need an on-site survey, fire safety inspection, or new equipment installation?</p>
+    <a href="{{ url_for('public.enquiry') }}" class="inline-flex items-center gap-1.5 mt-3 text-xs bg-primary text-white font-semibold px-3 py-1.5 rounded-lg hover:bg-primary-hover transition">
+      Request Site Visit / Submit Inquiry →
+    </a>
   </div>
   {% endif %}
 

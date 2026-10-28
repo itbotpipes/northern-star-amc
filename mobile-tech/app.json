@@ -1,0 +1,48 @@
+{
+  "expo": {
+    "name": "NSE Technician",
+    "slug": "nse-technician",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "nse-tech",
+    "userInterfaceStyle": "light",
+    "primaryColor": "#072076",
+    "splash": {
+      "backgroundColor": "#072076",
+      "resizeMode": "contain"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.northernstar.technician",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Used to scan equipment QR tags and attach site photos to a visit.",
+        "NSPhotoLibraryUsageDescription": "Used to attach site photos to a visit."
+      }
+    },
+    "android": {
+      "package": "com.northernstar.technician",
+      "adaptiveIcon": {
+        "backgroundColor": "#072076"
+      },
+      "permissions": ["INTERNET", "CAMERA"]
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-font",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Used to scan equipment QR tags and attach site photos to a visit."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Used to attach site photos to a visit."
+        }
+      ]
+    ]
+  }
+}

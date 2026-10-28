@@ -31,12 +31,14 @@ from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from ..extensions import db
 from ..models import (
     User, Contract, Visit, ServiceRequest, Notification,
-    ServiceQuotation, Quotation, SupportTicket, VisitFeedback,
+    ServiceQuotation, Quotation, QuotationItem, SupportTicket, VisitFeedback,
     CustomerJourneyEvent, Referral, RefillOrder, RefillItem, AMCPlan,
+    Equipment, VisitDefect, VisitChecklistItem, VisitPhoto, InventoryItem,
+    Enquiry, InquiryChecklistItem, InquiryPhoto, InquiryHistory,
 )
 from ..utils import (
-    generate_otp, verify_otp, notify, notify_staff,
-    WAIVER_TEXT, AMC_AGREEMENT_VERSION,
+    generate_otp, verify_otp, notify, notify_staff, notify_team_leaders,
+    WAIVER_TEXT, AMC_AGREEMENT_VERSION, save_upload, upload_url,
 )
 
 api_bp = Blueprint("api", __name__, url_prefix="/api/v1")
@@ -85,6 +87,17 @@ def customer_only(fn):
     def wrapper(*args, **kwargs):
         if g.current_user.role != "customer":
             return jsonify(error="This endpoint is for customer accounts."), 403
+        return fn(*args, **kwargs)
+    return wrapper
+
+
+def technician_only(fn):
+    """token_required + must be staff (technician/admin/manager) — the Technician App."""
+    @wraps(fn)
+    @token_required
+    def wrapper(*args, **kwargs):
+        if not g.current_user.is_staff:
+            return jsonify(error="This endpoint is for staff accounts."), 403
         return fn(*args, **kwargs)
     return wrapper
 
@@ -235,6 +248,18 @@ def otp_verify():
         user.name = name
         db.session.commit()
 
+    return jsonify(token=issue_token(user), user=user_json(user))
+
+
+@api_bp.route("/auth/staff-login", methods=["POST"])
+def staff_login_api():
+    """Technician App login — mirrors auth.staff_login but returns a token."""
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    password = body.get("password") or ""
+    user = User.query.filter_by(email=email).first()
+    if not user or not user.is_staff or not user.check_password(password):
+        return jsonify(error="Invalid staff credentials."), 401
     return jsonify(token=issue_token(user), user=user_json(user))
 
 
@@ -1018,3 +1043,685 @@ def plans():
         "price": p.price, "visits": p.visits_per_year,
         "response_time": p.response_time, "features": p.feature_list,
     } for p in rows])
+
+
+# =========================================================================== #
+#  MODULE 3 — Technician App (native, staff-facing)
+#  Everything below reuses the exact same models/queries the Ops Console
+#  (blueprints/admin.py: day_plan, visit, my_portfolio, checkin/checkout,
+#  visit_quotation, confirm_visit) uses for its technician-facing pages, so the
+#  phone app and the web console stay one source of truth — the same pattern
+#  MODULE 2 established for the customer app.
+# =========================================================================== #
+
+def _own_tech_visit(visit_id):
+    """A visit belonging to the current technician (or any staff, for admins
+    covering a technician's board)."""
+    v = db.session.get(Visit, visit_id)
+    if not v:
+        return None
+    if g.current_user.is_admin or g.current_user.is_manager:
+        return v
+    return v if v.technician_id == g.current_user.id else None
+
+
+def equipment_json(e):
+    return {
+        "id": e.id,
+        "name": e.name,
+        "equip_type": e.equip_type,
+        "location": e.location,
+        "serial_no": e.serial_no,
+        "last_refill_date": _d(e.last_refill_date),
+        "next_refill_date": _d(e.next_refill_date),
+        "days_to_refill": e.days_to_refill,
+        "refill_status": e.refill_status,
+        "contract_id": e.contract_id,
+        "site_name": e.contract.site_name if e.contract else None,
+    }
+
+
+def defect_json(d):
+    return {
+        "id": d.id,
+        "reference": d.reference,
+        "equipment_name": d.equipment_name,
+        "location": d.location,
+        "severity": d.severity,
+        "severity_label": d.severity_label,
+        "description": d.description,
+        "status": d.status,
+        "created_at": _d(d.created_at),
+    }
+
+
+def refill_pickup_json(o):
+    data = refill_json(o)
+    data["assigned_technician_id"] = o.assigned_technician_id
+    return data
+
+
+def tech_visit_json(v):
+    c = v.contract
+    return {
+        "id": v.id,
+        "label": v.label,
+        "visit_number": v.visit_number,
+        "status": v.status,
+        "scheduled_date": _d(v.scheduled_date),
+        "scheduled_time": v.scheduled_time,
+        "scheduled_time_label": v.scheduled_time_label,
+        "completed_date": _d(v.completed_date),
+        "checkin_at": _d(v.checkin_at),
+        "checkout_at": _d(v.checkout_at),
+        "is_checked_in": v.is_checked_in,
+        "technician_confirmed": v.technician_confirmed,
+        "contract_id": v.contract_id,
+        "contract_reference": c.reference if c else None,
+        "site_name": c.site_name if c else None,
+        "site_address": c.site_address if c else None,
+        "area": c.area if c else None,
+        "customer_name": (c.customer.name if c and c.customer
+                          else c.applicant_name if c else None),
+        "customer_phone": (c.customer.phone if c and c.customer
+                           else c.applicant_phone if c else None),
+        "checklist_summary": v.checklist_summary,
+    }
+
+
+def tech_visit_detail_json(v):
+    data = tech_visit_json(v)
+    data.update({
+        "work_done": v.work_done,
+        "notes": v.notes,
+        "checkin_note": v.checkin_note,
+        "technician_note": v.technician_note,
+        "onsite_duration": v.onsite_duration_label,
+        "checklist": [{"item": ci.item, "status": ci.status, "note": ci.note}
+                      for ci in sorted(v.checklist_items, key=lambda x: x.sort_order or 0)],
+        "checklist_defaults": VisitChecklistItem.STANDARD_ITEMS,
+        "photos": [{"id": p.id, "url": upload_url(p.file_path), "caption": p.caption}
+                   for p in v.photos],
+        "defects": [defect_json(d) for d in getattr(v, "defects", [])],
+        "material_quotes": [material_quote_json(q, full=True) for q in v.material_quotes],
+    })
+    return data
+
+
+# --------------------------------------------------------------------------- #
+# Profile — "Me" tab (mirrors admin.my_portfolio's exact rating/stat math)
+# --------------------------------------------------------------------------- #
+@api_bp.route("/tech/me")
+@technician_only
+def tech_me():
+    t = g.current_user
+    visits = Visit.query.filter_by(technician_id=t.id).all()
+    completed = [v for v in visits if v.status == "completed"]
+
+    feedbacks = (VisitFeedback.query.filter_by(technician_id=t.id)
+                 .filter(VisitFeedback.rating_overall.isnot(None)).all())
+    avg_overall = (round(sum(f.rating_overall for f in feedbacks) / len(feedbacks), 1)
+                   if feedbacks else None)
+
+    def _avg(attr):
+        vals = [getattr(f, attr) for f in feedbacks if getattr(f, attr) is not None]
+        return round(sum(vals) / len(vals), 1) if vals else None
+
+    on_time = sum(1 for v in completed
+                  if v.scheduled_date and v.completed_date and v.completed_date <= v.scheduled_date)
+    on_time_pct = round(on_time / len(completed) * 100) if completed else None
+
+    return jsonify(
+        user=user_json(t),
+        stats={
+            "visits": len(visits),
+            "on_time_pct": on_time_pct,
+            "rating": avg_overall,
+        },
+        rating_breakdown={
+            "behaviour": _avg("rating_behaviour"),
+            "quality": _avg("rating_quality"),
+            "punctuality": _avg("rating_punctuality"),
+            "communication": _avg("rating_communication"),
+        },
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Today — home screen (mirrors admin.day_plan's today_visits query)
+# --------------------------------------------------------------------------- #
+@api_bp.route("/tech/today")
+@technician_only
+def tech_today():
+    t = g.current_user
+    today = date.today()
+    visits = (Visit.query.filter(Visit.technician_id == t.id,
+                                 Visit.scheduled_date == today)
+              .all())
+    visits.sort(key=lambda v: (v.scheduled_time is None, v.scheduled_time or ""))
+    completed = sum(1 for v in visits if v.status == "completed")
+
+    pickups = (RefillOrder.query
+               .filter(RefillOrder.assigned_technician_id == t.id,
+                       RefillOrder.status.notin_(["completed", "cancelled"]))
+               .order_by(RefillOrder.scheduled_date).all())
+
+    return jsonify(
+        user=user_json(t),
+        date=_d(today),
+        counts={
+            "today": len(visits),
+            "completed": completed,
+            "remaining": len(visits) - completed,
+        },
+        visits=[tech_visit_json(v) for v in visits],
+        refill_pickups_count=len(pickups),
+        refill_pickups_preview=[o.name for o in pickups[:2]],
+    )
+
+
+# --------------------------------------------------------------------------- #
+# My visits — filterable list
+# --------------------------------------------------------------------------- #
+@api_bp.route("/tech/visits")
+@technician_only
+def tech_visits():
+    t = g.current_user
+    status = (request.args.get("status") or "all").lower()
+    q = Visit.query.filter_by(technician_id=t.id)
+    today = date.today()
+    if status == "today":
+        q = q.filter(Visit.scheduled_date == today)
+    elif status == "upcoming":
+        q = q.filter(Visit.status.in_(["scheduled", "in_progress"]),
+                     Visit.scheduled_date >= today)
+    elif status == "done":
+        q = q.filter(Visit.status == "completed")
+    rows = q.order_by(Visit.scheduled_date.desc()).all()
+    return jsonify(visits=[tech_visit_json(v) for v in rows], count=len(rows))
+
+
+@api_bp.route("/tech/visits/<int:visit_id>")
+@technician_only
+def tech_visit_detail(visit_id):
+    v = _own_tech_visit(visit_id)
+    if not v:
+        return jsonify(error="Visit not found."), 404
+    return jsonify(visit=tech_visit_detail_json(v))
+
+
+# --------------------------------------------------------------------------- #
+# Accept / reject a visit in the day plan (mirrors admin.confirm_visit)
+# --------------------------------------------------------------------------- #
+@api_bp.route("/tech/visits/<int:visit_id>/confirm", methods=["POST"])
+@technician_only
+def tech_visit_confirm(visit_id):
+    v = _own_tech_visit(visit_id)
+    if not v:
+        return jsonify(error="Visit not found."), 404
+    body = request.get_json(silent=True) or {}
+    action = body.get("action")
+    note = (body.get("note") or "").strip()
+    if action == "accept":
+        v.technician_confirmed = True
+        v.technician_note = note or None
+        db.session.commit()
+        notify_staff(f"{v.label} accepted by {g.current_user.name}",
+                     f"{v.label} for {v.contract.reference} confirmed.",
+                     link=url_for("admin.visit", visit_id=v.id))
+    elif action == "reject":
+        v.technician_confirmed = False
+        v.technician_note = note
+        db.session.commit()
+        notify_staff(f"{v.label} rejected by {g.current_user.name}",
+                     f"{v.label} for {v.contract.reference} was rejected"
+                     f"{': ' + note if note else ''}. Please reassign.",
+                     link=url_for("admin.visit", visit_id=v.id))
+    else:
+        return jsonify(error="action must be 'accept' or 'reject'."), 400
+    return jsonify(ok=True, visit=tech_visit_detail_json(v))
+
+
+# --------------------------------------------------------------------------- #
+# Check-in / check-out (mirrors admin.visit_checkin / visit_checkout,
+# including the 100m geofence)
+# --------------------------------------------------------------------------- #
+@api_bp.route("/tech/visits/<int:visit_id>/checkin", methods=["POST"])
+@technician_only
+def tech_visit_checkin(visit_id):
+    v = _own_tech_visit(visit_id)
+    if not v:
+        return jsonify(error="Visit not found."), 404
+    body = request.get_json(silent=True) or {}
+    lat, lng = body.get("lat"), body.get("lng")
+    note = (body.get("note") or "").strip()
+    c = v.contract
+    if c and c.latitude and c.longitude and lat and lng:
+        from ..utils import meters_between
+        dist = meters_between(lat, lng, c.latitude, c.longitude)
+        if dist is not None and dist > 100:
+            return jsonify(error=f"You appear to be about {int(dist)} m from the site. "
+                                  f"You must be within 100 m to check in.",
+                           distance_m=int(dist)), 400
+        if dist is not None:
+            note = (note + " " if note else "") + f"[GPS {lat},{lng} · {int(dist)}m from site]"
+    elif lat and lng:
+        note = (note + " " if note else "") + f"[GPS {lat},{lng}]"
+    v.checkin_at = datetime.utcnow()
+    v.checkin_note = note or None
+    if v.status == "scheduled":
+        v.status = "in_progress"
+    db.session.commit()
+    if c and c.customer_id:
+        notify(c.customer_id, "Your technician has arrived",
+               f"{v.technician.name if v.technician else 'Your technician'} checked in "
+               f"for {v.label} at {c.reference} at {v.checkin_at:%H:%M}.",
+               link=url_for("portal.contract", contract_id=v.contract_id))
+    return jsonify(ok=True, visit=tech_visit_detail_json(v))
+
+
+@api_bp.route("/tech/visits/<int:visit_id>/checkout", methods=["POST"])
+@technician_only
+def tech_visit_checkout(visit_id):
+    v = _own_tech_visit(visit_id)
+    if not v:
+        return jsonify(error="Visit not found."), 404
+    if not v.checkin_at:
+        v.checkin_at = datetime.utcnow()
+    v.checkout_at = datetime.utcnow()
+    db.session.commit()
+    c = v.contract
+    if c and c.customer_id:
+        notify(c.customer_id, "Your technician has left the site",
+               f"{v.technician.name if v.technician else 'Your technician'} checked out "
+               f"after {v.label} at {c.reference} — on site "
+               f"{v.onsite_duration_label or '0m'}.",
+               link=url_for("portal.contract", contract_id=v.contract_id))
+    return jsonify(ok=True, visit=tech_visit_detail_json(v))
+
+
+# --------------------------------------------------------------------------- #
+# Checklist + work notes (mirrors the checklist/work_done half of admin.visit)
+# --------------------------------------------------------------------------- #
+@api_bp.route("/tech/visits/<int:visit_id>/checklist", methods=["POST"])
+@technician_only
+def tech_visit_checklist(visit_id):
+    v = _own_tech_visit(visit_id)
+    if not v:
+        return jsonify(error="Visit not found."), 404
+    body = request.get_json(silent=True) or {}
+    if "work_done" in body:
+        v.work_done = body.get("work_done")
+    if "notes" in body:
+        v.notes = body.get("notes")
+    items = body.get("checklist")
+    if items is not None:
+        VisitChecklistItem.query.filter_by(visit_id=v.id).delete()
+        for idx, it in enumerate(items):
+            name = (it.get("item") or "").strip()
+            if name:
+                db.session.add(VisitChecklistItem(
+                    visit_id=v.id, item=name,
+                    status=it.get("status", "ok"),
+                    note=(it.get("note") or "").strip() or None,
+                    sort_order=idx))
+    db.session.commit()
+    return jsonify(ok=True, visit=tech_visit_detail_json(v))
+
+
+@api_bp.route("/tech/visits/<int:visit_id>/photos", methods=["POST"])
+@technician_only
+def tech_visit_photo(visit_id):
+    """Multipart upload (field name 'photo') — mirrors admin.visit()'s photo handling."""
+    v = _own_tech_visit(visit_id)
+    if not v:
+        return jsonify(error="Visit not found."), 404
+    path = save_upload(request.files.get("photo"), f"visits/visit{v.id}",
+                       {"png", "jpg", "jpeg", "gif", "webp"})
+    if not path:
+        return jsonify(error="Please attach a valid image (png/jpg/webp)."), 400
+    p = VisitPhoto(visit_id=v.id, file_path=path,
+                   caption=(request.form.get("caption") or None))
+    db.session.add(p)
+    db.session.commit()
+    return jsonify(ok=True, photo={"id": p.id, "url": upload_url(path), "caption": p.caption})
+
+
+# --------------------------------------------------------------------------- #
+# Mark visit complete (mirrors the completion branch of admin.visit)
+# --------------------------------------------------------------------------- #
+@api_bp.route("/tech/visits/<int:visit_id>/complete", methods=["POST"])
+@technician_only
+def tech_visit_complete(visit_id):
+    v = _own_tech_visit(visit_id)
+    if not v:
+        return jsonify(error="Visit not found."), 404
+    if not v.checklist_items:
+        return jsonify(error="Complete the maintenance checklist before closing the visit."), 400
+    v.status = "completed"
+    if not v.completed_date:
+        v.completed_date = date.today()
+    db.session.commit()
+    from .admin import _maybe_issue_certificate, _trigger_feedback
+    if v.contract and v.contract.customer_id:
+        notify(v.contract.customer_id,
+               f"Congratulations — your {v.label} is done!",
+               f"Your service report for {v.contract.reference} is ready. "
+               f"Please review, download it, and rate the service.",
+               link=url_for("portal.visit", visit_id=v.id) + "?chime=1")
+        _maybe_issue_certificate(v)
+        _trigger_feedback(v)
+        db.session.commit()
+    return jsonify(ok=True, visit=tech_visit_detail_json(v))
+
+
+# --------------------------------------------------------------------------- #
+# Raise a material quotation on-site (mirrors admin.visit_quotation)
+# --------------------------------------------------------------------------- #
+@api_bp.route("/tech/visits/<int:visit_id>/quotation", methods=["POST"])
+@technician_only
+def tech_visit_quotation(visit_id):
+    v = _own_tech_visit(visit_id)
+    if not v:
+        return jsonify(error="Visit not found."), 404
+    body = request.get_json(silent=True) or {}
+    items = body.get("items") or []
+    q = Quotation(contract_id=v.contract_id, visit_id=v.id,
+                  notes=(body.get("notes") or None), status="pending")
+    db.session.add(q)
+    db.session.flush()
+    for it in items:
+        desc = (it.get("description") or "").strip()
+        if not desc:
+            continue
+        try:
+            qty = int(it.get("quantity") or 1)
+        except (TypeError, ValueError):
+            qty = 1
+        try:
+            price = int(it.get("unit_price") or 0)
+        except (TypeError, ValueError):
+            price = 0
+        db.session.add(QuotationItem(quotation_id=q.id, description=desc,
+                                     quantity=qty, unit_price=price))
+    if not q.items:
+        db.session.rollback()
+        return jsonify(error="Add at least one item to raise a quotation."), 400
+    db.session.commit()
+    if v.contract.customer_id:
+        notify(v.contract.customer_id, "New material quotation for approval",
+               f"During {v.label} we recommend replacements totalling "
+               f"₹{q.total:,.0f}. Please review and approve or decline.",
+               link=url_for("portal.quotation", quote_id=q.id))
+    return jsonify(ok=True, quotation=material_quote_json(q, full=True))
+
+
+# --------------------------------------------------------------------------- #
+# Equipment / asset lookup — powers the QR "Scan" tab
+# --------------------------------------------------------------------------- #
+@api_bp.route("/tech/equipment/lookup")
+@technician_only
+def tech_equipment_lookup():
+    code = (request.args.get("code") or "").strip()
+    if not code:
+        return jsonify(error="Missing 'code'."), 400
+    e = Equipment.query.filter(Equipment.serial_no == code).first()
+    if not e:
+        e = Equipment.query.filter(Equipment.serial_no.ilike(f"%{code}%")).first()
+    if not e:
+        return jsonify(error="No equipment found for that code."), 404
+    return jsonify(equipment=equipment_json(e))
+
+
+# --------------------------------------------------------------------------- #
+# Refill pickups assigned to this technician
+# --------------------------------------------------------------------------- #
+@api_bp.route("/tech/refill-pickups")
+@technician_only
+def tech_refill_pickups():
+    t = g.current_user
+    rows = (RefillOrder.query
+            .filter(RefillOrder.assigned_technician_id == t.id,
+                    RefillOrder.status.notin_(["completed", "cancelled"]))
+            .order_by(RefillOrder.scheduled_date).all())
+    return jsonify(pickups=[refill_pickup_json(o) for o in rows])
+
+
+# --------------------------------------------------------------------------- #
+# Notifications — "Alerts" tab (same Notification model the customer app uses)
+# --------------------------------------------------------------------------- #
+@api_bp.route("/tech/notifications")
+@technician_only
+def tech_notifications():
+    rows = (Notification.query.filter_by(user_id=g.current_user.id)
+            .order_by(Notification.created_at.desc()).limit(50).all())
+    unread = sum(1 for n in rows if not n.read)
+    return jsonify(unread=unread, notifications=[notification_json(n) for n in rows])
+
+
+@api_bp.route("/tech/notifications/read", methods=["POST"])
+@technician_only
+def tech_notifications_read():
+    Notification.query.filter_by(user_id=g.current_user.id, read=False)\
+        .update({"read": True})
+    db.session.commit()
+    return jsonify(ok=True)
+
+
+# --------------------------------------------------------------------------- #
+# Inventory search — powers "Raise material quotation"
+# --------------------------------------------------------------------------- #
+@api_bp.route("/tech/inventory/search")
+@technician_only
+def tech_inventory_search():
+    from sqlalchemy import or_
+    q = (request.args.get("q") or "").strip()
+    query = InventoryItem.query.filter_by(active=True)
+    if q:
+        query = query.filter(or_(InventoryItem.name.ilike(f"%{q}%"),
+                                 InventoryItem.category.ilike(f"%{q}%")))
+    rows = query.order_by(InventoryItem.category, InventoryItem.name).limit(30).all()
+    return jsonify(items=[{
+        "id": i.id, "name": i.name, "category": i.category,
+        "unit": i.unit, "rate": i.rate,
+    } for i in rows], total=InventoryItem.query.filter_by(active=True).count())
+
+
+# --------------------------------------------------------------------------- #
+# Technician Inquiries — Site visit & checklist execution on mobile
+# --------------------------------------------------------------------------- #
+@api_bp.route("/tech/inquiries")
+@technician_only
+def tech_inquiries():
+    """List inquiries assigned to the logged-in technician."""
+    t = g.current_user
+    rows = Enquiry.query.filter_by(assigned_to_id=t.id)\
+        .order_by(Enquiry.visit_scheduled_date.asc(), Enquiry.created_at.desc()).all()
+
+    return jsonify(inquiries=[{
+        "id": e.id,
+        "reference": e.ref_code,
+        "customer_name": e.name,
+        "phone": e.phone,
+        "email": e.email,
+        "address": e.address,
+        "area": e.area,
+        "city": e.city,
+        "service_requirement": e.service_requirement,
+        "status": e.status,
+        "status_label": e.status_label,
+        "visit_scheduled_date": e.visit_scheduled_date.isoformat() if e.visit_scheduled_date else None,
+        "visit_time_slot": e.visit_time_slot,
+        "team_leader_notes": e.team_leader_notes,
+        "created_at": e.created_at.isoformat() if e.created_at else None,
+    } for e in rows])
+
+
+@api_bp.route("/tech/inquiries/<int:inq_id>")
+@technician_only
+def tech_inquiry_detail(inq_id):
+    """Get full details of an inquiry including checklist and history."""
+    e = db.session.get(Enquiry, inq_id)
+    if not e or (e.assigned_to_id != g.current_user.id and not g.current_user.is_admin):
+        return jsonify(error="Inquiry not found or access denied"), 404
+
+    return jsonify(inquiry={
+        "id": e.id,
+        "reference": e.ref_code,
+        "customer_name": e.name,
+        "phone": e.phone,
+        "email": e.email,
+        "address": e.address,
+        "area": e.area,
+        "city": e.city,
+        "service_requirement": e.service_requirement,
+        "message": e.message,
+        "status": e.status,
+        "status_label": e.status_label,
+        "assigned_by": e.assigned_by.name if e.assigned_by else None,
+        "assigned_at": e.assigned_at.isoformat() if e.assigned_at else None,
+        "visit_scheduled_date": e.visit_scheduled_date.isoformat() if e.visit_scheduled_date else None,
+        "visit_time_slot": e.visit_time_slot,
+        "team_leader_notes": e.team_leader_notes,
+        "technician_notes": e.technician_notes,
+        "checklist_submitted_at": e.checklist_submitted_at.isoformat() if e.checklist_submitted_at else None,
+        "quotation_id": e.quotation_id,
+        "quotation_ref": e.quotation.reference if e.quotation else None,
+        "checklist_items": [{
+            "id": i.id,
+            "category": i.category,
+            "item_name": i.item_name,
+            "status": i.status,
+            "remarks": i.remarks,
+            "recommendation": i.recommendation
+        } for i in e.checklist_items],
+        "photos": [{
+            "id": p.id,
+            "url": upload_url(p.file_path),
+            "caption": p.caption
+        } for p in e.photos],
+        "workflow_steps": e.workflow_steps,
+    })
+
+
+@api_bp.route("/tech/inquiries/<int:inq_id>/checklist", methods=["POST"])
+@technician_only
+def tech_submit_inquiry_checklist(inq_id):
+    """Submit checklist from mobile app. Only assigned technician or Team Leader can submit."""
+    e = db.session.get(Enquiry, inq_id)
+    if not e:
+        return jsonify(error="Inquiry not found"), 404
+
+    is_assigned_tech = bool(e.assigned_to_id and g.current_user.id == e.assigned_to_id)
+    is_tl_or_admin = bool(g.current_user.is_team_leader or g.current_user.is_admin or g.current_user.is_manager)
+    if not (is_assigned_tech or is_tl_or_admin):
+        assigned_name = e.assigned_to.name if e.assigned_to else "another technician"
+        return jsonify(error=f"Access denied: This inspection is assigned to {assigned_name}. Only the assigned technician or Team Leader can conduct this checklist."), 403
+
+    payload = request.get_json(silent=True) or {}
+    items = payload.get("items", [])
+    tech_notes = payload.get("technician_notes", "").strip()
+
+    if not items:
+        return jsonify(error="No checklist items provided"), 400
+
+    InquiryChecklistItem.query.filter_by(inquiry_id=e.id).delete()
+
+    pass_cnt = 0
+    att_cnt = 0
+    fail_cnt = 0
+
+    for item in items:
+        st = item.get("status", "pass")
+        if st == "pass":
+            pass_cnt += 1
+        elif st == "attention":
+            att_cnt += 1
+        elif st == "fail":
+            fail_cnt += 1
+
+        db.session.add(InquiryChecklistItem(
+            inquiry_id=e.id,
+            category=item.get("category", "General"),
+            item_name=item.get("item_name", "Item"),
+            status=st,
+            remarks=item.get("remarks", ""),
+            recommendation=item.get("recommendation", "")
+        ))
+
+    if tech_notes:
+        e.technician_notes = tech_notes
+
+    e.checklist_submitted_at = datetime.utcnow()
+    e.visit_completed_at = datetime.utcnow()
+    e.status = "checklist_submitted"
+
+    db.session.add(InquiryHistory(
+        inquiry_id=e.id,
+        action="Checklist Submitted",
+        actor_id=g.current_user.id,
+        actor_name=g.current_user.name,
+        details=f"Mobile checklist submitted by {g.current_user.name}: {pass_cnt} passed, {att_cnt} attention, {fail_cnt} failed."
+    ))
+
+    db.session.commit()
+
+    # Notify Team Leader
+    try:
+        notify_team_leaders(
+            title=f"Checklist Submitted — {e.ref_code}",
+            body=f"{g.current_user.name} submitted site visit checklist for {e.name}. Ready for quotation generation.",
+            link=url_for("admin.enquiry_detail", enq_id=e.id)
+        )
+    except Exception:
+        pass
+
+    return jsonify(ok=True, reference=e.ref_code, status=e.status)
+
+
+@api_bp.route("/tech/inquiries/<int:inq_id>/visit-status", methods=["POST"])
+@technician_only
+def tech_update_inquiry_status(inq_id):
+    """Update inquiry visit status from mobile app."""
+    e = db.session.get(Enquiry, inq_id)
+    if not e:
+        return jsonify(error="Inquiry not found"), 404
+
+    is_assigned_tech = bool(e.assigned_to_id and g.current_user.id == e.assigned_to_id)
+    is_tl_or_admin = bool(g.current_user.is_team_leader or g.current_user.is_admin or g.current_user.is_manager)
+    if not (is_assigned_tech or is_tl_or_admin):
+        assigned_name = e.assigned_to.name if e.assigned_to else "another technician"
+        return jsonify(error=f"Access denied: Only the assigned technician ({assigned_name}) or Team Leader can update visit status."), 403
+
+    payload = request.get_json(silent=True) or {}
+    new_status = payload.get("status")
+    note = payload.get("note", "").strip()
+
+    valid_transitions = ["site_visit_scheduled", "site_visit_in_progress", "checklist_submitted"]
+    if new_status not in valid_transitions:
+        return jsonify(error="Invalid status transition"), 400
+
+    e.status = new_status
+    if new_status == "site_visit_in_progress" and not e.visit_scheduled_date:
+        e.visit_scheduled_date = date.today()
+
+    status_name = {
+        "site_visit_scheduled": "Visit Scheduled",
+        "site_visit_in_progress": "Visit in Progress",
+        "checklist_submitted": "Checklist Submitted",
+    }.get(new_status, new_status.replace("_", " ").title())
+
+    history_desc = f"Visit status updated to {status_name} by {g.current_user.name}."
+    if note:
+        history_desc += f" Note: {note}"
+
+    db.session.add(InquiryHistory(
+        inquiry_id=e.id,
+        action=f"Status: {status_name}",
+        actor_id=g.current_user.id,
+        actor_name=g.current_user.name,
+        details=history_desc
+    ))
+    db.session.commit()
+
+    return jsonify(ok=True, status=e.status, status_label=e.status_label)

@@ -13,9 +13,9 @@ from ..models import (User, AMCPlan, Contract, Visit, VisitPhoto, Equipment,
                       ServiceQuotationItem, VisitChecklistItem, InventoryItem,
                       HealthCheckReport, SystemCheckList, SupportTicket,
                       VisitDefect, Broadcast, Installment, MilestoneLog,
-                      ReworkItem)
-from ..utils import (staff_required, save_upload, notify, notify_staff,
-                     whatsapp_url, normalise_phone)
+                      ReworkItem, InquiryChecklistItem, InquiryPhoto, InquiryHistory)
+from ..utils import (staff_required, team_leader_required, save_upload, notify,
+                     notify_staff, notify_team_leaders, whatsapp_url, normalise_phone)
 from ..email_service import send_feedback_request, send_visit_confirmation
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/ops")
@@ -511,6 +511,8 @@ def visit(visit_id):
         if f.get("scheduled_date"):
             new_date = datetime.strptime(f.get("scheduled_date"), "%Y-%m-%d").date()
             _apply_reschedule(v, new_date)
+        if "scheduled_time" in f:
+            v.scheduled_time = f.get("scheduled_time") or None
         if v.status == "completed" and not v.completed_date:
             v.completed_date = date.today()
         # Completed ahead of its originally scheduled date (client asked to move
@@ -1137,6 +1139,7 @@ def refills_list():
 @staff_required
 def refill_order(order_id):
     o = db.session.get(RefillOrder, order_id) or abort(404)
+    techs = User.query.filter(User.role.in_(["technician", "admin"])).all()
     if request.method == "POST":
         f = request.form
         o.status = f.get("status", o.status)
@@ -1144,6 +1147,8 @@ def refill_order(order_id):
         o.amount = int(f.get("amount") or 0)
         o.payment_mode = f.get("payment_mode", o.payment_mode)
         o.payment_status = f.get("payment_status", o.payment_status)
+        prev_tech_id = o.assigned_technician_id
+        o.assigned_technician_id = f.get("assigned_technician_id", type=int) or None
         if f.get("scheduled_date"):
             o.scheduled_date = datetime.strptime(f.get("scheduled_date"), "%Y-%m-%dT%H:%M")
         db.session.commit()
@@ -1151,28 +1156,699 @@ def refill_order(order_id):
             notify(o.customer_id, f"{o.reference} update",
                    f"Status: {o.status}. ETA: {o.team_eta or 'TBD'}.",
                    link=url_for("portal.dashboard"))
+        if o.assigned_technician_id and o.assigned_technician_id != prev_tech_id:
+            notify(o.assigned_technician_id, "Refill pickup assigned to you",
+                   f"{o.reference} · {o.summary} — {o.area or o.address or 'site TBD'}.",
+                   link=f"/admin/refill/{o.id}")
         flash("Refill order updated.", "success")
         return redirect(url_for("admin.refill_order", order_id=o.id))
-    return render_template("admin/refill.html", o=o)
+    return render_template("admin/refill.html", o=o, techs=techs)
 
 
 # --------------------------------------------------------------------------- #
 # Enquiries
 # --------------------------------------------------------------------------- #
+# --------------------------------------------------------------------------- #
+# Predefined Fire Safety Inspection Checklist structure
+# --------------------------------------------------------------------------- #
+DEFAULT_INQUIRY_CHECKLIST = [
+    {
+        "category": "Fire Extinguishers",
+        "items": [
+            "Cylinder physical condition, paint integrity & corrosion check",
+            "Pressure gauge needle located in operable green zone",
+            "Tamper seal, safety pull pin & discharge hose/nozzle intact",
+            "Hydro-static pressure test & refilling validity dates check",
+            "Extinguisher mounting height, accessibility & photoluminescent sign"
+        ]
+    },
+    {
+        "category": "Fire Alarm & Detection",
+        "items": [
+            "Main Fire Alarm Control Panel (FACP) AC power & battery backup status",
+            "Smoke and heat detectors physical cleanliness & visual inspection",
+            "Manual Call Points (MCP) glass integrity & reset key test",
+            "Electronic hooters / strobes sounder output & audibility check",
+            "Fault, open-circuit & supervisory indicators check on panel"
+        ]
+    },
+    {
+        "category": "Hydrant & Hose Reel System",
+        "items": [
+            "Landing valves operation, wheel smoothness & gland packing leakage",
+            "First-aid hose reel drum rotation, rubber hose condition & nozzle shut-off",
+            "Fire hose box integrity, canvas delivery hoses & instantaneous couplings",
+            "Riser pipeline hydrostatic pressure & booster pump auto cut-in test",
+            "Air release valves, drain valves & underground ring main isolation valves"
+        ]
+    },
+    {
+        "category": "Automatic Sprinkler System",
+        "items": [
+            "Main installation control valve (ICV) open, secured & locked",
+            "Sprinkler glass bulbs / fusible links unobstructed (minimum 0.5m clearance)",
+            "System water pressure gauge readings at riser base & alarm valve",
+            "Inspector's test & drain valve functional flow test"
+        ]
+    },
+    {
+        "category": "Fire Pumps & Reservoir Water Supply",
+        "items": [
+            "Main electrical fire pump automatic start on pressure drop",
+            "Standby diesel engine fire pump battery health, fuel level & crank test",
+            "Jockey pump automatic start/stop pressure regulation settings",
+            "Fire water underground / overhead reservoir storage capacity check"
+        ]
+    },
+    {
+        "category": "Emergency Exits & Signage",
+        "items": [
+            "Emergency fire exit staircases & doors unobstructed and unlocked",
+            "Photoluminescent exit signs & directional evacuation arrows visibility",
+            "Emergency secondary backup lighting units battery operation test",
+            "Evacuation floor plan diagram & safe assembly point identification"
+        ]
+    },
+    {
+        "category": "Electrical & Risk Observations",
+        "items": [
+            "Main electrical distribution boards clear of combustible materials",
+            "Fire-stopping seals intact on cable tray & pipe wall penetrations",
+            "Safe storage of flammable chemicals, gases or hazardous inventory",
+            "Overall site housekeeping & fire hazard risk assessment"
+        ]
+    }
+]
+
+
+# --------------------------------------------------------------------------- #
+# Inquiry Management System Routes
+# Workflow: New Inquiry -> Team Leader -> Technician Assignment -> Site Visit -> Checklist Submission -> Quotation Generation
+# --------------------------------------------------------------------------- #
+
 @admin_bp.route("/enquiries")
 @login_required
 @staff_required
 def enquiries():
-    items = Enquiry.query.order_by(Enquiry.created_at.desc()).all()
-    return render_template("admin/enquiries.html", enquiries=items)
+    """Inquiry Management Dashboard: view, search, filter and track inquiries."""
+    tab = request.args.get("tab", "all")
+    q = request.args.get("q", "").strip()
+    tech_filter = request.args.get("tech_id", type=int)
+
+    query = Enquiry.query
+
+    # Search filter
+    if q:
+        search_term = f"%{q}%"
+        query = query.filter(
+            or_(
+                Enquiry.reference.ilike(search_term),
+                Enquiry.name.ilike(search_term),
+                Enquiry.phone.ilike(search_term),
+                Enquiry.email.ilike(search_term),
+                Enquiry.address.ilike(search_term),
+                Enquiry.area.ilike(search_term),
+                Enquiry.service_requirement.ilike(search_term),
+            )
+        )
+
+    # Technician filter
+    if tech_filter:
+        query = query.filter(Enquiry.assigned_to_id == tech_filter)
+
+    # Tab status filters
+    if tab == "new":
+        query = query.filter(Enquiry.status == "new")
+    elif tab == "assigned":
+        query = query.filter(Enquiry.status.in_(["assigned", "site_visit_scheduled", "site_visit_in_progress"]))
+    elif tab == "checklist":
+        query = query.filter(Enquiry.status == "checklist_submitted")
+    elif tab == "quoted":
+        query = query.filter(Enquiry.status == "quotation_generated")
+    elif tab == "closed":
+        query = query.filter(Enquiry.status.in_(["closed", "responded"]))
+    elif tab == "my":
+        query = query.filter(Enquiry.assigned_to_id == current_user.id)
+
+    items = query.order_by(Enquiry.created_at.desc()).all()
+
+    # KPI counts
+    all_enquiries = Enquiry.query.all()
+    stats = {
+        "total": len(all_enquiries),
+        "new": sum(1 for e in all_enquiries if e.status == "new"),
+        "assigned": sum(1 for e in all_enquiries if e.status in ("assigned", "site_visit_scheduled", "site_visit_in_progress")),
+        "checklist": sum(1 for e in all_enquiries if e.status == "checklist_submitted"),
+        "quoted": sum(1 for e in all_enquiries if e.status == "quotation_generated"),
+        "closed": sum(1 for e in all_enquiries if e.status in ("closed", "responded")),
+        "my": sum(1 for e in all_enquiries if e.assigned_to_id == current_user.id) if current_user.is_authenticated else 0,
+    }
+
+    # Available technicians for assignment / filter
+    technicians = User.query.filter(User.role.in_(["technician", "admin"])).order_by(User.name).all()
+
+    return render_template("admin/enquiries.html",
+                           enquiries=items,
+                           stats=stats,
+                           active_tab=tab,
+                           search_query=q,
+                           tech_filter=tech_filter,
+                           technicians=technicians)
+
+
+@admin_bp.route("/enquiry/new", methods=["GET", "POST"])
+@login_required
+@staff_required
+def enquiry_new():
+    """Staff intake: manually record incoming phone/walk-in inquiries."""
+    technicians = User.query.filter(User.role.in_(["technician", "admin"])).order_by(User.name).all()
+
+    if request.method == "POST":
+        f = request.form
+        name = f.get("name", "").strip()
+        phone = f.get("phone", "").strip()
+        email = f.get("email", "").strip()
+        address = f.get("address", "").strip()
+        area = f.get("area", "").strip()
+        city = f.get("city", "Surat, Gujarat").strip()
+        service_requirement = f.get("service_requirement", "Fire Safety Inspection & AMC").strip()
+        subject = f.get("subject", "").strip() or f"{service_requirement} Inquiry"
+        message = f.get("message", "").strip()
+        tech_id = f.get("assigned_to_id", type=int)
+        visit_date_str = f.get("visit_scheduled_date")
+        time_slot = f.get("visit_time_slot", "").strip()
+        leader_notes = f.get("team_leader_notes", "").strip()
+
+        cu_id = None
+        if phone:
+            existing = User.query.filter_by(phone=phone).first()
+            if existing:
+                cu_id = existing.id
+
+        e = Enquiry(
+            name=name,
+            phone=phone,
+            email=email,
+            address=address,
+            area=area,
+            city=city,
+            service_requirement=service_requirement,
+            subject=subject,
+            message=message,
+            customer_id=cu_id,
+            status="new"
+        )
+        db.session.add(e)
+        db.session.flush()
+
+        e.reference = f"INQ-{e.id:04d}"
+
+        # Initial history
+        db.session.add(InquiryHistory(
+            inquiry_id=e.id,
+            action="Inquiry Created",
+            actor_id=current_user.id,
+            actor_name=current_user.name,
+            details=f"Inquiry logged by staff ({current_user.name}). Service: {service_requirement}."
+        ))
+
+        # If technician is assigned directly on creation
+        if tech_id:
+            assigned_tech = db.session.get(User, tech_id)
+            if assigned_tech:
+                e.assigned_to_id = assigned_tech.id
+                e.assigned_by_id = current_user.id
+                e.assigned_at = datetime.utcnow()
+                if visit_date_str:
+                    try:
+                        e.visit_scheduled_date = datetime.strptime(visit_date_str, "%Y-%m-%d").date()
+                    except Exception:
+                        pass
+                e.visit_time_slot = time_slot
+                e.team_leader_notes = leader_notes
+                e.status = "assigned"
+
+                # Log assignment history
+                db.session.add(InquiryHistory(
+                    inquiry_id=e.id,
+                    action="Assigned to Technician",
+                    actor_id=current_user.id,
+                    actor_name=current_user.name,
+                    details=f"Assigned to {assigned_tech.name}. Visit date: {e.visit_scheduled_date or 'TBD'} ({time_slot or 'Flexible'})."
+                ))
+
+                # Notify technician
+                try:
+                    notify(
+                        assigned_tech.id,
+                        title=f"New Inquiry Assigned — {e.reference}",
+                        body=f"Visit scheduled for {e.name} at {e.address or e.city}. Service: {service_requirement}.",
+                        link=url_for("admin.enquiry_detail", enq_id=e.id)
+                    )
+                except Exception:
+                    pass
+        else:
+            # Notify Team Leaders
+            try:
+                notify_team_leaders(
+                    title=f"New Customer Inquiry — {e.reference}",
+                    body=f"{name} requested {service_requirement} at {area or city}. Ready for technician assignment.",
+                    link=url_for("admin.enquiry_detail", enq_id=e.id)
+                )
+            except Exception:
+                pass
+
+        db.session.commit()
+        flash(f"Inquiry {e.reference} created successfully.", "success")
+        return redirect(url_for("admin.enquiry_detail", enq_id=e.id))
+
+    return render_template("admin/enquiry_new.html", technicians=technicians)
+
+
+@admin_bp.route("/enquiry/<int:enq_id>")
+@login_required
+@staff_required
+def enquiry_detail(enq_id):
+    """Complete Inquiry detail page with workflow track, assignment, checklist review, and history."""
+    e = db.session.get(Enquiry, enq_id) or abort(404)
+    technicians = User.query.filter(User.role.in_(["technician", "admin"])).order_by(User.name).all()
+
+    # Group checklist items by category if completed
+    grouped_checklist = {}
+    for item in e.checklist_items:
+        grouped_checklist.setdefault(item.category, []).append(item)
+
+    # Checklist finding counts
+    checklist_stats = {
+        "total": len(e.checklist_items),
+        "pass": sum(1 for i in e.checklist_items if i.status == "pass"),
+        "attention": sum(1 for i in e.checklist_items if i.status == "attention"),
+        "fail": sum(1 for i in e.checklist_items if i.status == "fail"),
+        "na": sum(1 for i in e.checklist_items if i.status == "na"),
+    }
+
+    return render_template("admin/enquiry_detail.html",
+                           inquiry=e,
+                           technicians=technicians,
+                           grouped_checklist=grouped_checklist,
+                           checklist_stats=checklist_stats)
+
+
+@admin_bp.route("/enquiry/<int:enq_id>/assign", methods=["POST"])
+@login_required
+@staff_required
+def enquiry_assign(enq_id):
+    """Team Leader assigns a technician, sets inspection visit date, time slot & instructions."""
+    e = db.session.get(Enquiry, enq_id) or abort(404)
+    f = request.form
+
+    tech_id = f.get("assigned_to_id", type=int) or f.get("technician_id", type=int)
+    if not tech_id:
+        flash("Please select a technician to assign.", "warning")
+        return redirect(url_for("admin.enquiry_detail", enq_id=e.id))
+
+    tech = db.session.get(User, tech_id)
+    if not tech:
+        flash("Selected technician not found.", "danger")
+        return redirect(url_for("admin.enquiry_detail", enq_id=e.id))
+
+    visit_date_str = f.get("visit_scheduled_date")
+    time_slot = f.get("visit_time_slot", "").strip()
+    leader_notes = f.get("team_leader_notes", "").strip()
+
+    e.assigned_to_id = tech.id
+    e.assigned_by_id = current_user.id
+    e.assigned_at = datetime.utcnow()
+    if visit_date_str:
+        try:
+            e.visit_scheduled_date = datetime.strptime(visit_date_str, "%Y-%m-%d").date()
+        except Exception:
+            pass
+    e.visit_time_slot = time_slot
+    e.team_leader_notes = leader_notes
+
+    # Progress status to site_visit_scheduled if visit date set, else assigned
+    if e.status in ("new", "assigned", "site_visit_scheduled"):
+        e.status = "site_visit_scheduled" if e.visit_scheduled_date else "assigned"
+
+    # Log in history
+    history_desc = f"Assigned to Technician: {tech.name} by Team Leader ({current_user.name})."
+    if e.visit_scheduled_date:
+        history_desc += f" Visit Date: {e.visit_scheduled_date.strftime('%d %b %Y')} ({time_slot or 'Standard Hours'})."
+    if leader_notes:
+        history_desc += f" Notes: {leader_notes}"
+
+    db.session.add(InquiryHistory(
+        inquiry_id=e.id,
+        action="Assigned to Technician",
+        actor_id=current_user.id,
+        actor_name=current_user.name,
+        details=history_desc
+    ))
+
+    db.session.commit()
+
+    # Notify Technician
+    try:
+        notify(
+            tech.id,
+            title=f"Inquiry Assigned — {e.ref_code}",
+            body=f"Visit scheduled for {e.name} at {e.address or e.city} on {e.visit_scheduled_date or 'TBD'}. Tap to review site details.",
+            link=url_for("admin.enquiry_detail", enq_id=e.id)
+        )
+    except Exception:
+        pass
+
+    # Notify Customer if account exists
+    if e.customer_id:
+        try:
+            notify(
+                e.customer_id,
+                title=f"Technician Assigned — {e.ref_code}",
+                body=f"Technician {tech.name} has been assigned for your fire safety visit on {e.visit_scheduled_date or 'upcoming schedule'}.",
+                link=url_for("portal.dashboard")
+            )
+        except Exception:
+            pass
+
+    flash(f"Inquiry {e.ref_code} assigned to {tech.name}. Notification sent.", "success")
+    return redirect(url_for("admin.enquiry_detail", enq_id=e.id))
+
+
+@admin_bp.route("/enquiry/<int:enq_id>/visit-status", methods=["POST"])
+@login_required
+@staff_required
+def enquiry_visit_status(enq_id):
+    """Technician updates site visit status (e.g. In Progress, Arrived at Site)."""
+    e = db.session.get(Enquiry, enq_id) or abort(404)
+    new_status = request.form.get("status")
+    notes = request.form.get("notes", "").strip()
+
+    if new_status in ("site_visit_in_progress", "site_visit_scheduled"):
+        e.status = new_status
+        db.session.add(InquiryHistory(
+            inquiry_id=e.id,
+            action=f"Status: {e.status_label}",
+            actor_id=current_user.id,
+            actor_name=current_user.name,
+            details=notes or f"Visit status updated to {e.status_label} by {current_user.name}."
+        ))
+        db.session.commit()
+        flash(f"Inquiry status updated to {e.status_label}.", "success")
+
+    return redirect(url_for("admin.enquiry_detail", enq_id=e.id))
+
+
+@admin_bp.route("/enquiry/<int:enq_id>/checklist", methods=["GET", "POST"])
+@login_required
+@staff_required
+def enquiry_checklist(enq_id):
+    """Predefined Visit Checklist Form: Only the assigned technician or Team Leader can conduct/edit it."""
+    e = db.session.get(Enquiry, enq_id) or abort(404)
+
+    # STRICT ACCESS CONTROL:
+    # When an inspection is assigned to a technician, ONLY that technician or Team Leader / Admin can conduct the checklist.
+    is_assigned_tech = bool(e.assigned_to_id and current_user.id == e.assigned_to_id)
+    is_tl_or_admin = bool(current_user.is_team_leader or current_user.is_admin or current_user.is_manager)
+
+    if not (is_assigned_tech or is_tl_or_admin):
+        assigned_name = e.assigned_to.name if e.assigned_to else "another technician"
+        flash(f"Access restricted: This inspection is assigned to {assigned_name}. Only the assigned technician or Team Leader can conduct this checklist.", "danger")
+        return redirect(url_for("admin.enquiry_detail", enq_id=e.id))
+
+    if request.method == "POST":
+        f = request.form
+
+        # Clear existing checklist items for this inquiry before saving fresh submission
+        InquiryChecklistItem.query.filter_by(inquiry_id=e.id).delete()
+
+        # Extract items
+        item_keys = [k for k in f.keys() if k.startswith("item_status_")]
+        pass_cnt = 0
+        att_cnt = 0
+        fail_cnt = 0
+
+        for k in item_keys:
+            idx = k.replace("item_status_", "")
+            cat = f.get(f"item_cat_{idx}", "General")
+            name = f.get(f"item_name_{idx}", "Inspection Item")
+            st = f.get(k, "pass")
+            remarks = f.get(f"item_remarks_{idx}", "").strip()
+            rec = f.get(f"item_rec_{idx}", "").strip()
+
+            if st == "pass":
+                pass_cnt += 1
+            elif st == "attention":
+                att_cnt += 1
+            elif st == "fail":
+                fail_cnt += 1
+
+            db.session.add(InquiryChecklistItem(
+                inquiry_id=e.id,
+                category=cat,
+                item_name=name,
+                status=st,
+                remarks=remarks,
+                recommendation=rec
+            ))
+
+        # Technician summary notes
+        tech_notes = f.get("technician_notes", "").strip()
+        if tech_notes:
+            e.technician_notes = tech_notes
+
+        # Photo uploads
+        photos = request.files.getlist("photos")
+        caption = f.get("photo_caption", "").strip()
+        photo_count = 0
+        for p in photos:
+            if p and p.filename:
+                saved = save_upload(p, f"inquiries/{e.id}", {"png", "jpg", "jpeg", "webp"})
+                if saved:
+                    db.session.add(InquiryPhoto(
+                        inquiry_id=e.id,
+                        file_path=saved,
+                        caption=caption or f"Site inspection photo — {e.ref_code}",
+                        uploaded_by_id=current_user.id
+                    ))
+                    photo_count += 1
+
+        e.checklist_submitted_at = datetime.utcnow()
+        e.visit_completed_at = datetime.utcnow()
+        e.status = "checklist_submitted"
+
+        history_summary = f"Site Visit Checklist Submitted by {current_user.name}. Findings: {pass_cnt} passed, {att_cnt} attention needed, {fail_cnt} defects identified."
+        if photo_count:
+            history_summary += f" ({photo_count} photo(s) uploaded)"
+        if tech_notes:
+            history_summary += f"\nRemarks: {tech_notes}"
+
+        db.session.add(InquiryHistory(
+            inquiry_id=e.id,
+            action="Checklist Submitted",
+            actor_id=current_user.id,
+            actor_name=current_user.name,
+            details=history_summary
+        ))
+
+        db.session.commit()
+
+        # Notify Team Leader
+        try:
+            notify_team_leaders(
+                title=f"Checklist Submitted — {e.ref_code}",
+                body=f"{current_user.name} submitted site visit checklist for {e.name}. Ready for quotation generation.",
+                link=url_for("admin.enquiry_detail", enq_id=e.id)
+            )
+        except Exception:
+            pass
+
+        # Notify Customer if linked
+        if e.customer_id:
+            try:
+                notify(
+                    e.customer_id,
+                    title=f"Site Inspection Complete — {e.ref_code}",
+                    body="Our technician has completed the fire safety inspection. A quotation is being prepared.",
+                    link=url_for("portal.dashboard")
+                )
+            except Exception:
+                pass
+
+        flash(f"Visit checklist submitted successfully for {e.ref_code}! Quotation generation is now available.", "success")
+        return redirect(url_for("admin.enquiry_detail", enq_id=e.id))
+
+    # GET: Load existing items if available, or populate from DEFAULT_INQUIRY_CHECKLIST
+    existing_items = InquiryChecklistItem.query.filter_by(inquiry_id=e.id).order_by(InquiryChecklistItem.id.asc()).all()
+    grouped_items = {}
+    if existing_items:
+        for it in existing_items:
+            grouped_items.setdefault(it.category, []).append(it)
+    else:
+        for cat_info in DEFAULT_INQUIRY_CHECKLIST:
+            cat_name = cat_info["category"]
+            grouped_items[cat_name] = [
+                {"item_name": item_text, "status": "pass", "remarks": "", "recommendation": ""}
+                for item_text in cat_info["items"]
+            ]
+
+    return render_template("admin/enquiry_checklist.html",
+                           inquiry=e,
+                           grouped_items=grouped_items,
+                           existing_photos=e.photos)
+
+
+@admin_bp.route("/enquiry/<int:enq_id>/generate-quotation", methods=["GET", "POST"])
+@login_required
+@staff_required
+def enquiry_generate_quotation(enq_id):
+    """Generate a ServiceQuotation based on the inspection checklist findings."""
+    e = db.session.get(Enquiry, enq_id) or abort(404)
+
+    if e.quotation_id:
+        flash(f"Quotation {e.quotation.reference} has already been generated for this inquiry.", "info")
+        return redirect(url_for("sq.detail_quotation", sq_id=e.quotation_id))
+
+    # On POST: Create the quotation automatically from checklist findings
+    if request.method == "POST":
+        f = request.form
+        req_lower = (e.service_requirement or "").lower()
+        stype = f.get("service_type") or ("amc" if "amc" in req_lower else ("refilling" if "refill" in req_lower else "emergency"))
+
+        sq = ServiceQuotation(
+            service_type=stype,
+            customer_name=e.name,
+            customer_phone=e.phone or "",
+            customer_email=e.email or "",
+            project_name=f"{e.name} Site ({e.area or e.city or 'Surat'})",
+            customer_address=f"{e.address or ''}{', ' + e.area if e.area else ''}{', ' + e.city if e.city else ''}".strip(", "),
+            gst_percent=18.0,
+            valid_days=15,
+            notes=f"Commercial proposal generated following site inspection visit for {e.ref_code}. Technician: {e.assigned_to.name if e.assigned_to else 'Staff'}.",
+            inquiry_id=e.id,
+            customer_id=e.customer_id,
+            created_by_id=current_user.id,
+            status="draft"
+        )
+        sq.generate_number()
+        db.session.add(sq)
+        db.session.flush()
+
+        # Primary maintenance / service item
+        primary_title = f"{e.service_requirement} — Standard Servicing & Maintenance Scope"
+        primary_rate = 24000.0 if stype == "amc" else 4500.0
+        db.session.add(ServiceQuotationItem(
+            quotation_id=sq.id,
+            category="Core Service",
+            description=primary_title,
+            unit="Annual Contract" if stype == "amc" else "Job",
+            quantity=1,
+            rate=primary_rate,
+            sort_order=0
+        ))
+
+        # Add line items for checklist issues (defects/attention)
+        issues = [item for item in e.checklist_items if item.status in ("attention", "fail")]
+        for idx, iss in enumerate(issues, start=1):
+            desc = iss.recommendation or f"Rectification / Overhaul: {iss.item_name} ({iss.remarks or 'Inspection defect'})"
+            db.session.add(ServiceQuotationItem(
+                quotation_id=sq.id,
+                category=iss.category,
+                description=desc,
+                unit="Nos",
+                quantity=1,
+                rate=1200.0 if iss.status == "attention" else 2800.0,
+                sort_order=idx
+            ))
+
+        e.quotation_id = sq.id
+        e.status = "quotation_generated"
+
+        # Log history
+        db.session.add(InquiryHistory(
+            inquiry_id=e.id,
+            action="Quotation Generated",
+            actor_id=current_user.id,
+            actor_name=current_user.name,
+            details=f"Service quotation {sq.reference} generated based on site visit inspection findings. Total items: {1 + len(issues)}."
+        ))
+
+        db.session.commit()
+
+        # Notify Team Leader
+        try:
+            notify_team_leaders(
+                title=f"Quotation Generated — {e.ref_code}",
+                body=f"Quotation {sq.reference} generated for {e.name}. Ready for customer review and dispatch.",
+                link=url_for("sq.detail_quotation", sq_id=sq.id)
+            )
+        except Exception:
+            pass
+
+        flash(f"Quotation {sq.reference} generated successfully from inspection checklist!", "success")
+        return redirect(url_for("sq.detail_quotation", sq_id=sq.id))
+
+    # On GET: Redirect to the full quotation builder with inquiry pre-populated
+    return redirect(url_for("sq.new_quotation", inquiry_id=e.id))
+
+
+@admin_bp.route("/enquiry/<int:enq_id>/close", methods=["POST"])
+@login_required
+@staff_required
+def enquiry_close(enq_id):
+    """Mark an inquiry as closed / completed."""
+    e = db.session.get(Enquiry, enq_id) or abort(404)
+    reason = request.form.get("reason", "").strip() or "Closed by staff"
+
+    e.status = "closed"
+    db.session.add(InquiryHistory(
+        inquiry_id=e.id,
+        action="Inquiry Closed",
+        actor_id=current_user.id,
+        actor_name=current_user.name,
+        details=f"Inquiry closed by {current_user.name}. Reason: {reason}"
+    ))
+    db.session.commit()
+    flash(f"Inquiry {e.ref_code} marked as closed.", "success")
+    return redirect(url_for("admin.enquiry_detail", enq_id=e.id))
+
+
+@admin_bp.route("/enquiry/<int:enq_id>/add-note", methods=["POST"])
+@login_required
+@staff_required
+def enquiry_add_note(enq_id):
+    """Add a manual remark or activity note to the inquiry history."""
+    e = db.session.get(Enquiry, enq_id) or abort(404)
+    note_text = request.form.get("note", "").strip()
+
+    if note_text:
+        db.session.add(InquiryHistory(
+            inquiry_id=e.id,
+            action="Note Added",
+            actor_id=current_user.id,
+            actor_name=current_user.name,
+            details=note_text
+        ))
+        db.session.commit()
+        flash("Note recorded in inquiry history.", "success")
+
+    return redirect(url_for("admin.enquiry_detail", enq_id=e.id))
 
 
 @admin_bp.route("/enquiry/<int:enq_id>/respond", methods=["POST"])
 @login_required
 @staff_required
 def respond_enquiry(enq_id):
+    """Legacy helper for backward compatibility."""
     e = db.session.get(Enquiry, enq_id) or abort(404)
     e.status = "responded"
+    db.session.add(InquiryHistory(
+        inquiry_id=e.id,
+        action="Marked Responded",
+        actor_id=current_user.id,
+        actor_name=current_user.name,
+        details=f"Inquiry marked as responded by {current_user.name}."
+    ))
     db.session.commit()
     flash("Marked as responded.", "success")
     return redirect(url_for("admin.enquiries"))

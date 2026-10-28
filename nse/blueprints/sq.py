@@ -16,8 +16,9 @@ from flask_login import login_required, current_user
 from ..extensions import db
 from ..models import (ServiceQuotation, ServiceQuotationItem,
                       CustomerJourneyEvent, User, Contract,
-                      RefillOrder, ServiceRequest, InventoryItem)
-from ..utils import staff_required, notify, whatsapp_url, public_url, qr_data_uri
+                      RefillOrder, ServiceRequest, InventoryItem,
+                      Enquiry, InquiryHistory)
+from ..utils import staff_required, notify, notify_team_leaders, whatsapp_url, public_url, qr_data_uri
 from ..pdf_generator import generate_quotation_pdf
 from ..email_service import (send_quotation_email, send_quote_accepted_alert,
                               send_negotiation_alert)
@@ -84,6 +85,9 @@ def new_quotation():
     # Pre-fill from a site survey (?from_survey=X) — client details only,
     # NO items auto-added. Engineer fills items manually.
     from_survey_id = request.args.get("from_survey", type=int)
+    inquiry_id     = request.args.get("inquiry_id", type=int)
+    inquiry        = db.session.get(Enquiry, inquiry_id) if inquiry_id else None
+
     prefill = {}
     if from_survey_id:
         prefill = {
@@ -93,11 +97,31 @@ def new_quotation():
             "project_name":     request.args.get("prefill_project", ""),
             "customer_address": request.args.get("prefill_address", ""),
         }
+    elif inquiry:
+        req_lower = (inquiry.service_requirement or "").lower()
+        stype = "amc"
+        if "refill" in req_lower:
+            stype = "refilling"
+        elif "noc" in req_lower:
+            stype = "noc"
+        elif "emergency" in req_lower or "repair" in req_lower or "hydrant" in req_lower:
+            stype = "emergency"
+
+        prefill = {
+            "customer_name":    inquiry.name or "",
+            "customer_phone":   inquiry.phone or "",
+            "customer_email":   inquiry.email or "",
+            "project_name":     f"{inquiry.name} Site ({inquiry.area or inquiry.city or 'Surat'})",
+            "customer_address": f"{inquiry.address or ''}{', ' + inquiry.area if inquiry.area else ''}{', ' + inquiry.city if inquiry.city else ''}".strip(", "),
+            "service_type":     stype,
+            "inquiry_id":       inquiry.id,
+        }
 
     if request.method == "POST":
         f = request.form
+        inquiry_id_form = f.get("inquiry_id", type=int) or inquiry_id
         sq = ServiceQuotation(
-            service_type     = f.get("service_type", "amc"),
+            service_type     = f.get("service_type", prefill.get("service_type", "amc")),
             customer_name    = f.get("customer_name", "").strip(),
             customer_phone   = f.get("customer_phone", "").strip(),
             customer_email   = f.get("customer_email", "").strip(),
@@ -109,6 +133,7 @@ def new_quotation():
             contract_id      = f.get("contract_id") or None,
             refill_order_id  = f.get("refill_order_id") or None,
             service_request_id = f.get("service_request_id") or None,
+            inquiry_id       = inquiry_id_form or None,
             created_by_id    = current_user.id,
             status           = "draft",
         )
@@ -154,6 +179,28 @@ def new_quotation():
             if sv:
                 sv.service_quotation_id = sq.id
 
+        # Link back to inquiry if originated from an inquiry inspection
+        if inquiry_id_form:
+            inq = db.session.get(Enquiry, inquiry_id_form)
+            if inq:
+                inq.quotation_id = sq.id
+                inq.status = "quotation_generated"
+                db.session.add(InquiryHistory(
+                    inquiry_id=inq.id,
+                    action="Quotation Generated",
+                    actor_id=current_user.id,
+                    actor_name=current_user.name,
+                    details=f"Quotation {sq.reference} generated based on inspection checklist."
+                ))
+                try:
+                    notify_team_leaders(
+                        title=f"Quotation Generated — {inq.ref_code}",
+                        body=f"Quotation {sq.reference} generated for {inq.name}. Ready for customer dispatch.",
+                        link=url_for("sq.detail_quotation", sq_id=sq.id)
+                    )
+                except Exception:
+                    pass
+
         _log_event(sq.customer_id, "quote_requested",
                    f"Quotation {sq.reference} created as draft by {current_user.name}",
                    "service_quotation", sq.id)
@@ -169,7 +216,8 @@ def new_quotation():
     return render_template("admin/sq_new.html",
                            contract=contract, sr=sr, ro=ro,
                            inventory=inventory, prefill=prefill,
-                           projects=projects, from_survey_id=from_survey_id)
+                           projects=projects, from_survey_id=from_survey_id,
+                           inquiry=inquiry)
 
 
 # --------------------------------------------------------------------------- #

@@ -1,0 +1,127 @@
+{% extends "base_ops.html" %}
+{% block title %}Log New Customer Inquiry — Ops Console{% endblock %}
+
+{% block content %}
+<div class="space-y-6 max-w-3xl mx-auto pb-12">
+
+  <!-- Header -->
+  <div class="flex items-center justify-between">
+    <a href="{{ url_for('admin.enquiries') }}"
+       class="inline-flex items-center gap-1.5 text-xs text-ink-subtle hover:text-primary transition font-medium">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      Back to Inquiries
+    </a>
+    <span class="text-xs text-ink-muted">Staff Intake</span>
+  </div>
+
+  <div class="card p-6">
+    <div class="border-b border-slate-100 pb-4 mb-6">
+      <h1 class="text-xl font-bold text-ink">Log New Customer Inquiry</h1>
+      <p class="text-xs text-ink-muted mt-1">Record phone-in or walk-in client requests. The inquiry will be assigned a reference number and queued for the Team Leader and Technician.</p>
+    </div>
+
+    <form method="post" class="space-y-6">
+
+      <!-- Customer Details Section -->
+      <div>
+        <h2 class="text-xs font-bold text-ink uppercase tracking-wider mb-3">1. Customer Information</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+          <div>
+            <label class="block font-semibold text-ink mb-1">Customer / Organization Name <span class="text-danger">*</span></label>
+            <input type="text" name="name" required placeholder="e.g. Surat Diamond Complex / Mr. Rajesh Patel" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white focus:outline-none focus:border-primary">
+          </div>
+          <div>
+            <label class="block font-semibold text-ink mb-1">Phone Number <span class="text-danger">*</span></label>
+            <input type="tel" name="phone" required placeholder="10-digit mobile number" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white focus:outline-none focus:border-primary">
+          </div>
+          <div>
+            <label class="block font-semibold text-ink mb-1">Email Address</label>
+            <input type="email" name="email" placeholder="contact@example.com" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white focus:outline-none focus:border-primary">
+          </div>
+          <div>
+            <label class="block font-semibold text-ink mb-1">Service Required <span class="text-danger">*</span></label>
+            <select name="service_requirement" required class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white focus:outline-none focus:border-primary">
+              <option value="Fire Safety Inspection & AMC">Fire Safety Inspection & AMC</option>
+              <option value="Fire Extinguisher Refilling & Servicing">Fire Extinguisher Refilling & Servicing</option>
+              <option value="Fire Hydrant & Hose Reel System Inspection">Fire Hydrant & Hose Reel System Inspection</option>
+              <option value="Fire Alarm & Detection System Repair">Fire Alarm & Detection System Repair</option>
+              <option value="Automatic Sprinkler System Maintenance">Automatic Sprinkler System Maintenance</option>
+              <option value="Fire NOC Renewal & Audit Consultation">Fire NOC Renewal & Audit Consultation</option>
+              <option value="Emergency Breakdown Response">Emergency Breakdown Response</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Site Location -->
+      <div>
+        <h2 class="text-xs font-bold text-ink uppercase tracking-wider mb-3">2. Site Location</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+          <div class="sm:col-span-2">
+            <label class="block font-semibold text-ink mb-1">Site Street Address</label>
+            <input type="text" name="address" placeholder="Building no, plot, street, landmark..." class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white focus:outline-none focus:border-primary">
+          </div>
+          <div>
+            <label class="block font-semibold text-ink mb-1">Area / Locality</label>
+            <input type="text" name="area" placeholder="e.g. Ring Road, Adajan, Vesu..." class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white focus:outline-none focus:border-primary">
+          </div>
+        </div>
+      </div>
+
+      <!-- Problem Description -->
+      <div>
+        <h2 class="text-xs font-bold text-ink uppercase tracking-wider mb-2">3. Inquiry Details & Scope</h2>
+        <label class="block text-xs font-semibold text-ink mb-1">Description / Customer Problem <span class="text-danger">*</span></label>
+        <textarea name="message" rows="3" required placeholder="Describe the inquiry: building type, approximate equipment count, specific issues reported by customer..." class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white focus:outline-none focus:border-primary"></textarea>
+      </div>
+
+      <!-- Optional Direct Assignment -->
+      <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+        <div class="flex items-center justify-between">
+          <h2 class="text-xs font-bold text-ink uppercase tracking-wider">4. Technician Assignment (Optional)</h2>
+          <span class="text-[10px] text-slate-500">Can also be assigned later by Team Leader</span>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+          <div>
+            <label class="block font-medium text-ink mb-1">Assign Technician</label>
+            <select name="assigned_to_id" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white">
+              <option value="">-- Assign Later by Team Leader --</option>
+              {% for t in technicians %}
+              <option value="{{ t.id }}">{{ t.name }} ({{ t.role|title }})</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label class="block font-medium text-ink mb-1">Scheduled Visit Date</label>
+            <input type="date" name="visit_scheduled_date" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white">
+          </div>
+          <div>
+            <label class="block font-medium text-ink mb-1">Time Slot</label>
+            <select name="visit_time_slot" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white">
+              <option value="Morning (10:00 AM - 01:00 PM)">Morning (10 AM - 1 PM)</option>
+              <option value="Afternoon (02:00 PM - 05:00 PM)">Afternoon (2 PM - 5 PM)</option>
+              <option value="Flexible / Full Day">Flexible</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-medium text-ink mb-1 text-xs">Instructions for Technician</label>
+          <input type="text" name="team_leader_notes" placeholder="Special guidance or client timing preferences..." class="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 bg-white">
+        </div>
+      </div>
+
+      <!-- Submit -->
+      <div class="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+        <a href="{{ url_for('admin.enquiries') }}" class="px-4 py-2 text-xs font-medium text-slate-600 hover:text-ink">Cancel</a>
+        <button type="submit" class="btn btn-primary text-xs px-6 py-2.5">
+          Save & Create Inquiry
+        </button>
+      </div>
+
+    </form>
+  </div>
+
+</div>
+{% endblock %}

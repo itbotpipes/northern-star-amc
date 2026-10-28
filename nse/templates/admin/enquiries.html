@@ -1,32 +1,309 @@
 {% extends "base_ops.html" %}
 {% from "_macros.html" import status_badge %}
-{% block title %}Enquiries — Ops{% endblock %}
-{% block content %}
-<section class="max-w-4xl mx-auto px-4 py-10">
-  <a href="{{ url_for('admin.dashboard') }}" class="text-sm text-slate-500 hover:text-navy-700">← Ops Console</a>
-  <h1 class="text-2xl font-extrabold text-navy-800 mt-2">Enquiries</h1>
+{% block title %}Inquiry Management — Ops Console{% endblock %}
 
-  {% if enquiries %}
-  <div class="mt-5 space-y-3">
-    {% for e in enquiries %}
-    <div class="bg-white rounded-xl border {{ 'border-star-300' if e.status=='new' else 'border-slate-200' }} p-4">
-      <div class="flex items-start justify-between gap-3">
-        <div>
-          <div class="font-semibold text-navy-800">{{ e.subject or 'Enquiry' }} {{ status_badge(e.status) }}</div>
-          <div class="text-xs text-slate-500 mt-0.5">{{ e.name }}{% if e.phone %} · {{ e.phone }}{% endif %}{% if e.email %} · {{ e.email }}{% endif %} · {{ e.created_at|datefmt }}</div>
-          <p class="text-sm text-slate-700 mt-2">{{ e.message }}</p>
-        </div>
-        {% if e.status == 'new' %}
-        <form method="post" action="{{ url_for('admin.respond_enquiry', enq_id=e.id) }}">
-          <button class="bg-green-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-green-500 whitespace-nowrap">Mark responded</button>
-        </form>
+{% block content %}
+<div class="space-y-6">
+
+  <!-- Header & Actions -->
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div>
+      <div class="flex items-center gap-2">
+        <h1 class="text-2xl font-bold text-ink">Inquiry Management</h1>
+        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">
+          {{ stats.total }} Total
+        </span>
+      </div>
+      <p class="text-xs text-ink-muted mt-1">
+        Track customer inquiries, assign technicians, review site checklists, and generate quotations.
+      </p>
+    </div>
+    <div class="flex items-center gap-2.5">
+      <a href="{{ url_for('admin.enquiry_new') }}"
+         class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-white bg-primary hover:opacity-95 shadow-sm transition">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
+        + New Inquiry
+      </a>
+    </div>
+  </div>
+
+  <!-- KPI Overview Strip -->
+  <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+    <!-- All -->
+    <a href="{{ url_for('admin.enquiries', tab='all') }}"
+       class="card p-3.5 hover:border-slate-300 transition {{ 'ring-2 ring-primary border-transparent' if active_tab == 'all' else '' }}">
+      <span class="text-[11px] font-semibold uppercase tracking-wider text-ink-subtle">All Inquiries</span>
+      <div class="text-xl font-bold text-ink mt-1">{{ stats.total }}</div>
+      <span class="text-[10px] text-ink-muted">Overall pipeline</span>
+    </a>
+
+    <!-- New -->
+    <a href="{{ url_for('admin.enquiries', tab='new') }}"
+       class="card p-3.5 hover:border-slate-300 transition {{ 'ring-2 ring-amber-500 border-transparent' if active_tab == 'new' else '' }}">
+      <div class="flex items-center justify-between">
+        <span class="text-[11px] font-semibold uppercase tracking-wider text-amber-700">New / Unassigned</span>
+        {% if stats.new %}<span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>{% endif %}
+      </div>
+      <div class="text-xl font-bold text-amber-700 mt-1">{{ stats.new }}</div>
+      <span class="text-[10px] text-amber-600">Pending Team Leader</span>
+    </a>
+
+    <!-- Assigned -->
+    <a href="{{ url_for('admin.enquiries', tab='assigned') }}"
+       class="card p-3.5 hover:border-slate-300 transition {{ 'ring-2 ring-blue-500 border-transparent' if active_tab == 'assigned' else '' }}">
+      <span class="text-[11px] font-semibold uppercase tracking-wider text-blue-700">Assigned</span>
+      <div class="text-xl font-bold text-blue-700 mt-1">{{ stats.assigned }}</div>
+      <span class="text-[10px] text-blue-600">Site visit pending</span>
+    </a>
+
+    <!-- Checklist Submitted -->
+    <a href="{{ url_for('admin.enquiries', tab='checklist') }}"
+       class="card p-3.5 hover:border-slate-300 transition {{ 'ring-2 ring-indigo-500 border-transparent' if active_tab == 'checklist' else '' }}">
+      <span class="text-[11px] font-semibold uppercase tracking-wider text-indigo-700">Checklist Done</span>
+      <div class="text-xl font-bold text-indigo-700 mt-1">{{ stats.checklist }}</div>
+      <span class="text-[10px] text-indigo-600">Ready for quotation</span>
+    </a>
+
+    <!-- Quoted -->
+    <a href="{{ url_for('admin.enquiries', tab='quoted') }}"
+       class="card p-3.5 hover:border-slate-300 transition {{ 'ring-2 ring-green-500 border-transparent' if active_tab == 'quoted' else '' }}">
+      <span class="text-[11px] font-semibold uppercase tracking-wider text-green-700">Quotation Ready</span>
+      <div class="text-xl font-bold text-green-700 mt-1">{{ stats.quoted }}</div>
+      <span class="text-[10px] text-green-600">Quote sent / created</span>
+    </a>
+
+    <!-- Closed -->
+    <a href="{{ url_for('admin.enquiries', tab='closed') }}"
+       class="card p-3.5 hover:border-slate-300 transition {{ 'ring-2 ring-slate-400 border-transparent' if active_tab == 'closed' else '' }}">
+      <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Closed</span>
+      <div class="text-xl font-bold text-slate-700 mt-1">{{ stats.closed }}</div>
+      <span class="text-[10px] text-slate-500">Completed inquiries</span>
+    </a>
+  </div>
+
+  <!-- Search & Filter Controls -->
+  <div class="card p-4">
+    <form method="get" action="{{ url_for('admin.enquiries') }}" class="flex flex-col md:flex-row md:items-center justify-between gap-3">
+      <input type="hidden" name="tab" value="{{ active_tab }}">
+
+      <!-- Search Bar -->
+      <div class="relative flex-1">
+        <svg class="absolute left-3 top-2.5 text-slate-400" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        <input type="text"
+               name="q"
+               value="{{ search_query }}"
+               placeholder="Search by reference (INQ-...), customer, phone, location, service..."
+               class="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 bg-white focus:outline-none focus:border-primary">
+      </div>
+
+      <!-- Technician Filter -->
+      <div class="flex items-center gap-2">
+        <select name="tech_id"
+                onchange="this.form.submit()"
+                class="px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white text-ink focus:outline-none focus:border-primary">
+          <option value="">All Technicians</option>
+          {% for t in technicians %}
+          <option value="{{ t.id }}" {{ 'selected' if tech_filter == t.id }}>{{ t.name }}</option>
+          {% endfor %}
+        </select>
+
+        <button type="submit" class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-ink transition">
+          Filter
+        </button>
+
+        {% if search_query or tech_filter %}
+        <a href="{{ url_for('admin.enquiries', tab=active_tab) }}" class="text-xs text-slate-500 hover:text-danger px-2">Clear</a>
         {% endif %}
       </div>
+    </form>
+
+    <!-- Tab Bar -->
+    <div class="flex items-center gap-1.5 overflow-x-auto mt-4 pt-3 border-t border-slate-100 text-xs font-medium">
+      <a href="{{ url_for('admin.enquiries', tab='all', q=search_query, tech_id=tech_filter) }}"
+         class="px-3 py-1.5 rounded-lg whitespace-nowrap transition {{ 'bg-primary text-white' if active_tab == 'all' else 'text-ink-muted hover:bg-slate-100' }}">
+        All ({{ stats.total }})
+      </a>
+      <a href="{{ url_for('admin.enquiries', tab='new', q=search_query, tech_id=tech_filter) }}"
+         class="px-3 py-1.5 rounded-lg whitespace-nowrap transition {{ 'bg-amber-500 text-white' if active_tab == 'new' else 'text-ink-muted hover:bg-slate-100' }}">
+        New ({{ stats.new }})
+      </a>
+      <a href="{{ url_for('admin.enquiries', tab='assigned', q=search_query, tech_id=tech_filter) }}"
+         class="px-3 py-1.5 rounded-lg whitespace-nowrap transition {{ 'bg-blue-600 text-white' if active_tab == 'assigned' else 'text-ink-muted hover:bg-slate-100' }}">
+        Assigned ({{ stats.assigned }})
+      </a>
+      <a href="{{ url_for('admin.enquiries', tab='checklist', q=search_query, tech_id=tech_filter) }}"
+         class="px-3 py-1.5 rounded-lg whitespace-nowrap transition {{ 'bg-indigo-600 text-white' if active_tab == 'checklist' else 'text-ink-muted hover:bg-slate-100' }}">
+        Checklist Submitted ({{ stats.checklist }})
+      </a>
+      <a href="{{ url_for('admin.enquiries', tab='quoted', q=search_query, tech_id=tech_filter) }}"
+         class="px-3 py-1.5 rounded-lg whitespace-nowrap transition {{ 'bg-green-600 text-white' if active_tab == 'quoted' else 'text-ink-muted hover:bg-slate-100' }}">
+        Quoted ({{ stats.quoted }})
+      </a>
+      <a href="{{ url_for('admin.enquiries', tab='closed', q=search_query, tech_id=tech_filter) }}"
+         class="px-3 py-1.5 rounded-lg whitespace-nowrap transition {{ 'bg-slate-600 text-white' if active_tab == 'closed' else 'text-ink-muted hover:bg-slate-100' }}">
+        Closed ({{ stats.closed }})
+      </a>
+      {% if stats.my %}
+      <a href="{{ url_for('admin.enquiries', tab='my', q=search_query) }}"
+         class="px-3 py-1.5 rounded-lg whitespace-nowrap transition {{ 'bg-navy-700 text-white' if active_tab == 'my' else 'text-ink-muted hover:bg-slate-100' }}">
+        Assigned to Me ({{ stats.my }})
+      </a>
+      {% endif %}
     </div>
-    {% endfor %}
   </div>
-  {% else %}
-  <p class="text-slate-500 mt-5">No enquiries yet.</p>
-  {% endif %}
-</section>
+
+  <!-- Inquiries Table -->
+  <div class="card overflow-hidden">
+    {% if enquiries %}
+    <div class="overflow-x-auto">
+      <table class="w-full text-left text-xs border-collapse">
+        <thead>
+          <tr class="bg-slate-50 border-b border-slate-200 text-ink-subtle uppercase text-[10px] tracking-wider font-semibold">
+            <th class="py-3 px-4">Reference</th>
+            <th class="py-3 px-4">Customer & Contact</th>
+            <th class="py-3 px-4">Service Required</th>
+            <th class="py-3 px-4">Location</th>
+            <th class="py-3 px-4">Assigned Technician</th>
+            <th class="py-3 px-4">Visit Date</th>
+            <th class="py-3 px-4">Status</th>
+            <th class="py-3 px-4 text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          {% for e in enquiries %}
+          <tr class="hover:bg-slate-50/70 transition">
+            <!-- Reference -->
+            <td class="py-3 px-4 whitespace-nowrap">
+              <a href="{{ url_for('admin.enquiry_detail', enq_id=e.id) }}"
+                 class="mono font-bold text-primary hover:underline">
+                {{ e.ref_code }}
+              </a>
+              <div class="text-[10px] text-ink-subtle mt-0.5">{{ e.created_at|datefmt }}</div>
+            </td>
+
+            <!-- Customer & Contact -->
+            <td class="py-3 px-4">
+              <div class="font-semibold text-ink">{{ e.name }}</div>
+              <div class="text-[11px] text-ink-muted mt-0.5 flex items-center gap-1.5">
+                {% if e.phone %}
+                <a href="tel:{{ e.phone }}" class="hover:text-primary">{{ e.phone }}</a>
+                {% endif %}
+                {% if e.email %}
+                <span>· {{ e.email }}</span>
+                {% endif %}
+              </div>
+            </td>
+
+            <!-- Service Requirement -->
+            <td class="py-3 px-4">
+              <span class="font-medium text-ink">{{ e.service_requirement }}</span>
+              {% if e.subject and e.subject != e.service_requirement %}
+              <div class="text-[10px] text-ink-subtle truncate max-w-xs">{{ e.subject }}</div>
+              {% endif %}
+            </td>
+
+            <!-- Location -->
+            <td class="py-3 px-4 text-ink-muted">
+              <div>{{ e.area or e.city or '—' }}</div>
+              {% if e.address %}
+              <div class="text-[10px] text-ink-subtle truncate max-w-[180px]">{{ e.address }}</div>
+              {% endif %}
+            </td>
+
+            <!-- Assigned Technician -->
+            <td class="py-3 px-4 whitespace-nowrap">
+              {% if e.assigned_to %}
+              <div class="flex items-center gap-1.5">
+                <span class="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 text-slate-700 font-bold text-[10px] grid place-items-center">
+                  {{ e.assigned_to.name[:1]|upper }}
+                </span>
+                <span class="font-medium text-ink">{{ e.assigned_to.name }}</span>
+              </div>
+              {% else %}
+              <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                Needs Assignment
+              </span>
+              {% endif %}
+            </td>
+
+            <!-- Visit Date -->
+            <td class="py-3 px-4 whitespace-nowrap text-ink-muted">
+              {% if e.visit_scheduled_date %}
+              <div class="font-medium text-ink">{{ e.visit_scheduled_date|datefmt }}</div>
+              {% if e.visit_time_slot %}
+              <div class="text-[10px] text-ink-subtle">{{ e.visit_time_slot }}</div>
+              {% endif %}
+              {% else %}
+              <span class="text-slate-400">—</span>
+              {% endif %}
+            </td>
+
+            <!-- Status -->
+            <td class="py-3 px-4 whitespace-nowrap">
+              {{ status_badge(e.status) }}
+              {% if e.quotation %}
+              <div class="mt-1">
+                <a href="{{ url_for('sq.detail_quotation', sq_id=e.quotation.id) }}"
+                   class="mono text-[10px] text-green-700 hover:underline">
+                  {{ e.quotation.reference }}
+                </a>
+              </div>
+              {% endif %}
+            </td>
+
+            <!-- Actions -->
+            <td class="py-3 px-4 text-right whitespace-nowrap">
+              <div class="flex items-center justify-end gap-2">
+                <a href="{{ url_for('admin.enquiry_detail', enq_id=e.id) }}"
+                   class="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-ink transition">
+                  View
+                </a>
+
+                {% if e.status == 'new' %}
+                <a href="{{ url_for('admin.enquiry_detail', enq_id=e.id) }}#assignment"
+                   class="px-2.5 py-1 text-xs font-semibold rounded-lg bg-amber-500 hover:bg-amber-600 text-white transition">
+                  Assign
+                </a>
+                {% elif e.status in ('assigned', 'site_visit_scheduled', 'site_visit_in_progress') %}
+                <a href="{{ url_for('admin.enquiry_checklist', enq_id=e.id) }}"
+                   class="px-2.5 py-1 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition">
+                  Checklist
+                </a>
+                {% elif e.status == 'checklist_submitted' and not e.quotation_id %}
+                <a href="{{ url_for('sq.new_quotation', inquiry_id=e.id) }}"
+                   class="px-2.5 py-1 text-xs font-semibold rounded-lg bg-green-600 hover:bg-green-700 text-white transition">
+                  Quote
+                </a>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <!-- Empty State -->
+    <div class="text-center py-12 px-4">
+      <div class="w-12 h-12 rounded-full bg-slate-100 text-slate-400 grid place-items-center mx-auto mb-3">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+      </div>
+      <h3 class="text-sm font-semibold text-ink">No inquiries found</h3>
+      <p class="text-xs text-ink-muted mt-1 max-w-sm mx-auto">
+        {% if search_query or tech_filter %}
+        No inquiries match the current filter criteria. Try resetting your search or filter.
+        {% else %}
+        No customer inquiries in this section yet. Log a new inquiry or check back when inquiries arrive.
+        {% endif %}
+      </p>
+      <div class="mt-4">
+        <a href="{{ url_for('admin.enquiry_new') }}" class="btn btn-primary text-xs">
+          + Log New Inquiry
+        </a>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
 {% endblock %}

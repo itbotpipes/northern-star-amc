@@ -42,7 +42,7 @@ class User(UserMixin, db.Model):
 
     @property
     def is_staff(self):
-        return self.role in ("technician", "admin", "manager")
+        return self.role in ("technician", "admin", "manager", "team_leader")
 
     @property
     def is_admin(self):
@@ -51,6 +51,10 @@ class User(UserMixin, db.Model):
     @property
     def is_manager(self):
         return self.role == "manager"
+
+    @property
+    def is_team_leader(self):
+        return self.role in ("team_leader", "manager", "admin")
 
     @property
     def is_technician(self):
@@ -463,6 +467,9 @@ class Visit(db.Model):
     contract_id = db.Column(db.Integer, db.ForeignKey("contracts.id"))
     visit_number = db.Column(db.Integer, nullable=False, default=1)
     scheduled_date = db.Column(db.Date)
+    # Technician App — time-of-day slot for the day's route ("10:30", 24h HH:MM).
+    # Nullable: older/bulk-generated visits have a date only, not a time.
+    scheduled_time = db.Column(db.String(5))
     completed_date = db.Column(db.Date)
     status = db.Column(db.String(20), default="scheduled")  # scheduled/in_progress/completed/cancelled
     technician_id = db.Column(db.Integer, db.ForeignKey("users.id"))
@@ -491,6 +498,19 @@ class Visit(db.Model):
     @property
     def label(self):
         return f"Visit {self.visit_number}"
+
+    @property
+    def scheduled_time_label(self):
+        """'10:30' -> '10:30 AM' for the technician's route list. None if unset."""
+        if not self.scheduled_time:
+            return None
+        try:
+            h, m = (int(x) for x in self.scheduled_time.split(":"))
+        except (ValueError, AttributeError):
+            return None
+        suffix = "AM" if h < 12 else "PM"
+        h12 = h % 12 or 12
+        return f"{h12}:{m:02d} {suffix}"
 
     @property
     def days_until(self):
@@ -841,6 +861,9 @@ class RefillOrder(db.Model):
     scheduled_date = db.Column(db.DateTime)
     team_eta = db.Column(db.String(80))
     notes = db.Column(db.Text)
+    # Technician App — which technician is doing the pickup (same pattern as
+    # ServiceRequest.assigned_technician_id above).
+    assigned_technician_id = db.Column(db.Integer, db.ForeignKey("users.id"))
 
     payment_mode = db.Column(db.String(20), default="cash")  # cash/online
     amount = db.Column(db.Integer, default=0)                # final, set by ops
@@ -849,6 +872,7 @@ class RefillOrder(db.Model):
 
     items = db.relationship("RefillItem", backref="order", lazy=True,
                             cascade="all, delete-orphan")
+    technician = db.relationship("User", foreign_keys=[assigned_technician_id])
 
     @property
     def reference(self):
@@ -918,13 +942,148 @@ class Enquiry(db.Model):
     __tablename__ = "enquiries"
 
     id = db.Column(db.Integer, primary_key=True)
+    reference = db.Column(db.String(32), unique=True, index=True)  # INQ-0001
     name = db.Column(db.String(120), nullable=False)
     phone = db.Column(db.String(20))
     email = db.Column(db.String(120))
+    address = db.Column(db.String(255))
+    area = db.Column(db.String(120))
+    city = db.Column(db.String(120), default="Surat, Gujarat")
+    latitude = db.Column(db.String(32))
+    longitude = db.Column(db.String(32))
+    service_requirement = db.Column(db.String(120), default="Fire Safety Inspection & AMC")
     subject = db.Column(db.String(160))
     message = db.Column(db.Text, nullable=False)
-    status = db.Column(db.String(20), default="new")  # new/responded
+
+    # Workflow status:
+    # new -> assigned -> site_visit_scheduled -> site_visit_in_progress -> checklist_submitted -> quotation_generated -> closed (or responded)
+    status = db.Column(db.String(50), default="new")
+
+    # Customer account linkage (optional)
+    customer_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+
+    # Team Leader & Technician Assignment
+    assigned_to_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    assigned_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    assigned_at = db.Column(db.DateTime, nullable=True)
+    visit_scheduled_date = db.Column(db.Date, nullable=True)
+    visit_time_slot = db.Column(db.String(50), nullable=True)
+    visit_completed_at = db.Column(db.DateTime, nullable=True)
+
+    team_leader_notes = db.Column(db.Text, nullable=True)
+    technician_notes = db.Column(db.Text, nullable=True)
+    checklist_submitted_at = db.Column(db.DateTime, nullable=True)
+
+    # Linked quotation generated after inspection
+    quotation_id = db.Column(db.Integer, db.ForeignKey("service_quotations.id"), nullable=True)
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Relationships
+    customer = db.relationship("User", foreign_keys=[customer_id], backref=db.backref("customer_enquiries", lazy=True))
+    assigned_to = db.relationship("User", foreign_keys=[assigned_to_id], backref=db.backref("assigned_enquiries", lazy=True))
+    assigned_by = db.relationship("User", foreign_keys=[assigned_by_id], backref=db.backref("delegated_enquiries", lazy=True))
+    quotation = db.relationship("ServiceQuotation", foreign_keys=[quotation_id], post_update=True)
+    checklist_items = db.relationship("InquiryChecklistItem", backref="inquiry", cascade="all, delete-orphan", lazy=True, order_by="InquiryChecklistItem.id.asc()")
+    photos = db.relationship("InquiryPhoto", backref="inquiry", cascade="all, delete-orphan", lazy=True, order_by="InquiryPhoto.created_at.desc()")
+    history_logs = db.relationship("InquiryHistory", backref="inquiry", cascade="all, delete-orphan", lazy=True, order_by="InquiryHistory.created_at.desc()")
+
+    @property
+    def ref_code(self):
+        return self.reference or f"INQ-{self.id:04d}"
+
+    @property
+    def status_label(self):
+        labels = {
+            "new": "New Inquiry",
+            "assigned": "Technician Assigned",
+            "site_visit_scheduled": "Visit Scheduled",
+            "site_visit_in_progress": "Visit in Progress",
+            "checklist_submitted": "Checklist Submitted",
+            "quotation_generated": "Quotation Generated",
+            "closed": "Closed",
+            "responded": "Responded",
+        }
+        return labels.get(self.status, self.status.replace("_", " ").title())
+
+    @property
+    def workflow_steps(self):
+        """Step progression for Inquiry tracking:
+        1: New Inquiry (Submitted)
+        2: Team Leader Assignment (Technician assigned)
+        3: Site Visit (Inspection visit)
+        4: Checklist Submission (Inspection findings)
+        5: Quotation Generation (Commercial proposal)
+        """
+        st = self.status
+        is_closed = st in ("closed", "responded")
+
+        s1_done = True
+        s1_active = (st == "new")
+
+        s2_done = st in ("assigned", "site_visit_scheduled", "site_visit_in_progress", "checklist_submitted", "quotation_generated") or is_closed
+        s2_active = (st == "assigned" and not self.visit_scheduled_date)
+
+        s3_done = st in ("checklist_submitted", "quotation_generated") or is_closed
+        s3_active = st in ("site_visit_scheduled", "site_visit_in_progress") or (st == "assigned" and self.visit_scheduled_date)
+
+        s4_done = st in ("checklist_submitted", "quotation_generated") or is_closed
+        s4_active = (st == "checklist_submitted" and not self.quotation_id)
+
+        s5_done = bool(self.quotation_id or st == "quotation_generated")
+        s5_active = (st == "checklist_submitted" and not self.quotation_id)
+
+        tech_desc = self.assigned_to.name if self.assigned_to else "Team Leader Assign"
+        visit_desc = self.visit_scheduled_date.strftime("%d %b") if self.visit_scheduled_date else "Scheduled"
+        quote_desc = self.quotation.quotation_number if self.quotation else "Generation"
+
+        return [
+            {"num": 1, "label": "New Inquiry", "desc": "Submitted", "done": s1_done, "active": s1_active},
+            {"num": 2, "label": "Assignment", "desc": tech_desc, "done": s2_done, "active": s2_active},
+            {"num": 3, "label": "Site Visit", "desc": visit_desc, "done": s3_done, "active": s3_active},
+            {"num": 4, "label": "Checklist", "desc": "Inspection Form", "done": s4_done, "active": s4_active},
+            {"num": 5, "label": "Quotation", "desc": quote_desc, "done": s5_done, "active": s5_active},
+        ]
+
+
+class InquiryChecklistItem(db.Model):
+    __tablename__ = "inquiry_checklist_items"
+
+    id = db.Column(db.Integer, primary_key=True)
+    inquiry_id = db.Column(db.Integer, db.ForeignKey("enquiries.id"), nullable=False)
+    category = db.Column(db.String(80), nullable=False)
+    item_name = db.Column(db.String(160), nullable=False)
+    status = db.Column(db.String(20), default="pass")  # pass, attention, fail, na
+    remarks = db.Column(db.String(255))
+    recommendation = db.Column(db.String(255))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class InquiryPhoto(db.Model):
+    __tablename__ = "inquiry_photos"
+
+    id = db.Column(db.Integer, primary_key=True)
+    inquiry_id = db.Column(db.Integer, db.ForeignKey("enquiries.id"), nullable=False)
+    file_path = db.Column(db.String(255), nullable=False)
+    caption = db.Column(db.String(200))
+    uploaded_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    uploaded_by = db.relationship("User", foreign_keys=[uploaded_by_id])
+
+
+class InquiryHistory(db.Model):
+    __tablename__ = "inquiry_history"
+
+    id = db.Column(db.Integer, primary_key=True)
+    inquiry_id = db.Column(db.Integer, db.ForeignKey("enquiries.id"), nullable=False)
+    action = db.Column(db.String(100), nullable=False)
+    actor_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    actor_name = db.Column(db.String(120))
+    details = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    actor = db.relationship("User", foreign_keys=[actor_id])
 
 
 class Notification(db.Model):
@@ -987,6 +1146,7 @@ class ServiceQuotation(db.Model):
     contract_id        = db.Column(db.Integer, db.ForeignKey("contracts.id"),       nullable=True)
     refill_order_id    = db.Column(db.Integer, db.ForeignKey("refill_orders.id"),   nullable=True)
     service_request_id = db.Column(db.Integer, db.ForeignKey("service_requests.id"),nullable=True)
+    inquiry_id         = db.Column(db.Integer, db.ForeignKey("enquiries.id"),        nullable=True)
     customer_id        = db.Column(db.Integer, db.ForeignKey("users.id"),           nullable=True)
     created_by_id      = db.Column(db.Integer, db.ForeignKey("users.id"),           nullable=True)
 
@@ -1001,6 +1161,7 @@ class ServiceQuotation(db.Model):
                                  order_by="ServiceQuotationItem.sort_order, ServiceQuotationItem.id")
     created_by = db.relationship("User", foreign_keys=[created_by_id])
     customer   = db.relationship("User", foreign_keys=[customer_id])
+    inquiry    = db.relationship("Enquiry", foreign_keys=[inquiry_id], post_update=True)
 
     # ------------------------------------------------------------------ helpers
     @property
@@ -1014,6 +1175,11 @@ class ServiceQuotation(db.Model):
     @property
     def grand_total(self):
         return self.subtotal + self.gst_amount
+
+    @property
+    def total(self):
+        """Backward-compatible alias for grand_total."""
+        return self.grand_total
 
     @property
     def reference(self):

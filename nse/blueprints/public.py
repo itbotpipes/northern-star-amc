@@ -7,8 +7,9 @@ from flask_login import current_user, login_user
 from ..extensions import db
 from ..models import (AMCPlan, Contract, ServiceRequest, Enquiry, User,
                       RefillOrder, RefillItem, FormAttachment, VisitFeedback,
-                      CustomerJourneyEvent, ServiceQuotation, ServiceQuotationItem)
-from ..utils import notify, notify_staff, notify_managers, save_upload, upi_qr_data_uri
+                      CustomerJourneyEvent, ServiceQuotation, ServiceQuotationItem,
+                      InquiryHistory)
+from ..utils import notify, notify_staff, notify_managers, notify_team_leaders, save_upload, upi_qr_data_uri
 
 public_bp = Blueprint("public", __name__)
 
@@ -290,13 +291,65 @@ def refill():
 def enquiry():
     if request.method == "POST":
         f = request.form
+        name = f.get("name", "").strip()
+        phone = f.get("phone", "").strip()
+        email = f.get("email", "").strip()
+        address = f.get("address", "").strip()
+        area = f.get("area", "").strip()
+        city = f.get("city", "Surat, Gujarat").strip()
+        service_requirement = f.get("service_requirement", "Fire Safety Inspection & AMC").strip()
+        subject = f.get("subject", "").strip() or f"{service_requirement} Inquiry"
+        message = f.get("message", "").strip()
+
+        cu_id = None
+        if current_user and current_user.is_authenticated:
+            cu_id = current_user.id
+        elif phone:
+            existing = User.query.filter_by(phone=phone).first()
+            if existing:
+                cu_id = existing.id
+
         e = Enquiry(
-            name=f.get("name"), phone=f.get("phone"), email=f.get("email"),
-            subject=f.get("subject"), message=f.get("message"),
+            name=name, phone=phone, email=email,
+            address=address, area=area, city=city,
+            service_requirement=service_requirement,
+            subject=subject, message=message,
+            customer_id=cu_id,
+            status="new"
         )
         db.session.add(e)
+        db.session.flush()
+
+        e.reference = f"INQ-{e.id:04d}"
+
+        # Log initial history
+        history = InquiryHistory(
+            inquiry_id=e.id,
+            action="Inquiry Created",
+            actor_name=name or "Customer",
+            details=f"Inquiry generated via public portal. Service requirement: {service_requirement}."
+        )
+        db.session.add(history)
         db.session.commit()
-        flash("Thanks! Your question has been sent — our team will reply soon.", "success")
+
+        # Notify Team Leader
+        try:
+            notify_team_leaders(
+                title=f"New Inquiry — {e.reference}",
+                body=f"{name} requested {service_requirement} at {area or city or 'Surat'}. Forwarded to Team Leader for technician assignment.",
+                link=url_for("admin.enquiry_detail", enq_id=e.id)
+            )
+        except Exception:
+            pass
+
+        # Send auto-reply confirmation email if recipient is present
+        try:
+            from ..email_service import send_enquiry_confirmation
+            send_enquiry_confirmation(e)
+        except Exception:
+            pass
+
+        flash(f"Thank you, {name}! Your inquiry ({e.reference}) has been received and forwarded to our Team Leader. An engineer will be assigned for your site inspection.", "success")
         return redirect(url_for("public.enquiry"))
     return render_template("site/enquiry.html")
 

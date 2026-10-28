@@ -13,7 +13,7 @@ from ..models import (Contract, Visit, Quotation, ServiceRequest, Payment,
                       Notification, RefillOrder, ServiceQuotation,
                       ServiceQuotationItem, CustomerJourneyEvent, VisitFeedback,
                       Equipment, HealthCheckReport, Referral, SupportTicket,
-                      TicketAttachment, AMCPlan, VisitDefect, Installment)
+                      TicketAttachment, AMCPlan, VisitDefect, Installment, Enquiry)
 from ..utils import (customer_required, notify, notify_staff, WAIVER_TEXT,
                      AMC_AGREEMENT_CLAUSES, AMC_AGREEMENT_VERSION, save_upload)
 from ..email_service import (send_quote_accepted_alert, send_negotiation_alert)
@@ -50,12 +50,18 @@ def dashboard():
     ).order_by(ServiceQuotation.created_at.desc()).all()
     refills = RefillOrder.query.filter_by(customer_id=current_user.id)\
         .order_by(RefillOrder.created_at.desc()).all()
+    inquiries = Enquiry.query.filter(
+        or_(
+            Enquiry.customer_id == current_user.id,
+            Enquiry.phone == current_user.phone,
+        )
+    ).order_by(Enquiry.created_at.desc()).all()
     # Only surface action buttons for services the customer actually uses.
     has_emergencies = any(r.request_type == "emergency" for r in requests_)
     has_refills = bool(refills)
     return render_template("portal/dashboard.html", contracts=contracts,
                            requests=requests_, pending_quotes=pending_quotes,
-                           refills=refills,
+                           refills=refills, inquiries=inquiries,
                            has_emergencies=has_emergencies, has_refills=has_refills)
 
 

@@ -29,3 +29,5 @@ nse/static/uploads/*
 # Mobile packages and duplicates in the backend folder
 # mobile/
 *.zip
+node_modules/
+.expo/

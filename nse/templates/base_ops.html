@@ -118,9 +118,10 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 2a7 7 0 00-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 00-7-7z"/><path d="M12 9v3M12 15h.01"/></svg>
         Service Requests
       </a>
-      <a href="{{ url_for('admin.enquiries') }}" class="snav {{ 'active' if _ep == 'admin.enquiries' }}">
+      <a href="{{ url_for('admin.enquiries') }}" class="snav {{ 'active' if _ep in ('admin.enquiries', 'admin.enquiry_detail', 'admin.enquiry_new', 'admin.enquiry_checklist') }}">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-        Enquiries
+        <span style="flex:1;">Inquiries</span>
+        {% if open_enquiry_count %}<span style="background:#f59e0b;color:#18181b;font-size:10px;font-weight:700;padding:1px 6px;border-radius:999px;">{{ open_enquiry_count }}</span>{% endif %}
       </a>
       <a href="{{ url_for('admin.tickets') }}" class="snav {{ 'active' if _ep in ('admin.tickets','admin.ticket_detail') }}">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>

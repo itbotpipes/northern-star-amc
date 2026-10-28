@@ -1,24 +1,52 @@
 {% extends "base.html" %}
 {% from "_macros.html" import field %}
-{% block title %}Ask a Question — {{ COMPANY_NAME }}{% endblock %}
+{% block title %}Ask a Question & Request Service — {{ COMPANY_NAME }}{% endblock %}
 {% block content %}
 <section class="max-w-3xl mx-auto px-4 py-16">
-  <span class="eyebrow">Enquiry</span>
+  <span class="eyebrow">Customer Inquiry</span>
   <h1 class="text-3xl md:text-4xl font-extrabold text-ink mt-3">Ask {{ COMPANY_NAME }}</h1>
-  <p class="text-ink-subtle mt-3 text-lg">Have a question about AMC, pricing, visits or emergencies? Send it here and our team will reply. For instant answers, try the assistant in the bottom-right corner.</p>
+  <p class="text-ink-subtle mt-3 text-lg">Have a question about AMC, inspections, refilling or compliance? Send your inquiry below and our Team Leader will assign a qualified technician for an on-site visit.</p>
 
   <form method="post" class="mt-8 card p-7 space-y-5">
     <div class="grid sm:grid-cols-2 gap-4">
-      {{ field('Your name', 'name', required=true) }}
-      {{ field('Phone', 'phone', type='tel') }}
-      {{ field('Email', 'email', type='email') }}
-      {{ field('Subject', 'subject') }}
+      {{ field('Your name', 'name', required=true, value=current_user.name if current_user.is_authenticated else '') }}
+      {{ field('Phone', 'phone', type='tel', required=true, value=current_user.phone if current_user.is_authenticated else '') }}
+      {{ field('Email', 'email', type='email', value=current_user.email if current_user.is_authenticated else '') }}
+
+      <!-- Service Requirement -->
+      <label class="block">
+        <span class="text-sm font-medium text-ink-muted">Service Required <span class="text-danger">*</span></span>
+        <select name="service_requirement" required class="mt-1.5 w-full px-3 py-2.5 rounded-xl border border-hair bg-surface-1 text-ink focus:outline-none focus:border-primary">
+          <option value="Fire Safety Inspection & AMC">Fire Safety Inspection & AMC</option>
+          <option value="Fire Extinguisher Refilling & Servicing">Fire Extinguisher Refilling & Servicing</option>
+          <option value="Fire Hydrant & Hose Reel System Inspection">Fire Hydrant & Hose Reel System Inspection</option>
+          <option value="Fire Alarm & Detection System Repair">Fire Alarm & Detection System Repair</option>
+          <option value="Automatic Sprinkler System Maintenance">Automatic Sprinkler System Maintenance</option>
+          <option value="Fire NOC Renewal & Audit Consultation">Fire NOC Renewal & Audit Consultation</option>
+          <option value="General Question / Other">General Question / Other</option>
+        </select>
+      </label>
     </div>
+
+    <!-- Location details -->
+    <div class="grid sm:grid-cols-2 gap-4">
+      {{ field('Site Street Address', 'address', placeholder='Building, street, landmark...', value=current_user.address if current_user.is_authenticated else '') }}
+      {{ field('Area / Locality', 'area', placeholder='e.g. Ring Road, Adajan, Vesu...', value=current_user.area if current_user.is_authenticated else '') }}
+    </div>
+
     <label class="block">
-      <span class="text-sm font-medium text-ink-muted">Your question <span class="text-danger">*</span></span>
-      <textarea name="message" rows="4" required class="mt-1.5 w-full px-3 py-2.5"></textarea>
+      <span class="text-sm font-medium text-ink-muted">Subject / Project Title</span>
+      <input type="text" name="subject" placeholder="e.g. Annual inspection for 12-storey commercial building" class="mt-1.5 w-full px-3 py-2.5 rounded-xl border border-hair bg-surface-1 text-ink focus:outline-none focus:border-primary">
     </label>
-    <button class="btn btn-primary w-full">Send question</button>
+
+    <label class="block">
+      <span class="text-sm font-medium text-ink-muted">Inquiry Details & Site Requirements <span class="text-danger">*</span></span>
+      <textarea name="message" rows="4" required placeholder="Tell us about your fire safety equipment, current condition, issues observed, or timing preferences..." class="mt-1.5 w-full px-3 py-2.5 rounded-xl border border-hair bg-surface-1 text-ink focus:outline-none focus:border-primary"></textarea>
+    </label>
+
+    <button class="btn btn-primary w-full py-3 text-sm font-bold shadow-md">
+      Submit Inquiry & Forward to Team Leader
+    </button>
   </form>
 </section>
 {% endblock %}

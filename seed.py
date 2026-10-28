@@ -2,13 +2,14 @@
 
 Usage:  python seed.py        (safe to re-run; it resets seeded demo data)
 """
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from nse import create_app
 from nse.extensions import db
 from nse.models import (User, AMCPlan, Contract, Visit, VisitPhoto, Equipment,
                         RefillRecord, Quotation, QuotationItem, ServiceRequest,
-                        Enquiry, Notification, InventoryItem)
+                        Enquiry, Notification, InventoryItem,
+                        InquiryChecklistItem, InquiryHistory)
 
 app = create_app()
 
@@ -58,6 +59,13 @@ def run():
                         email="tech@northernstar.example", city="Surat, Gujarat")
             tech.set_password("tech123")
             db.session.add(tech)
+
+        teamleader = User.query.filter_by(email="teamleader@northernstar.example").first()
+        if not teamleader:
+            teamleader = User(role="team_leader", name="Vikram (Team Leader)",
+                              email="teamleader@northernstar.example", city="Surat, Gujarat")
+            teamleader.set_password("teamleader123")
+            db.session.add(teamleader)
 
         manager = User.query.filter_by(email="manager@northernstar.example").first()
         if not manager:
@@ -184,15 +192,152 @@ def run():
                 area="Vesu", location="Shop 12, Green Plaza, Vesu, Surat",
                 description="Extinguisher discharged accidentally, need an urgent refill and check.",
                 status="new", payment_mode="cash"))
-            db.session.add(Enquiry(name="Priya Patel", phone="9988776655",
-                                   subject="AMC for housing society",
-                                   message="We have a 6-floor society in Katargam. What would an AMC cost?"))
+        # Backfill reference on any legacy inquiries
+        for legacy_e in Enquiry.query.all():
+            if not legacy_e.reference:
+                legacy_e.reference = f"INQ-{legacy_e.id:04d}"
+        db.session.commit()
+
+        # Sample inquiries demonstrating the full workflow
+        if InquiryChecklistItem.query.count() == 0:
+            tech = User.query.filter_by(role="technician").first()
+            tl = User.query.filter_by(role="team_leader").first()
+
+            # 1. New Inquiry
+            inq1 = Enquiry.query.filter_by(phone="9988776655").first()
+            if not inq1:
+                inq1 = Enquiry(
+                    name="Priya Patel", phone="9988776655", email="priya@example.com",
+                    address="Shiv Residency, Opp. Lake Garden", area="Katargam", city="Surat, Gujarat",
+                    service_requirement="Fire Safety Inspection & AMC",
+                    subject="AMC for 6-floor housing society",
+                    message="We have a 6-floor residential society in Katargam. We need an on-site inspection and an AMC quotation.",
+                    status="new"
+                )
+                db.session.add(inq1)
+                db.session.flush()
+                inq1.reference = f"INQ-{inq1.id:04d}"
+                db.session.add(InquiryHistory(
+                    inquiry_id=inq1.id,
+                    action="Inquiry Created",
+                    actor_name="Priya Patel",
+                    details="Inquiry submitted via public web portal for residential AMC."
+                ))
+
+            # 2. Assigned Inquiry
+            inq2 = Enquiry(
+                name="Rajesh Mehta (Diamond Plaza)", phone="9825123456", email="rajesh@diamondplaza.example",
+                address="Tower B, Diamond Park, Ring Road", area="Ring Road", city="Surat, Gujarat",
+                service_requirement="Fire Hydrant & Hose Reel System Inspection",
+                subject="Hydrant pressure drop inspection",
+                message="Basement fire hydrants are showing low pressure. Require technician visit to test booster pump and check landing valves.",
+                status="assigned",
+                assigned_to_id=tech.id if tech else None,
+                assigned_by_id=tl.id if tl else None,
+                assigned_at=datetime.utcnow() - timedelta(days=1),
+                visit_scheduled_date=date.today() + timedelta(days=1),
+                visit_time_slot="Morning (10:00 AM - 01:00 PM)",
+                team_leader_notes="Bring hydrostatic test kit and check booster pump cut-in pressure."
+            )
+            db.session.add(inq2)
+            db.session.flush()
+            inq2.reference = f"INQ-{inq2.id:04d}"
+            db.session.add_all([
+                InquiryHistory(
+                    inquiry_id=inq2.id,
+                    action="Inquiry Created",
+                    actor_name="Rajesh Mehta",
+                    details="Commercial inquiry logged for hydrant inspection."
+                ),
+                InquiryHistory(
+                    inquiry_id=inq2.id,
+                    action="Assigned to Technician",
+                    actor_name=tl.name if tl else "Team Leader",
+                    details=f"Assigned to {tech.name if tech else 'Technician'} for site visit on {inq2.visit_scheduled_date}."
+                )
+            ])
+
+            # 3. Checklist Submitted Inquiry
+            inq3 = Enquiry(
+                name="Anand Textiles Hub", phone="9898012345", email="anand@textiles.example",
+                address="Plot 44, GIDC Industrial Estate, Sachin", area="Sachin GIDC", city="Surat, Gujarat",
+                service_requirement="Fire Extinguisher Refilling & Servicing",
+                subject="Factory fire audit and refilling check",
+                message="Need complete audit of 45 extinguishers across spinning and weaving sheds.",
+                status="checklist_submitted",
+                assigned_to_id=tech.id if tech else None,
+                assigned_by_id=tl.id if tl else None,
+                assigned_at=datetime.utcnow() - timedelta(days=3),
+                visit_scheduled_date=date.today() - timedelta(days=1),
+                visit_time_slot="Morning (10:00 AM - 01:00 PM)",
+                visit_completed_at=datetime.utcnow() - timedelta(hours=4),
+                checklist_submitted_at=datetime.utcnow() - timedelta(hours=4),
+                team_leader_notes="Count all CO2 and ABC cylinders; check hydro-test dates.",
+                technician_notes="Inspected 45 units. 12 ABC cylinders due for immediate refilling. Hydrant valve #3 gland leaking."
+            )
+            db.session.add(inq3)
+            db.session.flush()
+            inq3.reference = f"INQ-{inq3.id:04d}"
+            db.session.add_all([
+                InquiryHistory(
+                    inquiry_id=inq3.id,
+                    action="Inquiry Created",
+                    actor_name="Anand Textiles Hub",
+                    details="Industrial inquiry logged via website."
+                ),
+                InquiryHistory(
+                    inquiry_id=inq3.id,
+                    action="Assigned to Technician",
+                    actor_name=tl.name if tl else "Team Leader",
+                    details=f"Assigned to {tech.name if tech else 'Technician'}."
+                ),
+                InquiryHistory(
+                    inquiry_id=inq3.id,
+                    action="Checklist Submitted",
+                    actor_name=tech.name if tech else "Technician",
+                    details="Site visit inspection completed: 5 checks passed, 1 attention needed, 1 critical defect."
+                ),
+                # Add sample checklist items
+                InquiryChecklistItem(
+                    inquiry_id=inq3.id,
+                    category="Fire Extinguishers",
+                    item_name="Cylinder physical condition, paint integrity & corrosion check",
+                    status="pass",
+                    remarks="All 45 cylinders physically intact, no external rust."
+                ),
+                InquiryChecklistItem(
+                    inquiry_id=inq3.id,
+                    category="Fire Extinguishers",
+                    item_name="Pressure gauge needle located in operable green zone",
+                    status="attention",
+                    remarks="12 ABC cylinders showing low pressure.",
+                    recommendation="Immediate refilling & nitrogen pressurization required."
+                ),
+                InquiryChecklistItem(
+                    inquiry_id=inq3.id,
+                    category="Hydrant & Hose Reel System",
+                    item_name="Landing valves operation, wheel smoothness & gland packing leakage",
+                    status="fail",
+                    remarks="Hydrant valve #3 gland packing severely leaking water.",
+                    recommendation="Replace gland packing and lubricate spindle."
+                ),
+                InquiryChecklistItem(
+                    inquiry_id=inq3.id,
+                    category="Fire Alarm & Detection",
+                    item_name="Main Fire Alarm Control Panel (FACP) AC power & battery backup status",
+                    status="pass",
+                    remarks="Panel operating normally, battery backup 24V steady."
+                )
+            ])
+
             db.session.commit()
+            print("Seeded sample inquiries demonstrating the complete workflow.")
 
         print("\nSeed complete. Logins:")
-        print("  Admin : admin@northernstar.example / admin123")
-        print("  Tech  : tech@northernstar.example / tech123")
-        print("  Customer: log in with phone 9876543210 (OTP shown on screen)")
+        print("  Admin       : admin@northernstar.example / admin123")
+        print("  Team Leader : teamleader@northernstar.example / teamleader123")
+        print("  Tech        : tech@northernstar.example / tech123")
+        print("  Customer    : log in with phone 9876543210 (OTP shown on screen)")
 
 
 if __name__ == "__main__":

@@ -139,6 +139,15 @@ def admin_required(fn):
     return wrapper
 
 
+def team_leader_required(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if not current_user.is_authenticated or not (current_user.is_team_leader or current_user.is_admin):
+            abort(403)
+        return fn(*args, **kwargs)
+    return wrapper
+
+
 def customer_required(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):
@@ -260,15 +269,25 @@ def notify(user_id, title, body=None, link=None):
 
 
 def notify_staff(title, body=None, link=None):
-    """Fan a notification out to every staff member (admin + technician + manager).
+    """Fan a notification out to every staff member (admin + technician + manager + team_leader).
 
     Used for events the Ops Console must surface — e.g. a customer accepting or
     requesting negotiation on a quotation. Each staff user gets their own
     Notification row so the unread badge / bell works per-account.
     """
     from .models import User
-    staff = User.query.filter(User.role.in_(["admin", "technician", "manager"])).all()
+    staff = User.query.filter(User.role.in_(["admin", "technician", "manager", "team_leader"])).all()
     for u in staff:
+        db.session.add(Notification(user_id=u.id, title=title, body=body, link=link))
+    db.session.commit()
+
+
+def notify_team_leaders(title, body=None, link=None):
+    """Notify Team Leaders, Managers, and Admins — used for new inquiry assignment
+    and inquiry workflow progression."""
+    from .models import User
+    leaders = User.query.filter(User.role.in_(["team_leader", "manager", "admin"])).all()
+    for u in leaders:
         db.session.add(Notification(user_id=u.id, title=title, body=body, link=link))
     db.session.commit()
 

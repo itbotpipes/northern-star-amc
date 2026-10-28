@@ -50,6 +50,12 @@
         <input type="datetime-local" name="scheduled_date" value="{{ o.scheduled_date.strftime('%Y-%m-%dT%H:%M') if o.scheduled_date }}" class="mt-1.5 w-full px-3 py-2.5"></label>
       <label class="block"><span class="text-sm font-medium text-ink-muted">Team ETA (text)</span>
         <input name="team_eta" value="{{ o.team_eta or '' }}" placeholder="e.g. tomorrow 11 AM" class="mt-1.5 w-full px-3 py-2.5"></label>
+      <label class="block"><span class="text-sm font-medium text-ink-muted">Assigned technician</span>
+        <select name="assigned_technician_id" class="mt-1.5 w-full px-3 py-2.5">
+          <option value="">— Unassigned —</option>
+          {% for t in techs %}
+          <option value="{{ t.id }}" {{ 'selected' if o.assigned_technician_id==t.id }}>{{ t.name }}</option>{% endfor %}
+        </select></label>
       <label class="block"><span class="text-sm font-medium text-ink-muted">Final amount (₹)</span>
         <input type="number" name="amount" value="{{ o.amount }}" class="mt-1.5 w-full px-3 py-2.5"></label>
       <label class="block"><span class="text-sm font-medium text-ink-muted">Pay mode</span>
