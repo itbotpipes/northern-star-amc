@@ -21,6 +21,7 @@
     },
     "android": {
       "package": "com.northernstar.technician",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#072076"
       },
