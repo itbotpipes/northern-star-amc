@@ -132,6 +132,8 @@ export default function TodayScreen({ navigation }) {
             </View>
             <Ionicons name="chevron-forward" size={18} color={theme.inkSubtle} />
           </TouchableOpacity>
+        ) : null}
+
         {/* Assigned Customer Inquiries / Site Inspections */}
         <View style={{ marginTop: 24 }}>
           <View style={styles.sectionRow}>

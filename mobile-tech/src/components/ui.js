@@ -53,6 +53,21 @@ export function Btn({ title, onPress, variant = "primary", loading, disabled, st
   );
 }
 
+export function Button({ title, label, onPress, variant = "primary", tone, loading, disabled, style }) {
+  const effectiveTitle = title || label;
+  const effectiveVariant = tone === "navy" ? "primary" : (tone || variant);
+  return (
+    <Btn
+      title={effectiveTitle}
+      onPress={onPress}
+      variant={effectiveVariant}
+      loading={loading}
+      disabled={disabled}
+      style={style}
+    />
+  );
+}
+
 const BTN = {
   primary: { bg: theme.navy, fg: "#ffffff" },
   amber: { bg: theme.amber, fg: "#1b1c22" },
