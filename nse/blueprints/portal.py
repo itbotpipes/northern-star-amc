@@ -13,7 +13,7 @@ from ..models import (Contract, Visit, Quotation, ServiceRequest, Payment,
                       Notification, RefillOrder, ServiceQuotation,
                       ServiceQuotationItem, CustomerJourneyEvent, VisitFeedback,
                       Equipment, HealthCheckReport, Referral, SupportTicket,
-                      TicketAttachment, AMCPlan, VisitDefect, Installment, Enquiry)
+                      TicketAttachment, AMCPlan, VisitDefect, Installment, Enquiry, User)
 from ..utils import (customer_required, notify, notify_staff, WAIVER_TEXT,
                      AMC_AGREEMENT_CLAUSES, AMC_AGREEMENT_VERSION, save_upload)
 from ..email_service import (send_quote_accepted_alert, send_negotiation_alert)
@@ -517,7 +517,15 @@ def profile():
         current_user.area         = f.get("area", "").strip() or None
         current_user.city         = f.get("city", "").strip() or "Surat, Gujarat"
         if "email" in f:
-            current_user.email    = f.get("email", "").strip() or current_user.email
+            new_email = f.get("email", "").strip() or None
+            if new_email and new_email != current_user.email:
+                existing_email_user = User.query.filter(User.email == new_email, User.id != current_user.id).first()
+                if existing_email_user:
+                    flash("That email address is already in use by another account.", "warning")
+                else:
+                    current_user.email = new_email
+            elif not new_email:
+                current_user.email = None
         # Optional photo / ID card upload. A failed upload (e.g. read-only FS on
         # Vercel with no Blob token) must NOT block the rest of the profile from
         # saving — wrap it so the text details always persist.

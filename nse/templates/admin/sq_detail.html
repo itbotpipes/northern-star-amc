@@ -22,6 +22,12 @@
       <div class="bg-slate-50 rounded-lg p-3"><div class="text-xs text-ink-subtle mb-1">Customer</div><div class="font-medium text-ink">{{ sq.customer_name }}</div></div>
       <div class="bg-slate-50 rounded-lg p-3"><div class="text-xs text-ink-subtle mb-1">Phone</div><div class="font-medium text-ink"><a href="tel:{{ sq.customer_phone }}" class="text-primary">{{ sq.customer_phone or '—' }}</a></div></div>
       <div class="bg-slate-50 rounded-lg p-3"><div class="text-xs text-ink-subtle mb-1">Email</div><div class="font-medium text-ink">{{ sq.customer_email or '—' }}</div></div>
+      {% if sq.client_company %}
+      <div class="bg-slate-50 rounded-lg p-3"><div class="text-xs text-ink-subtle mb-1">Company / Org</div><div class="font-medium text-ink">{{ sq.client_company }}</div></div>
+      {% endif %}
+      {% if sq.client_gst %}
+      <div class="bg-slate-50 rounded-lg p-3"><div class="text-xs text-ink-subtle mb-1">Client GSTIN</div><div class="font-medium text-ink font-mono">{{ sq.client_gst }}</div></div>
+      {% endif %}
       {% if sq.customer_address %}
       <div class="sm:col-span-3 bg-slate-50 rounded-lg p-3"><div class="text-xs text-ink-subtle mb-1">Address</div><div class="font-medium text-ink">{{ sq.customer_address }}</div></div>
       {% endif %}

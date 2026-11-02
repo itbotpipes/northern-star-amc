@@ -25,7 +25,12 @@
       "adaptiveIcon": {
         "backgroundColor": "#072076"
       },
-      "permissions": ["INTERNET", "CAMERA"]
+      "permissions": [
+        "android.permission.INTERNET",
+        "android.permission.CAMERA",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "bundler": "metro"
@@ -44,6 +49,11 @@
           "photosPermission": "Used to attach site photos to a visit."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "a4e2880e-229e-402b-a8db-90a57b8b12e3"
+      }
+    }
   }
 }

@@ -1163,6 +1163,18 @@ class ServiceQuotation(db.Model):
     customer   = db.relationship("User", foreign_keys=[customer_id])
     inquiry    = db.relationship("Enquiry", foreign_keys=[inquiry_id], post_update=True)
 
+    @property
+    def client_company(self):
+        if self.customer and self.customer.company_name:
+            return self.customer.company_name
+        return None
+
+    @property
+    def client_gst(self):
+        if self.customer and self.customer.gst_number:
+            return self.customer.gst_number
+        return None
+
     # ------------------------------------------------------------------ helpers
     @property
     def subtotal(self):

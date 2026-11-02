@@ -194,6 +194,18 @@
           <td class="meta-label">Name:</td>
           <td class="meta-value">{{ q.customer_name }}</td>
         </tr>
+        {% if q.client_company %}
+        <tr>
+          <td class="meta-label">Company:</td>
+          <td class="meta-value"><strong>{{ q.client_company }}</strong></td>
+        </tr>
+        {% endif %}
+        {% if q.client_gst %}
+        <tr>
+          <td class="meta-label">Client GSTIN:</td>
+          <td class="meta-value"><strong>{{ q.client_gst }}</strong></td>
+        </tr>
+        {% endif %}
         {% if q.customer_phone %}
         <tr>
           <td class="meta-label">Contact:</td>

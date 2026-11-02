@@ -77,10 +77,11 @@ def list_quotations():
 @login_required
 @staff_required
 def new_quotation():
-    # Pre-fill from linked records if ?contract_id=X / ?sr_id=X / ?ro_id=X
+    # Pre-fill from linked records if ?contract_id=X / ?sr_id=X / ?ro_id=X / ?customer_id=X
     contract = db.session.get(Contract, request.args.get("contract_id", type=int))
     sr       = db.session.get(ServiceRequest, request.args.get("sr_id", type=int))
     ro       = db.session.get(RefillOrder,    request.args.get("ro_id", type=int))
+    cust_param = db.session.get(User, request.args.get("customer_id", type=int))
 
     # Pre-fill from a site survey (?from_survey=X) — client details only,
     # NO items auto-added. Engineer fills items manually.
@@ -97,6 +98,30 @@ def new_quotation():
             "project_name":     request.args.get("prefill_project", ""),
             "customer_address": request.args.get("prefill_address", ""),
         }
+    elif cust_param:
+        prefill = {
+            "customer_name":    cust_param.name or "",
+            "customer_phone":   cust_param.phone or "",
+            "customer_email":   cust_param.email or "",
+            "company_name":     cust_param.company_name or "",
+            "gst_number":       cust_param.gst_number or "",
+            "project_name":     f"{cust_param.company_name or cust_param.name} Site",
+            "customer_address": cust_param.address or (f"{cust_param.area or ''}, {cust_param.city or ''}".strip(", ")),
+            "customer_id":      cust_param.id,
+        }
+    elif contract:
+        cu = contract.customer
+        prefill = {
+            "customer_name":    (cu.name if cu else contract.applicant_name) or "",
+            "customer_phone":   (cu.phone if cu else contract.applicant_phone) or "",
+            "customer_email":   (cu.email if cu else contract.applicant_email) or "",
+            "company_name":     (cu.company_name if cu else "") or "",
+            "gst_number":       (cu.gst_number if cu else "") or "",
+            "project_name":     contract.site_name or "",
+            "customer_address": (cu.address if cu and cu.address else contract.site_address) or "",
+            "contract_id":      contract.id,
+            "customer_id":      cu.id if cu else None,
+        }
     elif inquiry:
         req_lower = (inquiry.service_requirement or "").lower()
         stype = "amc"
@@ -107,14 +132,24 @@ def new_quotation():
         elif "emergency" in req_lower or "repair" in req_lower or "hydrant" in req_lower:
             stype = "emergency"
 
+        # Check if inquiry has a customer_id or phone matching a registered user profile
+        cu = None
+        if inquiry.customer_id:
+            cu = db.session.get(User, inquiry.customer_id)
+        elif inquiry.phone:
+            cu = User.query.filter_by(phone=inquiry.phone.strip(), role="customer").first()
+
         prefill = {
-            "customer_name":    inquiry.name or "",
-            "customer_phone":   inquiry.phone or "",
-            "customer_email":   inquiry.email or "",
-            "project_name":     f"{inquiry.name} Site ({inquiry.area or inquiry.city or 'Surat'})",
-            "customer_address": f"{inquiry.address or ''}{', ' + inquiry.area if inquiry.area else ''}{', ' + inquiry.city if inquiry.city else ''}".strip(", "),
+            "customer_name":    (cu.name if cu else inquiry.name) or "",
+            "customer_phone":   (cu.phone if cu else inquiry.phone) or "",
+            "customer_email":   (cu.email if cu and cu.email else inquiry.email) or "",
+            "company_name":     (cu.company_name if cu else "") or "",
+            "gst_number":       (cu.gst_number if cu else "") or "",
+            "project_name":     (f"{cu.company_name} Site" if cu and cu.company_name else f"{inquiry.name} Site ({inquiry.area or inquiry.city or 'Surat'})"),
+            "customer_address": (cu.address if cu and cu.address else f"{inquiry.address or ''}{', ' + inquiry.area if inquiry.area else ''}{', ' + inquiry.city if inquiry.city else ''}".strip(", ")),
             "service_type":     stype,
             "inquiry_id":       inquiry.id,
+            "customer_id":      cu.id if cu else None,
         }
 
     if request.method == "POST":
@@ -140,14 +175,25 @@ def new_quotation():
         # Link survey if this quote came from one
         survey_id_hidden = f.get("from_survey_id", type=int)
 
-        # Link to customer User by phone (primary login method) or email
-        cu = None
-        if sq.customer_phone:
+        # Link to customer User by client_id, phone (primary login method), or email
+        client_id_form = f.get("client_id", type=int)
+        cu = db.session.get(User, client_id_form) if client_id_form else None
+        if not cu and sq.customer_phone:
             cu = User.query.filter_by(phone=sq.customer_phone.strip(), role="customer").first()
         if not cu and sq.customer_email:
             cu = User.query.filter_by(email=sq.customer_email.strip(), role="customer").first()
         if cu:
             sq.customer_id = cu.id
+            # Auto-save any profile details entered here back to the customer profile forever
+            form_company = f.get("company_name", "").strip()
+            form_gst     = f.get("gst_number", "").strip()
+            form_address = f.get("customer_address", "").strip()
+            if form_company and not cu.company_name:
+                cu.company_name = form_company
+            if form_gst and not cu.gst_number:
+                cu.gst_number = form_gst
+            if form_address and not cu.address:
+                cu.address = form_address
         sq.generate_number()
         db.session.add(sq)
         db.session.flush()
@@ -213,11 +259,52 @@ def new_quotation():
     # #1 — Project dropdown: existing contracts staff can pick to auto-fill the
     # client details (and link the quote + power price history #10c).
     projects = Contract.query.order_by(Contract.created_at.desc()).all()
+    customers = User.query.filter_by(role="customer").order_by(User.name.asc()).all()
     return render_template("admin/sq_new.html",
                            contract=contract, sr=sr, ro=ro,
                            inventory=inventory, prefill=prefill,
-                           projects=projects, from_survey_id=from_survey_id,
+                           projects=projects, customers=customers,
+                           from_survey_id=from_survey_id,
                            inquiry=inquiry)
+
+
+# --------------------------------------------------------------------------- #
+# Customer Profile Lookup (auto-fetch customer info by phone or email)
+# --------------------------------------------------------------------------- #
+@sq_bp.route("/lookup-customer")
+@login_required
+@staff_required
+def lookup_customer():
+    phone = (request.args.get("phone") or "").strip()
+    email = (request.args.get("email") or "").strip()
+    u = None
+    if phone:
+        clean_phone = phone.replace(" ", "").replace("-", "")
+        if clean_phone.startswith("+91"):
+            clean_phone = clean_phone[3:]
+        elif clean_phone.startswith("0") and len(clean_phone) == 11:
+            clean_phone = clean_phone[1:]
+        u = User.query.filter(
+            (User.phone == phone) | (User.phone == clean_phone) | (User.phone.endswith(clean_phone[-10:] if len(clean_phone)>=10 else clean_phone)),
+            User.role == "customer"
+        ).first()
+    if not u and email:
+        u = User.query.filter_by(email=email, role="customer").first()
+
+    if u:
+        return {
+            "found": True,
+            "id": u.id,
+            "name": u.name or "",
+            "phone": u.phone or "",
+            "email": u.email or "",
+            "company_name": u.company_name or "",
+            "gst_number": u.gst_number or "",
+            "address": u.address or (f"{u.area or ''}, {u.city or ''}".strip(", ")),
+            "area": u.area or "",
+            "city": u.city or "",
+        }
+    return {"found": False}
 
 
 # --------------------------------------------------------------------------- #

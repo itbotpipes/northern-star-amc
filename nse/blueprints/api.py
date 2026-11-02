@@ -371,6 +371,10 @@ def service_quote_json(sq, full=False):
         data["items"] = [sq_item_json(i) for i in sq.items]
         data["notes"] = sq.notes
         data["customer_address"] = sq.customer_address
+        data["customer_phone"] = sq.customer_phone
+        data["customer_email"] = sq.customer_email
+        data["company_name"] = sq.client_company
+        data["gst_number"] = sq.client_gst
     return data
 
 
@@ -534,10 +538,20 @@ def dashboard():
 def update_me():
     u = g.current_user
     body = request.get_json(silent=True) or {}
-    for field in ("name", "area", "city", "address", "email",
+    for field in ("name", "area", "city", "address",
                   "company_name", "gst_number"):
         if field in body and body[field] is not None:
-            setattr(u, field, str(body[field]).strip())
+            val = str(body[field]).strip() or None
+            setattr(u, field, val)
+    if "email" in body and body["email"] is not None:
+        new_email = str(body["email"]).strip() or None
+        if new_email and new_email != u.email:
+            existing = User.query.filter(User.email == new_email, User.id != u.id).first()
+            if existing:
+                return jsonify(error="Email already in use by another account."), 400
+            u.email = new_email
+        elif not new_email:
+            u.email = None
     db.session.commit()
     return jsonify(user=user_json(u))
 

@@ -16,28 +16,52 @@
     <div class="card p-6 space-y-4">
       <h2 class="font-bold text-ink">1. Service &amp; Client</h2>
 
-      <!-- #1 — Pick an existing project to auto-fill the client details -->
+      <!-- #1 — Pick an existing project or customer to auto-fill client details -->
       <label class="block">
-        <span class="text-sm font-medium text-ink-muted">Project</span>
+        <span class="text-sm font-medium text-ink-muted">Auto-fill Client Details</span>
         <select id="projectPicker" onchange="pickProject()" class="mt-1.5 w-full px-3 py-2.5">
-          <option value="">— New client (fill in manually) —</option>
-          {% for p in projects %}
-          <option value="{{ p.id }}"
-            data-cid="{{ p.customer_id or '' }}"
-            data-contract="{{ p.id }}"
-            data-name="{{ (p.customer.name if p.customer else p.applicant_name) or '' }}"
-            data-phone="{{ (p.customer.phone if p.customer else p.applicant_phone) or '' }}"
-            data-email="{{ (p.customer.email if p.customer else p.applicant_email) or '' }}"
-            data-project="{{ p.site_name or '' }}"
-            data-address="{{ p.site_address or '' }}"
-            {{ 'selected' if contract and contract.id == p.id }}>
-            {{ p.reference }} — {{ p.site_name or 'Site' }}{% if p.customer or p.applicant_name %} ({{ (p.customer.name if p.customer else p.applicant_name) }}){% endif %}
-          </option>
-          {% endfor %}
+          <option value="">— Select registered customer or project (auto-fills profile) —</option>
+          {% if customers %}
+          <optgroup label="Registered Customers (Auto-fetch profile)">
+            {% for c in customers %}
+            <option value="cust_{{ c.id }}"
+              data-cid="{{ c.id }}"
+              data-name="{{ c.name or '' }}"
+              data-phone="{{ c.phone or '' }}"
+              data-email="{{ c.email or '' }}"
+              data-company="{{ c.company_name or '' }}"
+              data-gst="{{ c.gst_number or '' }}"
+              data-project="{{ c.company_name or c.name }} Site"
+              data-address="{{ c.address or (c.area ~ ', ' ~ c.city if c.area else c.city) or '' }}"
+              {{ 'selected' if prefill.get('customer_id') == c.id }}>
+              👤 {{ c.name }} ({{ c.phone or 'No phone' }}){% if c.company_name %} — {{ c.company_name }}{% endif %}
+            </option>
+            {% endfor %}
+          </optgroup>
+          {% endif %}
+          <optgroup label="Active Projects &amp; Contracts">
+            {% for p in projects %}
+            <option value="{{ p.id }}"
+              data-cid="{{ p.customer_id or '' }}"
+              data-contract="{{ p.id }}"
+              data-name="{{ (p.customer.name if p.customer else p.applicant_name) or '' }}"
+              data-phone="{{ (p.customer.phone if p.customer else p.applicant_phone) or '' }}"
+              data-email="{{ (p.customer.email if p.customer else p.applicant_email) or '' }}"
+              data-company="{{ (p.customer.company_name if p.customer else '') or '' }}"
+              data-gst="{{ (p.customer.gst_number if p.customer else '') or '' }}"
+              data-project="{{ p.site_name or '' }}"
+              data-address="{{ (p.customer.address if p.customer and p.customer.address else p.site_address) or '' }}"
+              {{ 'selected' if contract and contract.id == p.id }}>
+              🏢 {{ p.reference }} — {{ p.site_name or 'Site' }}{% if p.customer or p.applicant_name %} ({{ (p.customer.name if p.customer else p.applicant_name) }}){% endif %}
+            </option>
+            {% endfor %}
+          </optgroup>
         </select>
-        <span class="text-xs text-ink-subtle">Selecting a project fills the client fields below and shows past rates for that client under each item.</span>
+        <span class="text-xs text-ink-subtle">Selecting a customer or project automatically fetches their saved profile information (name, phone, email, company, GST, address).</span>
       </label>
-      <input type="hidden" name="client_id" id="clientId" value="{{ (contract.customer_id if contract else '') or '' }}">
+      <input type="hidden" name="client_id" id="clientId" value="{{ (prefill.get('customer_id') or (contract.customer_id if contract else '')) or '' }}">
+
+      <div id="lookupAlert" class="hidden p-3 rounded-lg bg-green-50 border border-green-200 text-xs text-green-800 font-medium"></div>
 
       <div class="grid sm:grid-cols-2 gap-4">
         <label class="block">
@@ -58,12 +82,20 @@
           <input name="customer_name" required value="{{ prefill.get('customer_name') or (contract.applicant_name if contract) or (sr.name if sr) or (ro.name if ro) or '' }}" class="mt-1.5 w-full px-3 py-2.5">
         </label>
         <label class="block">
-          <span class="text-sm font-medium text-ink-muted">Phone</span>
-          <input name="customer_phone" value="{{ prefill.get('customer_phone') or (contract.applicant_phone if contract) or (sr.phone if sr) or (ro.phone if ro) or '' }}" class="mt-1.5 w-full px-3 py-2.5">
+          <span class="text-sm font-medium text-ink-muted">Phone (auto-looks up profile)</span>
+          <input name="customer_phone" id="customerPhone" value="{{ prefill.get('customer_phone') or (contract.applicant_phone if contract) or (sr.phone if sr) or (ro.phone if ro) or '' }}" class="mt-1.5 w-full px-3 py-2.5" placeholder="10-digit mobile number" oninput="lookupPhone(this.value)">
         </label>
         <label class="block">
           <span class="text-sm font-medium text-ink-muted">Email</span>
           <input name="customer_email" type="email" value="{{ prefill.get('customer_email') or (contract.applicant_email if contract) or (sr.email if sr) or (ro.email if ro) or '' }}" class="mt-1.5 w-full px-3 py-2.5">
+        </label>
+        <label class="block">
+          <span class="text-sm font-medium text-ink-muted">Company / Organisation</span>
+          <input name="company_name" value="{{ prefill.get('company_name') or (contract.customer.company_name if contract and contract.customer else '') or '' }}" class="mt-1.5 w-full px-3 py-2.5" placeholder="e.g. Rajshree Builders Pvt. Ltd.">
+        </label>
+        <label class="block">
+          <span class="text-sm font-medium text-ink-muted">Client GST Number</span>
+          <input name="gst_number" value="{{ prefill.get('gst_number') or (contract.customer.gst_number if contract and contract.customer else '') or '' }}" class="mt-1.5 w-full px-3 py-2.5 font-mono uppercase" placeholder="e.g. 24XXXXX0000X1Z5">
         </label>
         <label class="block">
           <span class="text-sm font-medium text-ink-muted">Address</span>
@@ -149,22 +181,61 @@
 </section>
 
 <script>
-// #1 — auto-fill client details from the chosen project
+// #1 — auto-fill client details from the chosen project or customer
 function pickProject() {
   var sel = document.getElementById('projectPicker');
   var opt = sel.options[sel.selectedIndex];
   if (!opt) return;
-  var set = function(name, val){ var el = document.querySelector('[name='+name+']'); if (el && val) el.value = val; };
-  set('customer_name', opt.dataset.name);
-  set('customer_phone', opt.dataset.phone);
-  set('customer_email', opt.dataset.email);
-  set('project_name', opt.dataset.project);
+  var set = function(name, val){ var el = document.querySelector('[name='+name+']'); if (el && val !== undefined) el.value = val; };
+  set('customer_name', opt.dataset.name || '');
+  set('customer_phone', opt.dataset.phone || '');
+  set('customer_email', opt.dataset.email || '');
+  set('company_name', opt.dataset.company || '');
+  set('gst_number', opt.dataset.gst || '');
+  set('project_name', opt.dataset.project || '');
   var addr = document.querySelector('[name=customer_address]');
   if (addr && opt.dataset.address) addr.value = opt.dataset.address;
   document.getElementById('clientId').value = opt.dataset.cid || '';
   document.getElementById('contractId').value = opt.dataset.contract || '';
+
+  var alertBox = document.getElementById('lookupAlert');
+  if (opt.dataset.name) {
+    alertBox.textContent = '✓ Profile loaded: ' + opt.dataset.name + (opt.dataset.company ? ' (' + opt.dataset.company + ')' : '') + ' — Details auto-fetched from profile.';
+    alertBox.classList.remove('hidden');
+  } else {
+    alertBox.classList.add('hidden');
+  }
+
   // Refresh any already-typed price hints for the new client
   document.querySelectorAll('[name=item_desc]').forEach(function(inp){ if (inp.value.trim().length >= 3) priceHint(inp); });
+}
+
+// Live auto-lookup when staff enters/types customer phone number
+var _lookupTimer = null;
+function lookupPhone(val) {
+  var clean = (val || '').replace(/[^0-9]/g, '');
+  if (clean.length < 10) return;
+  clearTimeout(_lookupTimer);
+  _lookupTimer = setTimeout(function() {
+    var url = '{{ url_for("sq.lookup_customer") }}?phone=' + encodeURIComponent(clean);
+    fetch(url).then(function(r) { return r.json(); }).then(function(d) {
+      if (d && d.found) {
+        var set = function(name, v) {
+          var el = document.querySelector('[name=' + name + ']');
+          if (el && v) el.value = v;
+        };
+        set('customer_name', d.name);
+        set('customer_email', d.email);
+        set('company_name', d.company_name);
+        set('gst_number', d.gst_number);
+        set('customer_address', d.address);
+        document.getElementById('clientId').value = d.id || '';
+        var alertBox = document.getElementById('lookupAlert');
+        alertBox.textContent = '✓ Registered profile found: ' + d.name + (d.company_name ? ' (' + d.company_name + ')' : '') + ' — Details auto-fetched!';
+        alertBox.classList.remove('hidden');
+      }
+    }).catch(function() {});
+  }, 350);
 }
 
 // #10c — show the rate(s) this item was previously quoted to the selected client

@@ -39,6 +39,34 @@
       <!-- PDF download intentionally not available for quotations -->
     </div>
 
+    <!-- Client / Business info -->
+    {% if sq.client_company or sq.client_gst or sq.customer_address %}
+    <div class="mt-4 p-4 rounded-xl bg-slate-50 border border-hairline grid sm:grid-cols-3 gap-3 text-sm">
+      <div>
+        <span class="text-xs text-ink-subtle block">Client</span>
+        <span class="font-bold text-ink">{{ sq.customer_name }}</span>
+      </div>
+      {% if sq.client_company %}
+      <div>
+        <span class="text-xs text-ink-subtle block">Company / Business</span>
+        <span class="font-bold text-ink">{{ sq.client_company }}</span>
+      </div>
+      {% endif %}
+      {% if sq.client_gst %}
+      <div>
+        <span class="text-xs text-ink-subtle block">GSTIN</span>
+        <span class="font-mono font-bold text-ink">{{ sq.client_gst }}</span>
+      </div>
+      {% endif %}
+      {% if sq.customer_address %}
+      <div class="sm:col-span-3">
+        <span class="text-xs text-ink-subtle block">Billing &amp; Site Address</span>
+        <span class="text-ink">{{ sq.customer_address }}</span>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
     <!-- Line items table -->
     <div class="mt-5 overflow-x-auto rounded-xl border border-hairline">
       <table class="w-full text-sm">
