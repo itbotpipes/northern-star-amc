@@ -4,23 +4,113 @@
 {% block content %}
 <section class="max-w-4xl mx-auto px-4 py-10">
   <a href="{{ url_for('admin.health_reports') }}" class="text-sm text-slate-500 hover:text-navy-700">← All health reports</a>
+  
   <div class="flex items-center justify-between flex-wrap gap-3 mt-2 mb-4">
-    <h1 class="text-2xl font-extrabold text-navy-800">{{ r.reference if r else 'New' }} · Fire System Health Checkup</h1>
-    {% if r %}<a href="{{ url_for('admin.health_report_pdf', report_id=r.id) }}" class="text-sm bg-navy-800 text-white px-4 py-2 rounded-lg hover:bg-navy-700">Download PDF</a>{% endif %}
+    <div>
+      <h1 class="text-2xl font-extrabold text-navy-800">{{ r.reference if r else 'New' }} · Fire System Health Checkup</h1>
+      <p class="text-xs text-slate-500 mt-0.5">On-site fire safety health inspection &amp; audit score report</p>
+    </div>
+    {% if r %}
+    <div class="flex items-center gap-2 flex-wrap">
+      <a href="{{ url_for('admin.health_report_whatsapp', report_id=r.id) }}" target="_blank"
+         class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-white shadow-sm hover:opacity-90"
+         style="background:#25D366;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+        WhatsApp Report
+      </a>
+      <a href="{{ url_for('admin.health_report_email', report_id=r.id) }}"
+         class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-navy-800 text-white hover:bg-navy-700">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+        Email Client PDF
+      </a>
+      <a href="{{ url_for('admin.health_report_pdf', report_id=r.id) }}" class="text-xs bg-slate-100 text-navy-800 px-3 py-2 rounded-lg hover:bg-slate-200 font-semibold">
+        Download PDF ↓
+      </a>
+    </div>
+    {% endif %}
   </div>
 
-  {% if is_lead %}
+  {% if is_lead and contract %}
+  <div class="bg-amber-50/70 border border-amber-200 rounded-xl p-4 mb-4 space-y-3">
+    <div class="flex items-center justify-between flex-wrap gap-2">
+      <p class="text-sm text-amber-900 font-medium">
+        This inspection is for lead <strong>{{ contract.reference }}</strong> ({{ contract.applicant_name or (contract.customer.name if contract.customer) }}).
+      </p>
+      {% if contract.applicant_phone %}
+      <a href="tel:{{ contract.applicant_phone }}" class="text-xs bg-white border border-amber-300 text-amber-900 px-2.5 py-1 rounded-lg font-semibold hover:bg-amber-100 flex items-center gap-1 shadow-2xs">
+        📞 Call Client ({{ contract.applicant_phone }})
+      </a>
+      {% endif %}
+    </div>
+
+    {% if contract.problem_description %}
+    <div class="text-xs text-amber-950 bg-amber-100/60 p-2.5 rounded-lg border border-amber-200/60">
+      <span class="font-bold">Client's Reported Issue:</span> {{ contract.problem_description }}
+    </div>
+    {% endif %}
+
+    {% if contract.voice_note %}
+    {% set is_vn_audio = contract.voice_note.lower().endswith(('.webm', '.wav', '.mp3', '.ogg', '.m4a', '.aac', '.mp4')) or 'uploads/' in contract.voice_note or 'blob.vercel' in contract.voice_note or 'supabase' in contract.voice_note or contract.voice_note.startswith('http') %}
+    {% if is_vn_audio %}
+    <div class="bg-white border border-amber-300 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center gap-2">
+      <span class="text-xs font-bold text-amber-900 flex items-center gap-1.5 whitespace-nowrap">
+        🎙️ Customer Recorded Voice Note:
+      </span>
+      <audio controls preload="metadata" class="w-full sm:flex-1 h-9" src="{{ contract.voice_note|upload_url }}"></audio>
+    </div>
+    {% endif %}
+    {% endif %}
+  </div>
+  {% elif is_lead %}
   <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
-    <p class="text-sm text-amber-800 font-medium">This report is the inspection for lead {{ contract.reference }}
-      ({{ contract.applicant_name or (contract.customer.name if contract.customer) }}).
-      Record the score/outcome below — saving as "Completed" will move the lead to its next step.</p>
+    <p class="text-sm text-amber-800 font-medium">This report is the inspection for lead <strong>{{ contract.reference }}</strong>.
+      Record the score &amp; outcome below — saving as "Completed" will trigger the client report and move the lead to decision.</p>
   </div>
   {% endif %}
 
-  <form method="post" enctype="multipart/form-data" class="space-y-6">
+  <!-- LIVE FIRE SAFETY SCORE METER (Sticky Bar) -->
+  <div class="sticky top-4 z-20 bg-white/95 backdrop-blur border-2 border-slate-200 shadow-lg rounded-2xl p-4 mb-6 transition-all" id="scoreMeterCard">
+    <div class="flex items-center justify-between flex-wrap gap-4">
+      <div class="flex items-center gap-3">
+        <div class="w-14 h-14 rounded-2xl flex items-center justify-center font-black text-xl shadow-inner transition-colors" id="scoreBadge" style="background:#f0fdf4;color:#15803d">
+          <span id="scoreDisplay">{{ r.score if r and r.score is not none else '100' }}</span>
+        </div>
+        <div>
+          <div class="text-xs uppercase font-bold tracking-wider text-slate-400">Live Fire Safety Audit Score</div>
+          <div class="text-sm font-extrabold text-navy-900 flex items-center gap-2">
+            <span id="scoreBandText">Calculating...</span>
+            <span class="text-xs px-2 py-0.5 rounded-full font-bold" id="outcomePill">OK</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Domain breakdown chips -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+        <div class="bg-slate-50 border border-slate-200 rounded-lg p-2 text-center">
+          <div class="text-slate-400 text-[10px] font-semibold">Pumps &amp; Pressure</div>
+          <div class="font-bold text-navy-900 mt-0.5"><span id="pumpScore">30</span> / 30</div>
+        </div>
+        <div class="bg-slate-50 border border-slate-200 rounded-lg p-2 text-center">
+          <div class="text-slate-400 text-[10px] font-semibold">Electrical &amp; Diesel</div>
+          <div class="font-bold text-navy-900 mt-0.5"><span id="elecScore">25</span> / 25</div>
+        </div>
+        <div class="bg-slate-50 border border-slate-200 rounded-lg p-2 text-center">
+          <div class="text-slate-400 text-[10px] font-semibold">Hydrants &amp; Sprinklers</div>
+          <div class="font-bold text-navy-900 mt-0.5"><span id="hydrantScore">30</span> / 30</div>
+        </div>
+        <div class="bg-slate-50 border border-slate-200 rounded-lg p-2 text-center">
+          <div class="text-slate-400 text-[10px] font-semibold">Life Safety &amp; Evac</div>
+          <div class="font-bold text-navy-900 mt-0.5"><span id="lifeScore">15</span> / 15</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <form method="post" enctype="multipart/form-data" class="space-y-6" id="hcrForm">
 
     <!-- Header / property -->
     <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+      <h2 class="font-bold text-navy-800 mb-3 uppercase text-sm tracking-wide">Property &amp; Inspection Details</h2>
       <div class="grid sm:grid-cols-2 gap-3 text-sm">
         <label class="block"><span class="text-slate-500">Property name</span>
           <input name="property_name" value="{{ r.property_name if r else (contract.site_name if contract else '') }}" class="mt-1 w-full px-3 py-2 rounded-lg border border-slate-300"></label>
@@ -45,12 +135,24 @@
       {% if visit %}<input type="hidden" name="visit_id" value="{{ visit.id }}">{% endif %}
     </div>
 
-    <!-- Scan-and-upload fallback -->
-    <div class="bg-amber-50 border border-amber-200 rounded-2xl p-5">
-      <h2 class="font-bold text-amber-900 text-sm">App not working on site? Scan &amp; upload instead</h2>
-      <p class="text-xs text-amber-800 mt-1">Fill the digital form below, OR upload a photo/scan of the paper report here. Both are saved with this record.</p>
-      <input type="file" name="scan" accept=".pdf,.png,.jpg,.jpeg" class="mt-2 w-full text-sm">
-      {% if r and r.scan_path %}<p class="text-xs text-green-700 mt-1">✓ Scanned copy on file — <a href="{{ r.scan_path|upload_url }}" target="_blank" class="underline">view</a></p>{% endif %}
+    <!-- Scanned Paper Report Upload Section -->
+    <div class="bg-amber-50 border-2 border-amber-300 rounded-2xl p-5">
+      <div class="flex items-center gap-2">
+        <svg class="w-5 h-5 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+        <h2 class="font-bold text-amber-900 text-sm">Upload Paper Inspection Report (Scanned Copy)</h2>
+      </div>
+      <p class="text-xs text-amber-800 mt-1">
+        If an on-site physical paper checklist was completed, upload a photo or scanned PDF copy here. You can manually enter the final safety score &amp; outcome below.
+      </p>
+      <div class="mt-3">
+        <input type="file" name="scan" accept=".pdf,.png,.jpg,.jpeg" class="w-full text-sm text-amber-950 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-amber-600 file:text-white hover:file:bg-amber-700 cursor-pointer">
+      </div>
+      {% if r and r.scan_path %}
+      <div class="mt-2 text-xs text-green-700 font-semibold flex items-center gap-1.5">
+        <span>✓ Scanned copy on file:</span>
+        <a href="{{ r.scan_path|upload_url }}" target="_blank" class="underline hover:text-green-800">View uploaded scan ↗</a>
+      </div>
+      {% endif %}
     </div>
 
     <!-- Yes/No/N-A sections -->
@@ -63,7 +165,10 @@
           <span class="text-slate-700 flex-1">{{ label }}</span>
           <span class="flex gap-3 shrink-0">
             {% for opt in ['yes','no','na'] %}
-            <label class="flex items-center gap-1 cursor-pointer"><input type="radio" name="{{ key }}" value="{{ opt }}" {{ 'checked' if answers.get(key)==opt }}> {{ 'N/A' if opt=='na' else opt|capitalize }}</label>
+            <label class="flex items-center gap-1 cursor-pointer">
+              <input type="radio" name="{{ key }}" value="{{ opt }}" {{ 'checked' if answers.get(key)==opt or (not answers and opt=='yes') }} onchange="calcFireSafetyScore()"> 
+              {{ 'N/A' if opt=='na' else opt|capitalize }}
+            </label>
             {% endfor %}
           </span>
         </div>
@@ -82,7 +187,10 @@
           <span class="flex items-center gap-3 shrink-0">
             {% if has_count %}<input name="{{ key }}_nos" value="{{ answers.get(key + '_nos','') }}" placeholder="Nos" class="w-16 px-2 py-1 rounded border border-slate-300 text-center text-xs">{% endif %}
             {% for opt in ['yes','no','na'] %}
-            <label class="flex items-center gap-1 cursor-pointer"><input type="radio" name="{{ key }}" value="{{ opt }}" {{ 'checked' if answers.get(key)==opt }}> {{ 'N/A' if opt=='na' else opt|capitalize }}</label>
+            <label class="flex items-center gap-1 cursor-pointer">
+              <input type="radio" name="{{ key }}" value="{{ opt }}" {{ 'checked' if answers.get(key)==opt or (not answers and opt=='yes') }} onchange="calcFireSafetyScore()"> 
+              {{ 'N/A' if opt=='na' else opt|capitalize }}
+            </label>
             {% endfor %}
           </span>
         </div>
@@ -94,7 +202,7 @@
     <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
       <div class="flex items-center justify-between mb-3">
         <h2 class="font-bold text-navy-800 uppercase text-sm tracking-wide">Floor-wise Fire Protection Equipment</h2>
-        <button type="button" onclick="addFloorRow()" class="text-xs text-primary hover:underline">+ Add floor</button>
+        <button type="button" onclick="addFloorRow()" class="text-xs text-primary hover:underline font-semibold">+ Add floor</button>
       </div>
       <div class="overflow-x-auto">
         <table class="text-xs min-w-full" id="floor-table">
@@ -122,71 +230,105 @@
 
     <!-- Extras + remarks -->
     <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+      <h2 class="font-bold text-navy-800 mb-3 uppercase text-sm tracking-wide">Life Safety Extras &amp; Remarks</h2>
       <div class="flex flex-wrap gap-5 text-sm">
         {% for key, label in model.EXTRAS %}
         <div class="flex items-center gap-2">
           <span class="text-slate-700">{{ label }}:</span>
           {% for opt in ['yes','no'] %}
-          <label class="flex items-center gap-1 cursor-pointer"><input type="radio" name="{{ key }}" value="{{ opt }}" {{ 'checked' if answers.get(key)==opt }}> {{ opt|capitalize }}</label>
+          <label class="flex items-center gap-1 cursor-pointer">
+            <input type="radio" name="{{ key }}" value="{{ opt }}" {{ 'checked' if answers.get(key)==opt or (not answers and opt=='yes') }} onchange="calcFireSafetyScore()"> 
+            {{ opt|capitalize }}
+          </label>
           {% endfor %}
         </div>
         {% endfor %}
       </div>
-      <label class="block mt-3 text-sm"><span class="text-slate-500">Other</span>
+      <label class="block mt-3 text-sm"><span class="text-slate-500">Other remarks</span>
         <input name="ex_other" value="{{ answers.get('ex_other','') }}" class="mt-1 w-full px-3 py-2 rounded-lg border border-slate-300"></label>
-      <label class="block mt-3 text-sm"><span class="text-slate-500">Remarks</span>
-        <textarea name="remarks" rows="4" class="mt-1 w-full px-3 py-2 rounded-lg border border-slate-300">{{ answers.get('remarks','') }}</textarea></label>
+      <label class="block mt-3 text-sm"><span class="text-slate-500">Inspection Observations / Defects Summary</span>
+        <textarea name="remarks" rows="4" class="mt-1 w-full px-3 py-2 rounded-lg border border-slate-300" placeholder="List any specific observations or critical notes on system health...">{{ answers.get('remarks','') }}</textarea></label>
     </div>
 
-    {% if is_lead %}
-    <!-- #2/#3 rebuild — overall score + outcome that drives the lead branch -->
-    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-      <h2 class="font-bold text-navy-800 mb-3">Overall score &amp; outcome</h2>
+    <!-- Fire Safety Score & Final Outcome Section -->
+    <div class="bg-white rounded-2xl border-2 border-slate-200 shadow-sm p-5">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="font-bold text-navy-800">Fire Safety Score &amp; Inspection Outcome</h2>
+        <button type="button" onclick="calcFireSafetyScore(true)" class="text-xs text-primary hover:underline font-semibold">🔄 Auto-recalculate from checklist</button>
+      </div>
       <div class="grid sm:grid-cols-2 gap-4">
-        <label class="block text-sm"><span class="text-slate-500">Overall score (0–100, optional)</span>
-          <input type="number" name="score" min="0" max="100" value="{{ r.score if r and r.score is not none else '' }}"
-                 class="mt-1 w-full px-3 py-2 rounded-lg border border-slate-300"></label>
         <div>
-          <span class="text-sm text-slate-500">Outcome</span>
-          <div class="mt-1 space-y-1.5">
-            <label class="flex items-center gap-2 text-sm"><input type="radio" name="outcome" value="ok" {{ 'checked' if r and r.outcome=='ok' }} required> Everything OK — no immediate issues</label>
-            <label class="flex items-center gap-2 text-sm"><input type="radio" name="outcome" value="issues" {{ 'checked' if r and r.outcome=='issues' }}> Issues found — needs a quotation</label>
-            {% if contract.project_type == 'existing' %}
-            <label class="flex items-center gap-2 text-sm"><input type="radio" name="outcome" value="needs_rework" {{ 'checked' if r and r.outcome=='needs_rework' }}> Needs rework the maintenance team can't do</label>
-            {% endif %}
+          <label class="block text-sm font-medium text-slate-700">Fire Safety Score (0–100)</label>
+          <div class="mt-1 flex items-center gap-2">
+            <input type="number" name="score" id="scoreInput" min="0" max="100" value="{{ r.score if r and r.score is not none else '100' }}"
+                   class="w-32 px-3 py-2 rounded-lg border border-slate-300 font-extrabold text-lg text-center" oninput="manualScoreUpdate()">
+            <span class="text-xs text-slate-500">Calculated automatically based on evaluated items. Can be overridden manually for paper scans.</span>
+          </div>
+        </div>
+
+        <div>
+          <span class="block text-sm font-medium text-slate-700 mb-1">Inspection Result</span>
+          <div class="space-y-2">
+            <label class="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="radio" name="outcome" value="ok" id="outcomeOk" {{ 'checked' if (r and r.outcome=='ok') or (not r and not answers) }} required>
+              <span class="font-semibold text-green-700">OK — Everything Satisfactory</span>
+              <span class="text-xs text-slate-400">(Score ≥ 85)</span>
+            </label>
+            <label class="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="radio" name="outcome" value="issues" id="outcomeIssues" {{ 'checked' if r and r.outcome=='issues' }}>
+              <span class="font-semibold text-amber-700">Problems Found — Needs Quotation</span>
+              <span class="text-xs text-slate-400">(Score &lt; 85)</span>
+            </label>
+            <label class="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="radio" name="outcome" value="needs_rework" id="outcomeRework" {{ 'checked' if r and r.outcome=='needs_rework' }}>
+              <span class="font-semibold text-red-700">Needs Rework — Site Defect</span>
+              <span class="text-xs text-slate-400">(Installation defect)</span>
+            </label>
           </div>
         </div>
       </div>
-      <label class="block text-sm mt-3" id="reworkNotesWrap" style="display:none;"><span class="text-slate-500">Rework details</span>
-        <textarea name="rework_notes" rows="2" class="mt-1 w-full px-3 py-2 rounded-lg border border-slate-300" placeholder="What needs to be fixed before maintenance can take over?"></textarea></label>
-      {% if contract.project_type == 'existing' %}
-      <div class="grid sm:grid-cols-2 gap-4 mt-3 pt-3 border-t border-slate-100">
-        <label class="block text-sm"><span class="text-slate-500">Handed over by (engineer)</span>
-          <input name="handover_engineer" value="{{ contract.handover_engineer or '' }}" class="mt-1 w-full px-3 py-2 rounded-lg border border-slate-300"></label>
-        <label class="block text-sm"><span class="text-slate-500">Accepted by (maintenance)</span>
-          <input name="handover_technician" value="{{ contract.handover_technician or '' }}" class="mt-1 w-full px-3 py-2 rounded-lg border border-slate-300"></label>
+
+      <div class="mt-4" id="reworkNotesWrap" style="display:none;">
+        <label class="block text-sm font-medium text-slate-700">Rework Details</label>
+        <textarea name="rework_notes" rows="2" class="mt-1 w-full px-3 py-2 rounded-lg border border-slate-300" placeholder="What needs to be fixed before maintenance can take over?"></textarea>
+      </div>
+
+      {% if contract and (contract.project_type in ('existing', 'handover') or contract.is_handover) %}
+      <div class="mt-4 pt-4 border-t border-slate-200 bg-slate-50 p-4 rounded-xl">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-bold uppercase tracking-wider text-slate-800">Joint Handover Sign-off (Both Must Sign)</span>
+            <span class="text-[11px] text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full font-semibold">Engineer + Technician</span>
+          </div>
+          {% if contract.handover_signed_at %}
+          <span class="text-xs text-green-700 font-semibold flex items-center gap-1">
+            ✓ Signed {{ contract.handover_signed_at.strftime('%d-%b-%Y') }}
+          </span>
+          {% endif %}
+        </div>
+        <p class="text-xs text-slate-500 mb-3">
+          Both the project engineer and maintenance technician inspect the site together and enter their sign-off signatures/names below.
+        </p>
+        <div class="grid sm:grid-cols-2 gap-4">
+          <label class="block text-sm"><span class="text-slate-700 font-medium">Handed over by (Project Engineer) <span class="text-red-500">*</span></span>
+            <input name="handover_engineer" value="{{ contract.handover_engineer or '' }}" placeholder="Engineer name / signature" class="mt-1 w-full px-3 py-2 rounded-lg border border-slate-300 bg-white font-medium"></label>
+          <label class="block text-sm"><span class="text-slate-700 font-medium">Accepted by (Maintenance Technician) <span class="text-red-500">*</span></span>
+            <input name="handover_technician" value="{{ contract.handover_technician or '' }}" placeholder="Technician name / signature" class="mt-1 w-full px-3 py-2 rounded-lg border border-slate-300 bg-white font-medium"></label>
+        </div>
       </div>
       {% endif %}
-      <p class="text-xs text-slate-400 mt-2">Set Status to "Completed" below and save to move this lead forward.</p>
     </div>
-    <script>
-    document.querySelectorAll('input[name=outcome]').forEach(function(r){
-      r.addEventListener('change', function(){
-        document.getElementById('reworkNotesWrap').style.display =
-          (document.querySelector('input[name=outcome]:checked').value === 'needs_rework') ? 'block' : 'none';
-      });
-    });
-    </script>
-    {% endif %}
 
     <!-- Status + save -->
     <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 flex items-center justify-between flex-wrap gap-3">
-      <label class="block text-sm"><span class="text-slate-500">Status</span>
-        <select name="status" class="mt-1 px-3 py-2 rounded-lg border border-slate-300">
-          <option value="draft" {{ 'selected' if r and r.status=='draft' }}>Draft</option>
-          <option value="completed" {{ 'selected' if r and r.status=='completed' }}>Completed (notify client)</option>
+      <label class="block text-sm"><span class="text-slate-500 font-medium">Report Status</span>
+        <select name="status" class="mt-1 px-3 py-2 rounded-lg border border-slate-300 font-semibold">
+          <option value="draft" {{ 'selected' if r and r.status=='draft' }}>Draft (In progress)</option>
+          <option value="completed" {{ 'selected' if not r or r.status=='completed' }}>Completed (Finalize &amp; Share)</option>
         </select></label>
-      <button onclick="serializeFloors()" class="bg-green-600 text-white font-semibold px-6 py-2.5 rounded-xl hover:bg-green-500">Save report</button>
+      <button type="submit" onclick="serializeFloors()" class="bg-green-600 text-white font-bold px-8 py-3 rounded-xl hover:bg-green-500 shadow-md transition">
+        Save &amp; Finalize Report
+      </button>
     </div>
   </form>
 </section>
@@ -226,8 +368,121 @@ function serializeFloors() {
   });
   document.getElementById('floors-json').value = JSON.stringify(rows);
 }
-// Prefill
 if (EXISTING_FLOORS.length) EXISTING_FLOORS.forEach(addFloorRow);
 else addFloorRow();
+
+// Rework textarea toggle
+document.querySelectorAll('input[name=outcome]').forEach(function(r){
+  r.addEventListener('change', function(){
+    var checked = document.querySelector('input[name=outcome]:checked');
+    document.getElementById('reworkNotesWrap').style.display =
+      (checked && checked.value === 'needs_rework') ? 'block' : 'none';
+  });
+});
+
+// Real-time Fire Safety Score Calculation Engine
+var PUMP_KEYS = ["ph_heat","ph_vent","ph_water","ph_coupling","ps_valves","ps_leaks","ps_seal","ps_suction","ps_system","ps_switch","ps_reservoir","ps_flowtest"];
+var ELEC_KEYS = ["es_pilot","es_transfer","es_isolating","es_reverse","es_normal","es_oil","es_jockey","es_switches","de_fuel","de_selector","de_voltage","de_charge","de_power"];
+var HYD_KEYS  = ["hy_line","hy_valve","hy_nozzle","hy_hosebox","hy_butterfly","hy_branch","hy_sluice","hy_rrl","hy_strainer","hy_ball","hy_foot","hy_reelpipe","hy_sprinkler","hy_reeldrum","hy_nrv","hy_air","hy_pswitch","hy_pgauge","hy_inlet","hy_charged"];
+var LIFE_KEYS = ["ex_evac","ex_pa","ex_lifts"];
+var CRITICAL_KEYS = ["ps_reservoir", "hy_charged", "de_fuel", "ps_leaks", "es_jockey"];
+
+var isManualOverride = false;
+
+function getDomainScore(keys, maxWeight) {
+  var evalCount = 0;
+  var passCount = 0;
+  keys.forEach(function(k){
+    var el = document.querySelector('input[name="'+k+'"]:checked');
+    if (el) {
+      var v = el.value.toLowerCase();
+      if (v === 'yes' || v === 'no') {
+        evalCount++;
+        if (v === 'yes') passCount++;
+      }
+    }
+  });
+  if (evalCount === 0) return maxWeight;
+  return (passCount / evalCount) * maxWeight;
+}
+
+function calcFireSafetyScore(force) {
+  if (isManualOverride && !force) return;
+
+  var sPump = getDomainScore(PUMP_KEYS, 30);
+  var sElec = getDomainScore(ELEC_KEYS, 25);
+  var sHyd  = getDomainScore(HYD_KEYS,  30);
+  var sLife = getDomainScore(LIFE_KEYS, 15);
+
+  // Check critical failures & apply penalty
+  var criticalFailed = false;
+  var criticalPenalty = 0;
+  CRITICAL_KEYS.forEach(function(k){
+    var el = document.querySelector('input[name="'+k+'"]:checked');
+    if (el && el.value.toLowerCase() === 'no') {
+      criticalFailed = true;
+      criticalPenalty += 10;
+    }
+  });
+
+  var total = Math.round(sPump + sElec + sHyd + sLife) - criticalPenalty;
+  total = Math.max(0, Math.min(100, total));
+
+  document.getElementById('pumpScore').textContent = Math.round(sPump);
+  document.getElementById('elecScore').textContent = Math.round(sElec);
+  document.getElementById('hydrantScore').textContent = Math.round(sHyd);
+  document.getElementById('lifeScore').textContent = Math.round(sLife);
+
+  document.getElementById('scoreDisplay').textContent = total;
+  var input = document.getElementById('scoreInput');
+  if (input) input.value = total;
+
+  var badge = document.getElementById('scoreBadge');
+  var bandText = document.getElementById('scoreBandText');
+  var outcomePill = document.getElementById('outcomePill');
+
+  if (total >= 85 && !criticalFailed) {
+    badge.style.background = '#f0fdf4';
+    badge.style.color = '#15803d';
+    bandText.textContent = 'Excellent / Compliant';
+    outcomePill.textContent = 'OK';
+    outcomePill.className = 'text-xs px-2 py-0.5 rounded-full font-bold bg-green-100 text-green-800';
+    if (!isManualOverride) {
+      var okRadio = document.getElementById('outcomeOk');
+      if (okRadio) okRadio.checked = true;
+    }
+  } else if (total >= 60) {
+    badge.style.background = '#fffbeb';
+    badge.style.color = '#b45309';
+    bandText.textContent = 'Needs Maintenance';
+    outcomePill.textContent = 'Issues Found';
+    outcomePill.className = 'text-xs px-2 py-0.5 rounded-full font-bold bg-amber-100 text-amber-800';
+    if (!isManualOverride) {
+      var issRadio = document.getElementById('outcomeIssues');
+      if (issRadio) issRadio.checked = true;
+    }
+  } else {
+    badge.style.background = '#fef2f2';
+    badge.style.color = '#b91c1c';
+    bandText.textContent = 'High Risk / Severe Defects';
+    outcomePill.textContent = 'Action Required';
+    outcomePill.className = 'text-xs px-2 py-0.5 rounded-full font-bold bg-red-100 text-red-800';
+    if (!isManualOverride) {
+      var issRadio = document.getElementById('outcomeIssues');
+      if (issRadio) issRadio.checked = true;
+    }
+  }
+}
+
+function manualScoreUpdate() {
+  isManualOverride = true;
+  var val = parseInt(document.getElementById('scoreInput').value, 10);
+  if (!isNaN(val)) {
+    document.getElementById('scoreDisplay').textContent = val;
+  }
+}
+
+// Initial calculation on load
+calcFireSafetyScore();
 </script>
 {% endblock %}

@@ -1,0 +1,22 @@
+{% extends "email/_base_email.html" %}
+{% block content %}
+<h2>Fire Safety Health Checkup Report</h2>
+<p>Dear {{ client_name }},</p>
+<p>The fire safety inspection for <strong>{{ report.property_name or 'your site' }}</strong> has been completed by <strong>{{ report.inspector_name or 'our certified inspector' }}</strong> on {{ report.report_date.strftime('%d %B %Y') if report.report_date else 'today' }}.</p>
+
+<div class="info-box">
+  <p><strong>Report Reference:</strong> {{ report.reference }}</p>
+  <p><strong>Fire Safety Score:</strong> <span style="font-size:16px;font-weight:bold;color:{% if report.score and report.score >= 85 %}#16a34a{% elif report.score and report.score >= 60 %}#d97706{% else %}#dc2626{% endif %}">{{ report.score if report.score is not none else '—' }} / 100</span></p>
+  <p><strong>Inspection Result:</strong> <strong>{{ 'OK — Everything Satisfactory' if report.outcome == 'ok' else ('Issues Found — Action Required' if report.outcome == 'issues' else 'Needs Rework — Installation Defect') }}</strong></p>
+  <p><strong>Next Step of Action:</strong> {{ next_action }}</p>
+</div>
+
+<p>Your detailed Fire System Health Checkup Report (FSHCR) is attached to this email. You can also access it online anytime using the button below:</p>
+<p style="text-align:center;margin:24px 0;">
+  <a href="{{ report_url }}" class="btn">View &amp; Download Inspection Report</a>
+</p>
+
+<p>Thank you for partnering with Northern Star Engineering for your fire safety management.</p>
+<p>Warm regards,<br><strong>Northern Star Engineering Team</strong></p>
+{% endblock %}
+

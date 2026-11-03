@@ -40,6 +40,15 @@
   </div>
   <div class="wrap">
     <div class="card">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, message in messages %}
+            <div style="background:#fffbeb; border:1px solid #fde68a; color:#92400e; padding:10px 14px; border-radius:8px; font-size:13px; margin-bottom:12px; text-align:left;">
+              {{ message }}
+            </div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
       <div class="ref">Quotation {{ sq.reference }}</div>
       <div class="amt">{{ sq.grand_total|rupees }}</div>
 
@@ -57,6 +66,10 @@
         <a class="btn btn-open" href="{{ upi_link }}">Open a UPI app to pay</a>
         {% endif %}
         <form method="post" action="{{ url_for('public.public_quote_paid_claim', token=sq.public_token) }}">
+          <div style="text-align:left; margin:14px 0 8px;">
+            <label style="font-size:12px; color:var(--muted); font-weight:600; display:block; margin-bottom:4px;">UPI / UTR Transaction ID (Optional):</label>
+            <input type="text" name="utr_number" placeholder="e.g. 483921008271" style="width:100%; padding:9px 12px; border:1px solid var(--line); border-radius:8px; font-size:14px; box-sizing:border-box;">
+          </div>
           <button class="btn btn-amber" type="submit">I have paid ✓</button>
         </form>
       {% else %}

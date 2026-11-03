@@ -120,6 +120,17 @@
 
     {% if sq.is_paid %}
       <p class="text-sm text-ink-subtle mt-3">Received {{ sq.payment_marked_at.strftime('%d %b %Y %H:%M') if sq.payment_marked_at }}{% if sq.payment_reference %} · Ref: {{ sq.payment_reference }}{% endif %}.</p>
+      {% if whatsapp_creds_share %}
+      <div class="mt-4 p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <div class="text-xs font-bold uppercase tracking-wider text-emerald-800">Customer Webapp Credentials Ready</div>
+          <div class="text-xs text-emerald-700 mt-0.5">Mobile: <strong>{{ sq.customer_phone }}</strong> &middot; Access via Mobile OTP (no password needed)</div>
+        </div>
+        <a href="{{ whatsapp_creds_share }}" target="_blank" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-xs shadow-sm flex items-center gap-1.5">
+          <span>📱 Send Login Credentials on WhatsApp</span>
+        </a>
+      </div>
+      {% endif %}
     {% else %}
       <form method="post" action="{{ url_for('sq.mark_paid', sq_id=sq.id) }}" class="mt-4 grid sm:grid-cols-3 gap-3">
         <div>
@@ -224,6 +235,16 @@
         </tr>
       </tfoot>
     </table>
+  </div>
+
+  <!-- Terms & Conditions -->
+  <div class="card mt-5 p-5">
+    <h3 class="font-bold text-ink text-sm uppercase tracking-wider mb-2">Terms &amp; Conditions Applied to Quotation</h3>
+    <ol class="text-xs text-ink-subtle space-y-1 list-decimal pl-4">
+      {% for t in sq.get_terms() %}
+      <li>{{ t }}</li>
+      {% endfor %}
+    </ol>
   </div>
 
   <!-- Journey timeline -->

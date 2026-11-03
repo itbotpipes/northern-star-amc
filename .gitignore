@@ -31,3 +31,6 @@ nse/static/uploads/*
 *.zip
 node_modules/
 .expo/
+
+# IDE
+.vscode/

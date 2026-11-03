@@ -28,7 +28,15 @@
           <td class="px-4 py-2 text-slate-600">{{ c.plan.name if c.plan else 'Custom' }}</td>
           <td class="px-4 py-2">{{ c.price|rupees }}</td>
           <td class="px-4 py-2">{{ c.completed_visits }}/{{ c.total_visits }}</td>
-          <td class="px-4 py-2">{{ status_badge(c.status) }}</td>
+          <td class="px-4 py-2">
+            {{ status_badge(c.status) }}
+            {% if c.post_visit_payment_info.is_overdue %}
+            <div class="text-[11px] font-bold text-red-600 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded mt-1 inline-block">Payment Overdue (45d+)</div>
+            {% endif %}
+            {% if c.cash_collection_status == 'pending_approval' %}
+            <div class="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded mt-1 inline-block">Cash Pending Approval</div>
+            {% endif %}
+          </td>
         </tr>
       {% else %}
         <tr><td colspan="6" class="px-4 py-6 text-center text-slate-500">No contracts found.</td></tr>

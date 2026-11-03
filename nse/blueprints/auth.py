@@ -10,6 +10,8 @@ auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
 
 
 def _home_for(user):
+    if user.is_technician:
+        return url_for("admin.day_plan")
     return url_for("admin.dashboard") if user.is_staff else url_for("portal.dashboard")
 
 
@@ -29,6 +31,13 @@ def otp_request():
     if len(phone) < 8:
         flash("Please enter a valid phone number.", "danger")
         return redirect(url_for("auth.login"))
+    
+    # Staff must log in with email and password
+    staff_user = User.query.filter(User.phone == phone, User.role != "customer").first()
+    if staff_user and staff_user.is_staff:
+        flash("Staff accounts must log in with email and password.", "warning")
+        return redirect(url_for("auth.login", tab="staff"))
+
     code = generate_otp(phone)
     session["otp_phone"] = phone
     # Dev flow: surface the code on screen (replace with real SMS in production).
@@ -46,18 +55,32 @@ def otp_verify():
         flash("Invalid or expired OTP. Please try again.", "danger")
         return redirect(url_for("auth.login"))
 
+    # Block staff members from signing into customer portal via OTP
+    staff_user = User.query.filter(User.phone == phone, User.role != "customer").first()
+    if staff_user and staff_user.is_staff:
+        flash("Staff members must sign in with email and password.", "warning")
+        return redirect(url_for("auth.login", tab="staff"))
+
     user = User.query.filter_by(phone=phone, role="customer").first()
+    is_new = False
     if not user:
         user = User(role="customer", phone=phone, name=name or f"Customer {phone[-4:]}")
         db.session.add(user)
         db.session.commit()
+        is_new = True
     elif name and user.name.startswith("Customer "):
         user.name = name
         db.session.commit()
 
     login_user(user)
     session.pop("otp_phone", None)
-    flash(f"Welcome, {user.name}!", "success")
+
+    # Profile page opens directly for NEW users only
+    if is_new:
+        flash(f"Welcome, {user.name}! Please take a moment to set up your profile details.", "info")
+        return redirect(url_for("portal.profile", new_user=1))
+
+    flash(f"Welcome back, {user.name}!", "success")
     return redirect(_home_for(user))
 
 

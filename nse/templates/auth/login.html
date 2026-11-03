@@ -15,7 +15,7 @@
   </div>
 
   <div class="mt-6 card p-6 bg-navy-50 border-navy-100">
-    <details>
+    <details {{ 'open' if request.args.get('tab') == 'staff' }}>
       <summary class="text-sm font-semibold text-primary cursor-pointer">Staff / Ops login</summary>
       <form method="post" action="{{ url_for('auth.staff_login') }}" class="mt-4 space-y-3">
         <input type="email" name="email" required placeholder="Email" class="w-full px-3 py-2.5">

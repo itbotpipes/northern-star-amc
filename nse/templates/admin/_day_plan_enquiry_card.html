@@ -1,0 +1,69 @@
+{# Reusable inquiry inspection card for day plan — expects `e` in context #}
+<div class="card p-4 border-l-4 border-blue-500 hover:border-blue-600 transition shadow-sm bg-white">
+  <div class="flex items-start justify-between gap-3 flex-wrap">
+    <div class="flex-1 min-w-0">
+      <div class="flex items-center gap-2 flex-wrap mb-1">
+        <span class="text-xs px-2.5 py-0.5 rounded-full font-bold bg-blue-100 text-blue-800">
+          Inquiry Site Inspection
+        </span>
+        <span class="font-bold text-sm text-ink mono">
+          {{ e.ref_code }}
+        </span>
+        {% if e.visit_scheduled_date %}
+        <span class="text-xs text-ink-subtle">
+          📅 {{ e.visit_scheduled_date.strftime('%a, %d %b') }}{% if e.visit_time_slot %} ({{ e.visit_time_slot }}){% endif %}
+        </span>
+        {% else %}
+        <span class="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 font-medium">Date Flexible</span>
+        {% endif %}
+        <span class="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-medium capitalize">
+          {{ e.status|replace('_', ' ') }}
+        </span>
+      </div>
+
+      <p class="text-sm font-semibold text-ink mt-1">
+        {{ e.name }} — <span class="text-ink-muted font-normal">{{ e.service_requirement }}</span>
+      </p>
+
+      <p class="text-xs text-ink-subtle mt-1 flex items-center gap-2 flex-wrap">
+        <span>📍 {{ e.address or e.area or 'Site address pending' }}{% if e.area and e.address %}, {{ e.area }}{% endif %}</span>
+        {% if e.phone %}
+        <span>• 📞 <a href="tel:{{ e.phone }}" class="text-primary font-semibold hover:underline">{{ e.phone }}</a></span>
+        {% endif %}
+      </p>
+
+      {% if e.team_leader_notes %}
+      <p class="text-xs text-blue-900 bg-blue-50/80 p-2 rounded-lg mt-2 border border-blue-100">
+        <strong>TL Guidance:</strong> {{ e.team_leader_notes }}
+      </p>
+      {% endif %}
+    </div>
+
+    <div class="flex items-center gap-2 flex-shrink-0 flex-wrap">
+      {% if e.status in ('assigned', 'site_visit_scheduled', 'site_visit_in_progress') %}
+      <a href="{{ url_for('admin.enquiry_checklist', enq_id=e.id) }}"
+         class="btn text-xs px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-sm flex items-center gap-1.5 rounded-xl transition">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+        Start Checklist / Survey
+      </a>
+      {% elif e.status == 'checklist_submitted' and not e.quotation_id %}
+      <a href="{{ url_for('sq.new_quotation', inquiry_id=e.id) }}"
+         class="btn text-xs px-3.5 py-1.5 bg-green-600 hover:bg-green-700 text-white font-semibold shadow-sm rounded-xl transition">
+        + Make Quotation
+      </a>
+      {% endif %}
+
+      <a href="{{ url_for('sq.new_quotation', inquiry_id=e.id) }}"
+         class="btn btn-ghost text-xs px-2.5 py-1.5 text-ink-muted hover:text-ink rounded-xl border border-slate-200"
+         title="Create on-site material quotation">
+        Material Quote
+      </a>
+
+      <a href="{{ url_for('admin.enquiry_detail', enq_id=e.id) }}"
+         class="btn btn-ghost text-xs px-2.5 py-1.5 flex-shrink-0 rounded-xl border border-slate-200">
+        Details
+      </a>
+    </div>
+  </div>
+</div>
+

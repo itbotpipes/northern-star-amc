@@ -286,39 +286,174 @@
   function toggleTheme(){const d=document.documentElement.classList.toggle('dark');localStorage.setItem('nse-theme',d?'dark':'light');}
   const nt=document.getElementById('navToggle');if(nt)nt.addEventListener('click',()=>document.getElementById('mobileLinks').classList.toggle('hidden'));
   if('IntersectionObserver' in window){const io=new IntersectionObserver(es=>{es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('visible');io.unobserve(e.target);}});},{threshold:.1});document.querySelectorAll('.fade-up').forEach(el=>io.observe(el));}else{document.querySelectorAll('.fade-up').forEach(el=>el.classList.add('visible'));}
-  document.querySelectorAll('.voice-widget').forEach(widget=>{
-    const btn=widget.querySelector('.voice-btn'),label=widget.querySelector('.voice-label'),micIcon=widget.querySelector('.voice-mic'),status=widget.querySelector('.voice-status'),box=widget.querySelector('.voice-transcript'),hidden=widget.querySelector('.voice-hidden-input'),noSupp=widget.querySelector('.voice-unsupported');
-    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-    const showUnsupported=()=>{if(noSupp)noSupp.classList.remove('hidden');if(btn)btn.classList.add('hidden');};
-    // #8d — Web Speech API needs a secure context (https, or localhost for dev).
-    // Without this check, rec.start() throws and the button silently does nothing.
-    const secure=(location.protocol==='https:'||location.hostname==='localhost'||location.hostname==='127.0.0.1');
-    if(!SR||!secure){showUnsupported();if(SR&&!secure&&noSupp)noSupp.textContent='Voice typing needs a secure connection — please type your message below.';return;}
-    const rec=new SR();rec.lang='en-IN';rec.interimResults=true;rec.continuous=false;let running=false,finalText='';
-    const ERR_MSG={
-      'not-allowed':'Microphone access denied — check your browser/site permissions.',
-      'service-not-allowed':'Microphone access denied — check your browser/site permissions.',
-      'no-speech':"Didn't catch that — tap and try speaking again.",
-      'audio-capture':'No microphone found on this device.',
-      'network':'Check your internet connection and try again.',
-      'aborted':'Recording stopped.',
-    };
-    const showError=code=>{status.textContent=ERR_MSG[code]||('Voice input error: '+code+'. Please type instead.');status.classList.remove('hidden');setTimeout(()=>status.classList.add('hidden'),5000);};
-    rec.onstart=()=>{running=true;label.textContent='Tap to stop';micIcon.style.stroke='#d23f3f';status.textContent='Listening…';status.classList.remove('hidden');box.classList.remove('hidden');box.textContent='Listening…';};
-    rec.onresult=e=>{let interim='';finalText='';for(let i=0;i<e.results.length;i++){if(e.results[i].isFinal)finalText+=e.results[i][0].transcript+' ';else interim+=e.results[i][0].transcript;}box.textContent=(finalText+interim)||'Listening…';};
-    rec.onend=()=>{running=false;label.textContent='Tap to speak';micIcon.style.stroke='';status.classList.add('hidden');if(finalText.trim()){const prev=hidden.value?hidden.value+' ':'';hidden.value=(prev+finalText).trim();box.classList.remove('italic');box.textContent=hidden.value;}else{box.classList.add('hidden');}};
-    rec.onerror=err=>{running=false;label.textContent='Tap to speak';micIcon.style.stroke='';showError(err.error);};
-    btn.addEventListener('click',()=>{
-      if(running){rec.stop();return;}
-      finalText='';
-      try{rec.start();}
-      catch(e){
-        // rec.start() can throw synchronously (e.g. already-running state, or a
-        // permissions/DOM exception) — without this catch the click did nothing
-        // visible at all, which is exactly the "tap to speak isn't working" bug.
-        running=false;label.textContent='Tap to speak';showError(e.name==='InvalidStateError'?'aborted':'not-allowed');
+  document.querySelectorAll('.voice-widget').forEach(widget => {
+    const btn = widget.querySelector('.voice-btn');
+    const label = widget.querySelector('.voice-label');
+    const micIcon = widget.querySelector('.voice-mic');
+    const timerSpan = widget.querySelector('.voice-timer');
+    const status = widget.querySelector('.voice-status');
+    const playerBox = widget.querySelector('.voice-player-box');
+    const audioEl = widget.querySelector('.voice-audio-player');
+    const reRecordBtn = widget.querySelector('.voice-rerecord-btn');
+    const fileInput = widget.querySelector('.voice-audio-file');
+    const hidden = widget.querySelector('.voice-hidden-input');
+    const noSupp = widget.querySelector('.voice-unsupported');
+
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let timerInterval = null;
+    let secondsElapsed = 0;
+    let isRecording = false;
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || typeof MediaRecorder === 'undefined') {
+      if (noSupp) noSupp.classList.remove('hidden');
+      if (fileInput) fileInput.classList.remove('hidden');
+      if (btn) btn.classList.add('hidden');
+      return;
+    }
+
+    function formatTime(sec) {
+      const m = Math.floor(sec / 60);
+      const s = sec % 60;
+      return m + ':' + (s < 10 ? '0' : '') + s;
+    }
+
+    function resetWidget() {
+      if (timerInterval) clearInterval(timerInterval);
+      isRecording = false;
+      secondsElapsed = 0;
+      audioChunks = [];
+      if (btn) {
+        btn.classList.remove('bg-red-500', 'text-white', 'hover:bg-red-600', 'animate-pulse');
+        btn.classList.add('btn-ghost');
+        btn.classList.remove('hidden');
       }
-    });
+      if (label) label.textContent = 'Record voice note';
+      if (micIcon) {
+        micIcon.style.stroke = '';
+        micIcon.classList.remove('text-red-500');
+      }
+      if (timerSpan) {
+        timerSpan.textContent = '0:00';
+        timerSpan.classList.add('hidden');
+      }
+      if (status) {
+        status.textContent = '';
+        status.classList.add('hidden');
+      }
+      if (playerBox) playerBox.classList.add('hidden');
+      if (audioEl) {
+        audioEl.src = '';
+        audioEl.pause();
+      }
+      if (fileInput) fileInput.value = '';
+      if (hidden) hidden.value = '';
+    }
+
+    if (reRecordBtn) {
+      reRecordBtn.addEventListener('click', resetWidget);
+    }
+
+    async function startRecording() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        let mimeType = '';
+        if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) mimeType = 'audio/webm;codecs=opus';
+        else if (MediaRecorder.isTypeSupported('audio/webm')) mimeType = 'audio/webm';
+        else if (MediaRecorder.isTypeSupported('audio/mp4')) mimeType = 'audio/mp4';
+        else if (MediaRecorder.isTypeSupported('audio/ogg')) mimeType = 'audio/ogg';
+
+        mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+        audioChunks = [];
+
+        mediaRecorder.ondataavailable = e => {
+          if (e.data && e.data.size > 0) audioChunks.push(e.data);
+        };
+
+        mediaRecorder.onstop = () => {
+          stream.getTracks().forEach(track => track.stop());
+          if (timerInterval) clearInterval(timerInterval);
+
+          const finalMime = mediaRecorder.mimeType || 'audio/webm';
+          const blob = new Blob(audioChunks, { type: finalMime });
+          const audioUrl = URL.createObjectURL(blob);
+          if (audioEl) {
+            audioEl.src = audioUrl;
+          }
+          if (playerBox) playerBox.classList.remove('hidden');
+          if (btn) btn.classList.add('hidden');
+          if (timerSpan) timerSpan.classList.add('hidden');
+          if (status) {
+            status.textContent = '✓ Voice note ready (' + formatTime(secondsElapsed) + ')';
+            status.className = 'voice-status text-xs font-semibold text-emerald-600';
+            status.classList.remove('hidden');
+          }
+
+          try {
+            const ext = finalMime.includes('mp4') ? 'm4a' : 'webm';
+            const file = new File([blob], 'voice_note_' + Date.now() + '.' + ext, { type: finalMime });
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            if (fileInput) fileInput.files = dt.files;
+            if (hidden) hidden.value = 'recorded_audio:' + file.name;
+          } catch (err) {
+            console.error('DataTransfer attach error:', err);
+          }
+        };
+
+        mediaRecorder.start(250);
+        isRecording = true;
+        secondsElapsed = 0;
+        if (btn) {
+          btn.classList.remove('btn-ghost');
+          btn.classList.add('bg-red-500', 'text-white', 'hover:bg-red-600', 'animate-pulse');
+        }
+        if (label) label.textContent = 'Stop recording';
+        if (status) {
+          status.textContent = '🔴 Recording...';
+          status.className = 'voice-status text-xs font-bold text-red-600';
+          status.classList.remove('hidden');
+        }
+        if (timerSpan) {
+          timerSpan.textContent = '0:00';
+          timerSpan.classList.remove('hidden');
+        }
+
+        timerInterval = setInterval(() => {
+          secondsElapsed++;
+          if (timerSpan) timerSpan.textContent = formatTime(secondsElapsed);
+          if (secondsElapsed >= 180) {
+            stopRecording();
+          }
+        }, 1000);
+
+      } catch (err) {
+        console.error('Microphone access failed:', err);
+        if (status) {
+          status.textContent = 'Microphone access denied or unavailable.';
+          status.className = 'voice-status text-xs text-amber-700';
+          status.classList.remove('hidden');
+        }
+        if (fileInput) fileInput.classList.remove('hidden');
+      }
+    }
+
+    function stopRecording() {
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+      }
+      isRecording = false;
+    }
+
+    if (btn) {
+      btn.addEventListener('click', () => {
+        if (!isRecording) {
+          startRecording();
+        } else {
+          stopRecording();
+        }
+      });
+    }
   });
   document.querySelectorAll('.photo-input').forEach(input=>{input.addEventListener('change',()=>{const container=document.getElementById(input.dataset.preview);if(!container)return;container.innerHTML='';Array.from(input.files).forEach(file=>{if(file.type.startsWith('image/')){const img=document.createElement('img');img.src=URL.createObjectURL(file);img.className='w-20 h-20 object-cover rounded-lg border border-hairline';container.appendChild(img);}else if(file.type.startsWith('video/')){const vid=document.createElement('video');vid.src=URL.createObjectURL(file);vid.className='w-20 h-20 object-cover rounded-lg border border-hairline';vid.muted=true;container.appendChild(vid);}});});});
   function nseChime(){try{var C=window.AudioContext||window.webkitAudioContext;if(!C)return;var c=new C(),notes=[[880,0],[1318.5,.12]];notes.forEach(function(n){var o=c.createOscillator(),g=c.createGain();o.type='sine';o.frequency.value=n[0];o.connect(g);g.connect(c.destination);var t=c.currentTime+n[1];g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.3,t+.02);g.gain.exponentialRampToValueAtTime(.0001,t+.5);o.start(t);o.stop(t+.55);});}catch(e){}}

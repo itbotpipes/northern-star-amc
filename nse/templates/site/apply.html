@@ -23,7 +23,15 @@
       <select id="siteChoice" name="existing_site_id" class="mt-1.5 w-full px-3 py-2.5" onchange="toggleSite()">
         <option value="">— A new site —</option>
         {% for s in my_sites %}
-        <option value="{{ s.id }}">{{ s.reference }} — {{ s.site_name or s.site_address or 'Site' }}</option>
+        <option value="{{ s.id }}"
+                data-site-name="{{ s.site_name or '' }}"
+                data-area="{{ s.area or '' }}"
+                data-address="{{ s.site_address or '' }}"
+                data-property-type="{{ s.property_type or '' }}"
+                data-lat="{{ s.latitude or '' }}"
+                data-lng="{{ s.longitude or '' }}">
+          {{ s.reference }} — {{ s.site_name or s.site_address or 'Site' }}
+        </option>
         {% endfor %}
       </select>
     </div>
@@ -75,17 +83,16 @@
         <textarea name="problem_description" rows="3" class="mt-1.5 w-full px-3 py-2.5"
                   placeholder="e.g. extinguisher pressure low, alarm panel showing fault, or just due for a checkup…"></textarea>
       </label>
-      {{ voice_note_widget('voice_note', 'Or tell us by voice — we will transcribe it') }}
-      <p class="text-xs text-ink-subtle">Helpful if you cannot type — just tap the mic and speak. Your message is automatically converted to text for our team.</p>
+      {{ voice_note_widget('voice_note', 'Record a voice note for our technician (optional)') }}
+      <p class="text-xs text-ink-subtle">Explain your requirement or issue by voice. You can listen before sending, and our technician will hear your voice note directly.</p>
     </div>
 
     <!-- Site photos / videos -->
     {{ photo_upload_widget('site_photos', 'Upload site photos or videos for reference (optional)') }}
 
-    <button class="btn btn-primary w-full">Send Enquiry</button>
-    <p class="text-xs text-ink-subtle text-center">
-      This sends your enquiry to our maintenance team. A manager will schedule a site inspection,
-      share the full report, and follow up with the next steps. No payment is needed now.
+    <button class="btn btn-primary w-full text-base py-3">Send inquiry</button>
+    <p class="text-sm text-ink-muted text-center mt-2">
+      Our technician will visit, inspect and share a quotation — no payment now.
     </p>
   </form>
 </section>
@@ -93,9 +100,46 @@
 <script>
 function toggleSite() {
   var sel = document.getElementById('siteChoice');
-  var newFields = document.getElementById('newSiteFields');
   if (!sel) return;
-  newFields.style.display = sel.value ? 'none' : 'block';
+  var opt = sel.options[sel.selectedIndex];
+  var siteNameInput = document.querySelector('[name="site_name"]');
+  var areaInput = document.querySelector('[name="area"]');
+  var addressInput = document.querySelector('[name="site_address"]');
+  var propTypeSelect = document.querySelector('[name="property_type"]');
+  var latInput = document.getElementById('latitude');
+  var lngInput = document.getElementById('longitude');
+  var locStatus = document.getElementById('locStatus');
+
+  if (sel.value && opt) {
+    if (siteNameInput) siteNameInput.value = opt.getAttribute('data-site-name') || '';
+    if (areaInput) areaInput.value = opt.getAttribute('data-area') || '';
+    if (addressInput) addressInput.value = opt.getAttribute('data-address') || '';
+    var pt = opt.getAttribute('data-property-type');
+    if (propTypeSelect && pt) {
+      for (var i = 0; i < propTypeSelect.options.length; i++) {
+        if (propTypeSelect.options[i].value === pt || propTypeSelect.options[i].text === pt) {
+          propTypeSelect.selectedIndex = i;
+          break;
+        }
+      }
+    }
+    var lat = opt.getAttribute('data-lat');
+    var lng = opt.getAttribute('data-lng');
+    if (lat && lng) {
+      if (latInput) latInput.value = lat;
+      if (lngInput) lngInput.value = lng;
+      if (locStatus) {
+        locStatus.innerHTML = 'Location saved &#10003; <a class="text-primary underline" target="_blank" href="https://maps.google.com/?q=' + lat + ',' + lng + '">view on map</a>';
+      }
+    }
+  } else {
+    if (siteNameInput) siteNameInput.value = '';
+    if (areaInput) areaInput.value = {{ (cu.area or '')|tojson if cu else "''" }};
+    if (addressInput) addressInput.value = {{ (cu.address or '')|tojson if cu else "''" }};
+    if (latInput) latInput.value = '';
+    if (lngInput) lngInput.value = '';
+    if (locStatus) locStatus.innerHTML = '';
+  }
 }
 (function () {
   var btn = document.getElementById('useLocationBtn');

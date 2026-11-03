@@ -1,22 +1,22 @@
 from datetime import datetime, date, timedelta
 
 from flask import (Blueprint, render_template, request, redirect, url_for,
-                   flash, abort)
+                   flash, abort, session)
 from flask_login import login_required, current_user
 from sqlalchemy import or_
 
 from ..extensions import db
 from ..models import (User, AMCPlan, Contract, Visit, VisitPhoto, Equipment,
                       RefillRecord, Quotation, QuotationItem, ServiceRequest,
-                      Payment, Enquiry, RefillOrder, RefillItem, FormAttachment,
+                      Enquiry, RefillOrder, FormAttachment,
                       VisitFeedback, CustomerJourneyEvent, ServiceQuotation,
                       ServiceQuotationItem, VisitChecklistItem, InventoryItem,
                       HealthCheckReport, SystemCheckList, SupportTicket,
-                      VisitDefect, Broadcast, Installment, MilestoneLog,
+                      VisitDefect, Broadcast, Installment,
                       ReworkItem, InquiryChecklistItem, InquiryPhoto, InquiryHistory)
-from ..utils import (staff_required, team_leader_required, save_upload, notify,
-                     notify_staff, notify_team_leaders, whatsapp_url, normalise_phone)
-from ..email_service import send_feedback_request, send_visit_confirmation
+from ..utils import (staff_required, admin_required, manager_required, save_upload, notify,
+                     notify_staff, notify_team_leaders, notify_managers, whatsapp_url, public_url)
+from ..email_service import send_feedback_request, send_health_report_email
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/ops")
 
@@ -35,7 +35,7 @@ def _apply_reschedule(v, new_date):
                          f"{('from ' + old.strftime('%d %b %Y') + ' ') if old else ''}"
                          f"to {new_date:%d %b %Y}"),
             ref_type="visit", ref_id=v.id,
-            created_by_id=current_user.id))
+            created_by_id=current_user.id if (current_user and current_user.is_authenticated) else None))
         notify(v.contract.customer_id, f"{v.label} rescheduled",
                f"{v.label} for {v.contract.reference} is now on {new_date:%d %b %Y}.",
                link=url_for("portal.contract", contract_id=v.contract_id))
@@ -50,6 +50,8 @@ def _apply_reschedule(v, new_date):
 @login_required
 @staff_required
 def dashboard():
+    if current_user.is_technician:
+        return redirect(url_for("admin.day_plan"))
     pending_apps = Contract.query.filter_by(status="pending")\
         .order_by(Contract.created_at.desc()).all()
     active = Contract.query.filter_by(status="active").count()
@@ -92,7 +94,7 @@ def dashboard():
 # --------------------------------------------------------------------------- #
 @admin_bp.route("/amc")
 @login_required
-@staff_required
+@manager_required
 def amc_module():
     active_count  = Contract.query.filter_by(status="active").count()
     pending_count = Contract.query.filter_by(status="pending").count()
@@ -154,7 +156,7 @@ def notifications():
 # --------------------------------------------------------------------------- #
 @admin_bp.route("/reminders")
 @login_required
-@staff_required
+@manager_required
 def reminders():
     from ..reminders import payment_reminders
     items = payment_reminders()
@@ -208,6 +210,8 @@ def _generate_visits(c, start, n_visits, tech_id=None):
 @staff_required
 def leads():
     if request.method == "POST":
+        if not current_user.is_manager:
+            abort(403)
         f = request.form
         project_type = f.get("project_type", "new")   # new / existing
         phone = (f.get("phone") or "").strip()
@@ -224,7 +228,7 @@ def leads():
             longitude=(f.get("longitude") or "").strip() or None,
             customer_id=customer.id if customer else None,
         )
-        if project_type == "existing":
+        if project_type in ("existing", "handover"):
             c.spoc_name = (f.get("spoc_name") or "").strip() or None
             c.spoc_phone = (f.get("spoc_phone") or "").strip() or None
             c.spoc_role = (f.get("spoc_role") or "").strip() or None
@@ -233,8 +237,13 @@ def leads():
         flash(f"Lead created ({c.reference}). Schedule the inspection next.", "success")
         return redirect(url_for("admin.lead_detail", lead_id=c.id))
 
-    open_leads = (Contract.query.filter(Contract.lead_stage.isnot(None))
-                  .order_by(Contract.created_at.desc()).all())
+    if not current_user.is_manager:
+        open_leads = (Contract.query.filter(Contract.lead_stage.isnot(None),
+                                            Contract.inspection_technician_id == current_user.id)
+                      .order_by(Contract.created_at.desc()).all())
+    else:
+        open_leads = (Contract.query.filter(Contract.lead_stage.isnot(None))
+                      .order_by(Contract.created_at.desc()).all())
     return render_template("admin/leads.html", leads=open_leads)
 
 
@@ -249,35 +258,121 @@ def lead_detail(lead_id):
     rework = ReworkItem.query.filter_by(contract_id=c.id).order_by(ReworkItem.created_at.desc()).all()
     quote = (ServiceQuotation.query.filter_by(contract_id=c.id)
              .order_by(ServiceQuotation.created_at.desc()).first())
+    attachments = FormAttachment.query.filter_by(ref_type="contract", ref_id=c.id).all()
+    
+    # Query full journey timeline
+    journey = (CustomerJourneyEvent.query
+               .filter_by(ref_type="contract", ref_id=c.id)
+               .order_by(CustomerJourneyEvent.created_at.asc()).all())
+
+    # Generate pre-filled WhatsApp message URL
+    client_phone = c.applicant_phone or (c.customer.phone if c.customer else "")
+    client_name = c.applicant_name or (c.customer.name if c.customer else "Valued Client")
+    site_desc = c.site_name or c.site_address or c.area or "your site"
+
+    whatsapp_share = None
+    wa_preview_text = None
+    if client_phone:
+        if c.inspection_scheduled_date:
+            when = c.inspection_scheduled_date.strftime("%d %b %Y")
+            tech_name = c.inspection_technician.name if c.inspection_technician else "our technician"
+            tech_phone = f" ({c.inspection_technician.phone})" if (c.inspection_technician and c.inspection_technician.phone) else ""
+            wa_preview_text = (
+                f"Hello {client_name},\n\n"
+                f"Your fire safety inspection for *{site_desc}* (Ref: {c.reference}) is scheduled for *{when}*.\n\n"
+                f"👤 *Technician Visiting:* {tech_name}{tech_phone}\n"
+                f"📅 *Date of Visit:* {when}\n\n"
+                f"Our technician will visit to inspect your site and share a detailed safety report and AMC quotation — no payment is required now.\n\n"
+                f"— Northern Star Fire Safety"
+            )
+        else:
+            wa_preview_text = (
+                f"Hello {client_name},\n\n"
+                f"Thank you for contacting Northern Star Fire Safety regarding *{site_desc}* (Ref: {c.reference}).\n\n"
+                f"Our maintenance manager is reviewing your enquiry and will assign a technician for your site inspection shortly.\n\n"
+                f"— Northern Star Fire Safety"
+            )
+        whatsapp_share = whatsapp_url(client_phone, wa_preview_text)
+
+    just_scheduled = (session.pop("just_scheduled_lead", None) == c.id)
+
     return render_template("admin/lead_detail.html", c=c, technicians=technicians,
-                           fshcr=fshcr, rework=rework, quote=quote)
+                           fshcr=fshcr, rework=rework, quote=quote, attachments=attachments,
+                           journey=journey, whatsapp_share=whatsapp_share,
+                           wa_preview_text=wa_preview_text, client_phone=client_phone,
+                           just_scheduled=just_scheduled)
 
 
 @admin_bp.route("/lead/<int:lead_id>/schedule-inspection", methods=["POST"])
 @login_required
-@staff_required
+@manager_required
 def schedule_inspection(lead_id):
     c = db.session.get(Contract, lead_id) or abort(404)
     f = request.form
     tech = db.session.get(User, f.get("technician_id", type=int)) if f.get("technician_id") else None
     date_str = f.get("inspection_date")
+    
+    was_scheduled = bool(c.lead_stage == "inspection_scheduled" or c.inspection_scheduled_date)
+
     c.inspection_technician_id = tech.id if tech else None
     c.inspection_scheduled_date = (datetime.strptime(date_str, "%Y-%m-%d").date()
                                    if date_str else None)
     c.lead_stage = "inspection_scheduled"
-    db.session.commit()
+
+    # Auto-link or create customer account so they can log in and receive notifications
+    if not c.customer_id and c.applicant_phone:
+        existing = User.query.filter_by(phone=c.applicant_phone, role="customer").first()
+        if not existing:
+            existing = User(
+                role="customer",
+                name=c.applicant_name or "Customer",
+                phone=c.applicant_phone,
+                email=c.applicant_email or None,
+                address=c.site_address or None,
+                area=c.area or None
+            )
+            db.session.add(existing)
+            db.session.flush()
+        c.customer_id = existing.id
+
     when = c.inspection_scheduled_date.strftime("%d %b %Y") if c.inspection_scheduled_date else "soon"
+    tech_str = tech.name if tech else "unassigned"
+
+    # Log in full timeline / CustomerJourneyEvent
+    event_type = "inspection_rescheduled" if was_scheduled else "inspection_scheduled"
+    desc = (f"Inspection rescheduled to {when} with technician {tech_str}."
+            if was_scheduled else
+            f"Inspection scheduled for {when} with technician {tech_str}.")
+    
     if c.customer_id:
-        notify(c.customer_id, "Your site inspection is scheduled",
-               f"Our team will visit {c.site_name or 'your site'} on {when}.",
-               link=url_for("portal.contract", contract_id=c.id))
+        db.session.add(CustomerJourneyEvent(
+            customer_id=c.customer_id,
+            event_type=event_type,
+            description=desc,
+            ref_type="contract",
+            ref_id=c.id,
+            created_by_id=current_user.id
+        ))
+
+    # In-app notifications
+    if c.customer_id:
+        cust_title = "Your inspection date has been updated" if was_scheduled else "Your site inspection is scheduled"
+        cust_body = (f"Our technician {tech.name if tech else 'from Northern Star'} will now visit {c.site_name or 'your site'} on {when}."
+                     if was_scheduled else
+                     f"Our technician {tech.name if tech else 'from Northern Star'} will visit {c.site_name or 'your site'} on {when}.")
+        notify(c.customer_id, cust_title, cust_body, link=url_for("portal.contract", contract_id=c.id))
+
     if tech:
-        notify(tech.id, f"Inspection assigned — {c.reference}",
-               f"Visit {c.site_name or c.site_address or 'the site'} on {when} for a fire "
-               f"safety health check-up.",
-               link=url_for("admin.lead_detail", lead_id=c.id))
-    flash(f"Inspection scheduled for {when}" + (f", assigned to {tech.name}." if tech else "."),
-          "success")
+        tech_title = f"Inspection rescheduled — {c.reference}" if was_scheduled else f"Inspection assigned — {c.reference}"
+        tech_body = f"Visit {c.site_name or c.site_address or 'the site'} on {when} for a fire safety health check-up."
+        notify(tech.id, tech_title, tech_body, link=url_for("admin.lead_detail", lead_id=c.id))
+
+    db.session.commit()
+
+    session["just_scheduled_lead"] = c.id
+    flash(f"Inspection {'rescheduled' if was_scheduled else 'scheduled'} for {when}"
+          + (f", assigned to {tech.name}." if tech else ".")
+          + " WhatsApp message is ready to send below.", "success")
     return redirect(url_for("admin.lead_detail", lead_id=c.id))
 
 
@@ -296,28 +391,130 @@ def lead_decide(lead_id):
         action = request.form.get("action")
         f = request.form
 
+        # Ensure a customer account exists so customer journey events and portal link cleanly
+        if not c.customer_id and c.applicant_phone:
+            cust = User.query.filter_by(phone=c.applicant_phone, role="customer").first()
+            if not cust:
+                cust = User(role="customer", name=c.applicant_name or "Customer",
+                            phone=c.applicant_phone, email=c.applicant_email,
+                            area=c.area, address=c.site_address)
+                db.session.add(cust)
+                db.session.flush()
+            c.customer_id = cust.id
+
         if action == "audit_fee":
             amount = float(f.get("amount") or 0)
+            months = int(f.get("followup_months") or 5)
+            c.next_followup_date = date.today() + timedelta(days=months * 30)
+            c.lead_stage = "audit_only"
+            
             sq = ServiceQuotation(
                 service_type="audit", customer_name=c.applicant_name,
                 customer_phone=c.applicant_phone, customer_email=c.applicant_email,
                 project_name=c.site_name, customer_address=c.site_address,
-                status="draft", contract_id=c.id, customer_id=c.customer_id,
+                status="accepted" if amount == 0 else "draft",
+                payment_status="paid" if amount == 0 else "pending",
+                contract_id=c.id, customer_id=c.customer_id,
                 gst_percent=18.0, valid_days=15,
-                notes="Fire Safety Audit Fee — site inspected, no immediate AMC required.",
+                notes=f"Fire Safety Audit — site inspected, everything OK. AMC postponed. Next follow-up in {months} months." if amount > 0 else f"Complimentary Fire Safety Audit (₹0 Fee) — site inspected, everything OK. AMC postponed. Next follow-up in {months} months.",
             )
             sq.generate_number()
+            sq.ensure_token()
             db.session.add(sq)
             db.session.flush()
             db.session.add(ServiceQuotationItem(
                 quotation_id=sq.id, category="Audit",
-                description="Fire Safety Health Check-up — audit fee",
+                description="Fire Safety Health Check-up — audit fee" if amount > 0 else "Fire Safety Health Check-up — complimentary audit (₹0)",
                 unit="Job", quantity=1.0, rate=amount, sort_order=1))
-            c.lead_stage = "audit_only"
-            c.next_followup_date = date.today() + timedelta(days=150)
+            
+            # Third party payment gateway linkage
+            from ..payments import enabled as rp_enabled, create_order
+            if amount > 0 and rp_enabled():
+                order = create_order(sq.grand_total, receipt=sq.reference)
+                if order:
+                    sq.gateway_order_id = order.get("id")
+
+            if c.customer_id:
+                db.session.add(CustomerJourneyEvent(
+                    customer_id=c.customer_id,
+                    event_type="audit_fee_created",
+                    description=f"Fire safety audit completed. Fee: ₹{amount:g}. AMC postponed. Next follow-up reminder: {c.next_followup_date:%d %b %Y}.",
+                    ref_type="service_quotation", ref_id=sq.id, created_by_id=current_user.id
+                ))
             db.session.commit()
-            flash(f"Audit fee {sq.reference} created. A follow-up reminder for quarterly "
-                  f"maintenance is set for {c.next_followup_date:%d %b %Y}.", "success")
+            if amount > 0:
+                flash(f"Audit fee quotation {sq.reference} created (₹{amount:g}). Payment link and UPI ready. Follow-up reminder set for {c.next_followup_date:%d %b %Y}.", "success")
+            else:
+                flash(f"Complimentary Fire Safety Audit recorded (₹0 fee). AMC postponed. Follow-up reminder set for {c.next_followup_date:%d %b %Y}.", "success")
+            return redirect(url_for("sq.detail_quotation", sq_id=sq.id))
+
+        elif action == "instant_quote":
+            # Instantly create quotation from problems analysed in FSHCR
+            fshcr = (HealthCheckReport.query.filter_by(contract_id=c.id)
+                     .order_by(HealthCheckReport.created_at.desc()).first())
+            defects = fshcr.get_detected_defects() if fshcr else []
+            
+            sq = ServiceQuotation(
+                service_type="amc",
+                customer_name=c.applicant_name,
+                customer_phone=c.applicant_phone,
+                customer_email=c.applicant_email,
+                project_name=c.site_name,
+                customer_address=c.site_address,
+                contract_id=c.id,
+                customer_id=c.customer_id,
+                gst_percent=18.0,
+                valid_days=7,
+                status="draft",
+                created_by_id=current_user.id,
+                notes="Quotation generated automatically based on problems analysed during Fire Safety Health Check-up.",
+            )
+            sq.generate_number()
+            sq.ensure_token()
+            db.session.add(sq)
+            db.session.flush()
+
+            inv_items = {it.name.lower(): it for it in InventoryItem.query.filter_by(active=True).all()}
+            if defects:
+                for idx, d in enumerate(defects):
+                    lbl = d["label"]
+                    matched_rate = 650.0
+                    matched_unit = "Nos"
+                    for iname, it in inv_items.items():
+                        if iname in lbl.lower() or lbl.lower() in iname:
+                            matched_rate = float(it.rate or 650.0)
+                            matched_unit = it.unit or "Nos"
+                            break
+                    db.session.add(ServiceQuotationItem(
+                        quotation_id=sq.id,
+                        category=d.get("category") or "Repairs",
+                        description=d.get("description") or lbl,
+                        unit=matched_unit,
+                        quantity=1.0,
+                        rate=matched_rate,
+                        sort_order=idx + 1,
+                    ))
+            else:
+                db.session.add(ServiceQuotationItem(
+                    quotation_id=sq.id,
+                    category="Repairs & AMC",
+                    description="Fire Protection System Rectification & AMC Servicing",
+                    unit="Job",
+                    quantity=1.0,
+                    rate=2500.0,
+                    sort_order=1,
+                ))
+
+            c.lead_stage = "needs_quote"
+            if c.customer_id:
+                db.session.add(CustomerJourneyEvent(
+                    customer_id=c.customer_id,
+                    event_type="quote_requested",
+                    description=f"Quotation {sq.reference} instantly generated based on inspection problems.",
+                    ref_type="service_quotation", ref_id=sq.id, created_by_id=current_user.id
+                ))
+            db.session.commit()
+            flash(f"Quotation {sq.reference} generated instantly from inspection problems. Share with client via WhatsApp or Email.", "success")
             return redirect(url_for("sq.detail_quotation", sq_id=sq.id))
 
         elif action == "raise_quote":
@@ -325,7 +522,7 @@ def lead_decide(lead_id):
             db.session.commit()
             return redirect(url_for("sq.new_quotation", contract_id=c.id))
 
-        elif action == "free_amc" and c.project_type == "existing":
+        elif action == "free_amc" and (c.project_type in ("existing", "handover") or getattr(c, "is_handover", False)):
             if not c.customer_id and c.applicant_phone:
                 cust = User.query.filter_by(phone=c.applicant_phone, role="customer").first()
                 if not cust:
@@ -339,6 +536,7 @@ def lead_decide(lead_id):
             start = (datetime.strptime(f.get("start_date"), "%Y-%m-%d").date()
                     if f.get("start_date") else date.today())
             n = int(f.get("total_visits") or (plan.visits_per_year if plan else 4))
+            tech_id = f.get("technician_id", type=int)
             c.plan_id = plan.id if plan else c.plan_id
             c.free_amc = True
             c.payment_status = "paid"
@@ -346,28 +544,126 @@ def lead_decide(lead_id):
             c.start_date = start
             c.end_date = start + timedelta(days=365)
             c.total_visits = n
+            # visits assigned to tech_id below
             c.status = "active"
             c.lead_stage = None
-            tech_id = f.get("technician_id", type=int)
             _generate_visits(c, start, n, tech_id)
+
+            # Record complimentary ₹0 quotation so the customer and company have official records
+            sq = ServiceQuotation(
+                service_type="amc",
+                customer_name=c.applicant_name,
+                customer_phone=c.applicant_phone,
+                customer_email=c.applicant_email,
+                project_name=c.site_name or "Project Handover",
+                customer_address=c.site_address,
+                contract_id=c.id,
+                customer_id=c.customer_id,
+                gst_percent=18.0,
+                valid_days=30,
+                status="accepted",
+                payment_status="paid",
+                payment_method="cash",
+                created_by_id=current_user.id,
+                notes="Complimentary 1-year AMC under project handover. Site taken as-is after joint inspection.",
+            )
+            sq.generate_number()
+            sq.ensure_token()
+            db.session.add(sq)
+            db.session.flush()
+            db.session.add(ServiceQuotationItem(
+                quotation_id=sq.id,
+                category="Handover AMC",
+                description="Complimentary First-Year AMC Servicing (4 Scheduled Visits)",
+                unit="Year",
+                quantity=1.0,
+                rate=0.0,
+                sort_order=1
+            ))
+
+            first_v = Visit.query.filter_by(contract_id=c.id).order_by(Visit.scheduled_date.asc()).first()
+            first_date_str = first_v.scheduled_date.strftime("%d-%b-%Y") if first_v else f"{start:%d-%b-%Y}"
+
             db.session.add(CustomerJourneyEvent(
                 customer_id=c.customer_id, event_type="contract_activated",
                 description=f"Handover complete — complimentary AMC {c.reference} active "
-                            f"until {c.end_date:%d %b %Y} ({n} visits)",
-                ref_type="contract", ref_id=c.id, created_by_id=current_user.id))
+                            f"until {c.end_date:%d %b %Y} ({n} visits, 1st visit: {first_date_str})",
+                ref_type="contract", ref_id=c.id, created_by_id=current_user.id if (current_user and current_user.is_authenticated) else None))
             db.session.commit()
             notify(c.customer_id, "Your AMC is active (complimentary first year)",
                    f"{c.reference} is active with {n} maintenance visits, valid free until "
-                   f"{c.end_date:%d %b %Y}.",
+                   f"{c.end_date:%d %b %Y}. Your first scheduled visit is on {first_date_str}.",
                    link=url_for("portal.contract", contract_id=c.id))
             flash(f"Complimentary AMC activated — valid until {c.end_date:%d %b %Y}, "
                   f"{n} visits scheduled.", "success_chime")
             return redirect(url_for("admin.contract", contract_id=c.id))
 
+        elif action in ("paid_amc", "paid_amc_instant") and (c.project_type in ("existing", "handover") or getattr(c, "is_handover", False)):
+            if not c.customer_id and c.applicant_phone:
+                cust = User.query.filter_by(phone=c.applicant_phone, role="customer").first()
+                if not cust:
+                    cust = User(role="customer", name=c.applicant_name or "Customer",
+                               phone=c.applicant_phone, email=c.applicant_email,
+                               area=c.area, address=c.site_address)
+                    db.session.add(cust)
+                    db.session.flush()
+                c.customer_id = cust.id
+            plan_id = f.get("plan_id", type=int)
+            plan = db.session.get(AMCPlan, plan_id) if plan_id else None
+            rate = float(plan.price) if plan else 15000.0
+            plan_name = plan.name if plan else "Standard Annual Maintenance Contract (Handover)"
+
+            sq = ServiceQuotation(
+                service_type="amc",
+                customer_name=c.applicant_name,
+                customer_phone=c.applicant_phone,
+                customer_email=c.applicant_email,
+                project_name=c.site_name or "Project Handover",
+                customer_address=c.site_address,
+                contract_id=c.id,
+                customer_id=c.customer_id,
+                gst_percent=18.0,
+                valid_days=15,
+                status="draft",
+                created_by_id=current_user.id,
+                notes="Annual Maintenance Contract following joint project handover inspection. Site taken as-is.",
+            )
+            sq.generate_number()
+            sq.ensure_token()
+            db.session.add(sq)
+            db.session.flush()
+            db.session.add(ServiceQuotationItem(
+                quotation_id=sq.id,
+                category="AMC",
+                description=f"{plan_name} — Routine servicing & maintenance (4 visits/yr)",
+                unit="Year",
+                quantity=1.0,
+                rate=rate,
+                sort_order=1
+            ))
+            c.lead_stage = "needs_quote"
+            c.free_amc = False
+            if plan:
+                c.plan_id = plan.id
+            if c.customer_id:
+                db.session.add(CustomerJourneyEvent(
+                    customer_id=c.customer_id,
+                    event_type="quote_requested",
+                    description=f"Paid AMC quotation {sq.reference} generated for handover site.",
+                    ref_type="service_quotation", ref_id=sq.id, created_by_id=current_user.id
+                ))
+            db.session.commit()
+            flash(f"Paid AMC quotation {sq.reference} generated. Share with client via WhatsApp or review in editor.", "success")
+            return redirect(url_for("sq.detail_quotation", sq_id=sq.id))
+
         flash("Choose an action.", "warning")
         return redirect(url_for("admin.lead_decide", lead_id=c.id))
 
-    return render_template("admin/lead_decide.html", c=c, plans=plans, technicians=technicians)
+    fshcr = (HealthCheckReport.query.filter_by(contract_id=c.id)
+             .order_by(HealthCheckReport.created_at.desc()).first())
+    defects = fshcr.get_detected_defects() if fshcr else []
+    return render_template("admin/lead_decide.html", c=c, plans=plans, technicians=technicians,
+                           fshcr=fshcr, defects=defects)
 
 
 # --------------------------------------------------------------------------- #
@@ -409,7 +705,7 @@ def contract(contract_id):
 
 @admin_bp.route("/contract/<int:contract_id>/activate", methods=["POST"])
 @login_required
-@staff_required
+@manager_required
 def activate_contract(contract_id):
     c = db.session.get(Contract, contract_id) or abort(404)
     f = request.form
@@ -459,7 +755,7 @@ def activate_contract(contract_id):
             description=f"Contract {c.reference} activated with {n_visits} visits "
                         f"(₹{c.price:,.0f})",
             ref_type="contract", ref_id=c.id,
-            created_by_id=current_user.id))
+            created_by_id=current_user.id if (current_user and current_user.is_authenticated) else None))
     db.session.commit()
     first = c.next_visit
     notify(c.customer_id, "AMC activated — schedule confirmed",
@@ -472,7 +768,7 @@ def activate_contract(contract_id):
 
 @admin_bp.route("/contract/<int:contract_id>/payment", methods=["POST"])
 @login_required
-@staff_required
+@manager_required
 def contract_payment(contract_id):
     c = db.session.get(Contract, contract_id) or abort(404)
     c.payment_status = request.form.get("payment_status", c.payment_status)
@@ -486,7 +782,7 @@ def contract_payment(contract_id):
         db.session.add(CustomerJourneyEvent(
             customer_id=c.customer_id, event_type="payment_received",
             description=f"Contract {c.reference} fee received (₹{c.price:,.0f})",
-            ref_type="contract", ref_id=c.id, created_by_id=current_user.id))
+            ref_type="contract", ref_id=c.id, created_by_id=current_user.id if (current_user and current_user.is_authenticated) else None))
         db.session.commit()
     flash("Payment status updated.", "success")
     return redirect(request.referrer or url_for("admin.contract", contract_id=c.id))
@@ -576,10 +872,46 @@ def visit(visit_id):
             HealthCheckReport.contract_id == v.contract_id))\
         .order_by(HealthCheckReport.created_at.desc()).all()
     is_future = (v.scheduled_date > date.today()) if v.scheduled_date else False
+
+    # Generate instant WhatsApp share URL for client
+    import urllib.parse
+    client_phone = (v.contract.applicant_phone or (v.contract.customer.phone if v.contract.customer else "") or "").strip()
+    digits_phone = "".join(ch for ch in client_phone if ch.isdigit())
+    if digits_phone and not digits_phone.startswith("91") and len(digits_phone) == 10:
+        digits_phone = "91" + digits_phone
+    try:
+        report_link = url_for("portal.visit", visit_id=v.id, _external=True)
+    except Exception:
+        report_link = f"/portal/visit/{v.id}"
+    whatsapp_msg = (
+        f"Hello {v.contract.applicant_name or 'Valued Client'}, your service visit report for "
+        f"{v.label} ({v.contract.reference}) is ready. Please view and approve it here: {report_link}"
+    )
+    whatsapp_share_url = f"https://api.whatsapp.com/send?phone={digits_phone}&text={urllib.parse.quote(whatsapp_msg)}" if digits_phone else None
+
     return render_template("admin/visit.html", v=v, techs=techs,
                            checklist_defaults=VisitChecklistItem.STANDARD_ITEMS,
                            inventory=inventory, health_reports=health_reports,
-                           is_future=is_future)
+                           is_future=is_future, whatsapp_share_url=whatsapp_share_url)
+
+
+@admin_bp.route("/visit/<int:visit_id>/share-report", methods=["POST"])
+@login_required
+@staff_required
+def visit_share_report(visit_id):
+    """Instantly send visit report link to client via in-app notification & feedback email."""
+    v = db.session.get(Visit, visit_id) or abort(404)
+    c = v.contract
+    if c and c.customer_id:
+        notify(c.customer_id, f"Service report ready — {v.label}",
+               f"Your service report for {c.reference} is ready. "
+               f"Please review, acknowledge and rate our technician.",
+               link=url_for("portal.visit", visit_id=v.id))
+        _trigger_feedback(v)
+        flash("Service report and rating link sent to client.", "success")
+    else:
+        flash("No linked customer account to notify.", "warning")
+    return redirect(url_for("admin.visit", visit_id=v.id))
 
 
 # --------------------------------------------------------------------------- #
@@ -622,7 +954,7 @@ def visit_quotation(visit_id):
 
 @admin_bp.route("/quotation/<int:quote_id>/payment", methods=["POST"])
 @login_required
-@staff_required
+@manager_required
 def quotation_payment(quote_id):
     """Technician/ops update the payment status of a visit-linked quote."""
     q = db.session.get(Quotation, quote_id) or abort(404)
@@ -638,7 +970,7 @@ def quotation_payment(quote_id):
             customer_id=q.contract.customer_id, event_type="payment_received",
             description=f"Payment received for quotation {q.reference} (₹{q.total:,.0f})",
             ref_type="contract", ref_id=q.contract_id,
-            created_by_id=current_user.id))
+            created_by_id=current_user.id if (current_user and current_user.is_authenticated) else None))
         db.session.commit()
     flash(f"Quotation {q.reference} payment marked {q.payment_status}.", "success")
     return redirect(request.referrer or url_for("admin.visit", visit_id=q.visit_id))
@@ -653,7 +985,7 @@ def quotation_payment(quote_id):
 # --------------------------------------------------------------------------- #
 @admin_bp.route("/quotation/<int:quote_id>/edit", methods=["GET", "POST"])
 @login_required
-@staff_required
+@manager_required
 def quotation_edit(quote_id):
     q = db.session.get(Quotation, quote_id) or abort(404)
     if request.method == "POST":
@@ -690,7 +1022,7 @@ def quotation_edit(quote_id):
 
 @admin_bp.route("/quotation/<int:quote_id>/delete", methods=["POST"])
 @login_required
-@staff_required
+@manager_required
 def quotation_delete(quote_id):
     """Delete a visit-linked material quotation — only while it's still
     pending and unpaid. Approved/paid quotes must stay as a record."""
@@ -711,7 +1043,7 @@ def quotation_delete(quote_id):
 
 @admin_bp.route("/quotation/<int:quote_id>/resend", methods=["POST"])
 @login_required
-@staff_required
+@manager_required
 def quotation_resend(quote_id):
     """Re-send a visit-linked material quotation to the client.
 
@@ -756,7 +1088,7 @@ def quotation_resend(quote_id):
 
 @admin_bp.route("/visit/<int:visit_id>/reschedule", methods=["POST"])
 @login_required
-@staff_required
+@manager_required
 def reschedule_visit(visit_id):
     """Quick date change from the contract page (calendar picker per visit row)."""
     v = db.session.get(Visit, visit_id) or abort(404)
@@ -776,7 +1108,7 @@ def reschedule_visit(visit_id):
 # --------------------------------------------------------------------------- #
 @admin_bp.route("/contract/<int:contract_id>/equipment/add", methods=["POST"])
 @login_required
-@staff_required
+@manager_required
 def add_equipment(contract_id):
     c = db.session.get(Contract, contract_id) or abort(404)
     f = request.form
@@ -798,7 +1130,7 @@ def add_equipment(contract_id):
 
 @admin_bp.route("/equipment/<int:equip_id>/refill", methods=["POST"])
 @login_required
-@staff_required
+@manager_required
 def add_refill(equip_id):
     e = db.session.get(Equipment, equip_id) or abort(404)
     f = request.form
@@ -823,7 +1155,7 @@ def add_refill(equip_id):
 # --------------------------------------------------------------------------- #
 @admin_bp.route("/contract/<int:contract_id>/quotation/new", methods=["GET", "POST"])
 @login_required
-@staff_required
+@manager_required
 def new_quotation(contract_id):
     c = db.session.get(Contract, contract_id) or abort(404)
     if request.method == "POST":
@@ -901,7 +1233,7 @@ def health_report(report_id=None):
         if r is None:
             r = HealthCheckReport(created_by_id=current_user.id)
             db.session.add(r)
-        r.contract_id = f.get("contract_id", type=int)
+        r.contract_id = f.get("contract_id", type=int) or request.args.get("contract_id", type=int)
         r.visit_id = f.get("visit_id", type=int)
         # Flush now so r.contract (accessed below, and further down for the lead
         # branch) resolves immediately — SQLAlchemy's relationship lazy-loader
@@ -916,14 +1248,14 @@ def health_report(report_id=None):
         if f.get("report_date"):
             r.report_date = datetime.strptime(f.get("report_date"), "%Y-%m-%d").date()
         r.status = f.get("status", "draft")
-        r.set_answers(_collect_health_payload(f))
-        # #2/#3 rebuild — overall score + outcome, used to drive the lead branch
-        # when this FSHCR is the inspection for a lead (r.contract.lead_stage set).
+        answers_payload = _collect_health_payload(f)
+        r.set_answers(answers_payload)
+        calc_score, calc_outcome, detected_defects = HealthCheckReport.compute_score(answers_payload)
         score_raw = f.get("score", "").strip()
-        r.score = int(score_raw) if score_raw.isdigit() else None
-        r.outcome = f.get("outcome") or None
+        r.score = int(score_raw) if score_raw.isdigit() else calc_score
+        r.outcome = f.get("outcome") or calc_outcome
         # Handover-only: joint sign-off by the engineer + maintenance technician
-        if r.contract and r.contract.project_type == "existing":
+        if r.contract and (r.contract.project_type in ("existing", "handover") or getattr(r.contract, "is_handover", False)):
             eng = (f.get("handover_engineer") or "").strip()
             tech_name = (f.get("handover_technician") or "").strip()
             if eng:
@@ -937,18 +1269,20 @@ def health_report(report_id=None):
         path = save_upload(scan, "health_reports", {"pdf", "png", "jpg", "jpeg"})
         if path:
             r.scan_path = path
+            if r.contract and (r.contract.project_type in ("existing", "handover") or getattr(r.contract, "is_handover", False)):
+                r.contract.handover_doc_path = path
         db.session.commit()
 
         # ── Lead branch: only when this report belongs to an open lead ──────
         lead = r.contract if (r.contract and r.contract.lead_stage) else None
         if lead and r.status == "completed" and r.outcome:
             lead.handover_report_id = r.id
-            if r.outcome == "needs_rework" and lead.project_type == "existing":
+            if r.outcome == "needs_rework" and (lead.project_type in ("existing", "handover") or getattr(lead, "is_handover", False)):
                 db.session.add(ReworkItem(
                     contract_id=lead.id, health_check_report_id=r.id,
                     description=(f.get("rework_notes") or "").strip()
                                 or "Rework required before AMC can start (see FSHCR).",
-                    created_by_id=current_user.id))
+                    created_by_id=current_user.id if (current_user and current_user.is_authenticated) else None))
                 lead.lead_stage = "rework"
                 db.session.commit()
                 flash(f"Report saved. {lead.reference} flagged for rework — tracked in the "
@@ -982,9 +1316,69 @@ def health_report(report_id=None):
     # #2/#3 rebuild — when opened for an open lead, show the outcome/score panel
     # and (for handover leads) the joint sign-off fields.
     is_lead = bool(contract and contract.lead_stage)
+    whatsapp_share = health_report_whatsapp_url(r) if r else ""
+    defects = r.get_detected_defects() if r else []
     return render_template("admin/health_report_form.html", r=r, model=HealthCheckReport,
                            contract=contract, visit=visit, contracts=contracts,
-                           is_lead=is_lead)
+                           is_lead=is_lead, whatsapp_share=whatsapp_share, defects=defects)
+
+
+
+def health_report_whatsapp_url(r):
+    c = r.contract
+    client_name = (c.applicant_name or (c.customer.name if c and c.customer else "Valued Client")) if c else (r.property_contact or "Valued Client")
+    phone = (c.applicant_phone or (c.customer.phone if c and c.customer else "")) if c else r.property_contact
+    score_str = f"{r.score}/100" if r.score is not None else "Completed"
+    
+    if r.outcome == "ok":
+        outcome_str = "OK (Everything Satisfactory)"
+        next_step = "Your fire safety systems are in good working condition. No immediate repairs required. We have scheduled a periodic follow-up check in 4–6 months."
+    elif r.outcome == "needs_rework":
+        outcome_str = "Needs Rework (Site Defect)"
+        next_step = "Certain installation items need rework by the site engineering contractor before AMC maintenance can commence."
+    else:
+        outcome_str = "Issues Found (Action Required)"
+        next_step = "Certain fire protection components require servicing or repair. Our technical manager is preparing an itemized quotation for you today."
+
+    download_link = public_url("public.public_health_report", report_id=r.id, token=r.generate_token())
+    msg = (
+        f"Hello {client_name},\n\n"
+        f"Your *Fire System Health Checkup Report* for *{r.property_name or 'your property'}* has been completed by Inspector {r.inspector_name or 'Northern Star'}.\n\n"
+        f"📊 *Fire Safety Score:* {score_str}\n"
+        f"🔍 *Inspection Result:* {outcome_str}\n\n"
+        f"📋 *Next Step of Action:*\n{next_step}\n\n"
+        f"📄 *View & Download Official Inspection Report (PDF):*\n{download_link}\n\n"
+        f"Northern Star Engineering\n"
+        f"Enlightening Safety"
+    )
+    return whatsapp_url(phone, msg)
+
+
+@admin_bp.route("/health-report/<int:report_id>/whatsapp")
+@login_required
+@staff_required
+def health_report_whatsapp(report_id):
+    r = db.session.get(HealthCheckReport, report_id) or abort(404)
+    return redirect(health_report_whatsapp_url(r))
+
+
+@admin_bp.route("/health-report/<int:report_id>/email")
+@login_required
+@staff_required
+def health_report_email(report_id):
+    from ..email_service import send_health_report_email
+    from ..pdf_generator import generate_health_report_pdf
+    r = db.session.get(HealthCheckReport, report_id) or abort(404)
+    pdf = generate_health_report_pdf(r)
+    if not pdf:
+        flash("Could not generate report PDF.", "error")
+        return redirect(url_for("admin.health_report", report_id=r.id))
+    ok = send_health_report_email(r, pdf_bytes=pdf)
+    if ok:
+        flash(f"Inspection report {r.reference} emailed to client.", "success")
+    else:
+        flash("Could not send email (please check client email address).", "warning")
+    return redirect(url_for("admin.health_report", report_id=r.id))
 
 
 @admin_bp.route("/health-report/<int:report_id>/pdf")
@@ -1251,7 +1645,8 @@ DEFAULT_INQUIRY_CHECKLIST = [
 @staff_required
 def enquiries():
     """Inquiry Management Dashboard: view, search, filter and track inquiries."""
-    tab = request.args.get("tab", "all")
+    default_tab = "my" if (current_user.is_authenticated and not current_user.is_manager) else "all"
+    tab = request.args.get("tab", default_tab)
     q = request.args.get("q", "").strip()
     tech_filter = request.args.get("tech_id", type=int)
 
@@ -1318,7 +1713,7 @@ def enquiries():
 
 @admin_bp.route("/enquiry/new", methods=["GET", "POST"])
 @login_required
-@staff_required
+@manager_required
 def enquiry_new():
     """Staff intake: manually record incoming phone/walk-in inquiries."""
     technicians = User.query.filter(User.role.in_(["technician", "admin"])).order_by(User.name).all()
@@ -1456,7 +1851,7 @@ def enquiry_detail(enq_id):
 
 @admin_bp.route("/enquiry/<int:enq_id>/assign", methods=["POST"])
 @login_required
-@staff_required
+@manager_required
 def enquiry_assign(enq_id):
     """Team Leader assigns a technician, sets inspection visit date, time slot & instructions."""
     e = db.session.get(Enquiry, enq_id) or abort(404)
@@ -1794,7 +2189,7 @@ def enquiry_generate_quotation(enq_id):
 
 @admin_bp.route("/enquiry/<int:enq_id>/close", methods=["POST"])
 @login_required
-@staff_required
+@manager_required
 def enquiry_close(enq_id):
     """Mark an inquiry as closed / completed."""
     e = db.session.get(Enquiry, enq_id) or abort(404)
@@ -1837,7 +2232,7 @@ def enquiry_add_note(enq_id):
 
 @admin_bp.route("/enquiry/<int:enq_id>/respond", methods=["POST"])
 @login_required
-@staff_required
+@manager_required
 def respond_enquiry(enq_id):
     """Legacy helper for backward compatibility."""
     e = db.session.get(Enquiry, enq_id) or abort(404)
@@ -1859,7 +2254,7 @@ def respond_enquiry(enq_id):
 # --------------------------------------------------------------------------- #
 @admin_bp.route("/technician-performance")
 @login_required
-@staff_required
+@manager_required
 def technician_performance():
     techs = User.query.filter(User.role.in_(["technician", "admin"])).all()
 
@@ -1993,25 +2388,27 @@ def _maybe_issue_certificate(visit: Visit) -> None:
         return
     # Fire when visit_number 4 is the one being completed, or when it was
     # already completed and we now have >= 4 completed visits.
-    if visit.visit_number < 4:
-        return
     completed = sum(1 for v in c.visits if v.status == "completed")
-    if completed < 4:
+    if completed < (c.total_visits or 4):
         return
     # Mark issued
     from datetime import datetime as _dt
     c.certificate_issued = True
     c.certificate_issued_at = _dt.utcnow()
-    # Notify the client with a chime
+    # Journey event
     if c.customer_id:
+        db.session.add(CustomerJourneyEvent(
+            customer_id=c.customer_id, event_type="certificate_issued",
+            description=f"Framed Fire Safety Certificate issued for {c.reference} after {completed} completed visits.",
+            ref_type="contract", ref_id=c.id))
         notify(c.customer_id,
                "Your AMC Fire Safety Certificate is ready!",
                f"Congratulations! {c.reference} has completed its 4th service visit. "
-               "Your fire safety certificate is now available. Download it from your portal.",
+               "Your framed fire safety compliance certificate is now available. View or download it from your portal.",
                link=url_for("portal.amc_certificate", contract_id=c.id) + "?chime=1&celebrate=1")
     # Also notify staff
     notify_staff("AMC certificate issued",
-                 f"{c.reference} completed 4 visits — certificate issued.",
+                 f"{c.reference} completed 4 visits — framed certificate issued.",
                  link=url_for("admin.contract", contract_id=c.id))
 
 
@@ -2045,7 +2442,7 @@ def _trigger_feedback(visit: Visit) -> None:
 # ─────────────────────────────────────────────────────────────────
 @admin_bp.route("/financials")
 @login_required
-@staff_required
+@manager_required
 def financials():
     """Contract-wise payment tracking: the AMC fee plus every visit-linked
     material quotation, each with paid/unpaid status and date."""
@@ -2129,7 +2526,7 @@ def calendar():
 
 @admin_bp.route("/analytics")
 @login_required
-@staff_required
+@manager_required
 def analytics():
     """KPI analytics: contract revenue, visit completion, equipment health."""
     from sqlalchemy import func
@@ -2256,36 +2653,90 @@ def ticket_detail(ticket_id):
 # --------------------------------------------------------------------------- #
 
 @admin_bp.route("/my-plan")
+@admin_bp.route("/day-plan")
 @login_required
 @staff_required
 def day_plan():
-    """Tomorrow's visits assigned to the logged-in technician, with accept/reject."""
+    """Today's, tomorrow's, and this week's visits + inspections assigned to the logged-in technician."""
     tomorrow = date.today() + timedelta(days=1)
     today    = date.today()
+    week_end = today + timedelta(days=7)
 
-    # Show today + tomorrow for awareness
-    today_visits = Visit.query.filter(
-        Visit.technician_id == current_user.id,
-        Visit.scheduled_date == today,
-        Visit.status.in_(["scheduled", "in_progress"]),
-    ).all()
-    tomorrow_visits = Visit.query.filter(
-        Visit.technician_id == current_user.id,
-        Visit.scheduled_date == tomorrow,
-        Visit.status.in_(["scheduled", "in_progress"]),
-    ).all()
-    # Upcoming 7 days (excluding today/tomorrow)
-    week_visits = Visit.query.filter(
-        Visit.technician_id == current_user.id,
-        Visit.scheduled_date > tomorrow,
-        Visit.scheduled_date <= today + timedelta(days=7),
-        Visit.status.in_(["scheduled", "in_progress"]),
-    ).order_by(Visit.scheduled_date).all()
+    # 1. Maintenance Visits (Visit)
+    if current_user.is_manager:
+        today_visits = Visit.query.filter(
+            Visit.scheduled_date == today,
+            Visit.status.in_(["scheduled", "in_progress"]),
+        ).all()
+        tomorrow_visits = Visit.query.filter(
+            Visit.scheduled_date == tomorrow,
+            Visit.status.in_(["scheduled", "in_progress"]),
+        ).all()
+        week_visits = Visit.query.filter(
+            Visit.scheduled_date > tomorrow,
+            Visit.scheduled_date <= week_end,
+            Visit.status.in_(["scheduled", "in_progress"]),
+        ).order_by(Visit.scheduled_date).all()
+    else:
+        today_visits = Visit.query.filter(
+            Visit.technician_id == current_user.id,
+            Visit.scheduled_date == today,
+            Visit.status.in_(["scheduled", "in_progress"]),
+        ).all()
+        tomorrow_visits = Visit.query.filter(
+            Visit.technician_id == current_user.id,
+            Visit.scheduled_date == tomorrow,
+            Visit.status.in_(["scheduled", "in_progress"]),
+        ).all()
+        week_visits = Visit.query.filter(
+            Visit.technician_id == current_user.id,
+            Visit.scheduled_date > tomorrow,
+            Visit.scheduled_date <= week_end,
+            Visit.status.in_(["scheduled", "in_progress"]),
+        ).order_by(Visit.scheduled_date).all()
+
+    # 2. Inquiries assigned for site inspection (Enquiry)
+    active_enq_status = ["assigned", "site_visit_scheduled", "site_visit_in_progress", "new"]
+    if current_user.is_manager:
+        enq_base = Enquiry.query.filter(Enquiry.status.in_(active_enq_status))
+    else:
+        enq_base = Enquiry.query.filter(Enquiry.assigned_to_id == current_user.id,
+                                        Enquiry.status.in_(active_enq_status))
+
+    today_enquiries = enq_base.filter(Enquiry.visit_scheduled_date == today).all()
+    tomorrow_enquiries = enq_base.filter(Enquiry.visit_scheduled_date == tomorrow).all()
+    week_enquiries = enq_base.filter(Enquiry.visit_scheduled_date > tomorrow,
+                                    Enquiry.visit_scheduled_date <= week_end).order_by(Enquiry.visit_scheduled_date).all()
+    pending_enquiries = enq_base.filter(or_(Enquiry.visit_scheduled_date.is_(None),
+                                           Enquiry.visit_scheduled_date < today)).order_by(Enquiry.created_at.desc()).all()
+
+    # 3. AMC Lead Inspections (Contract)
+    lead_stages = ["new", "inspection_scheduled"]
+    if current_user.is_manager:
+        lead_base = Contract.query.filter(Contract.lead_stage.in_(lead_stages))
+    else:
+        lead_base = Contract.query.filter(Contract.inspection_technician_id == current_user.id,
+                                          Contract.lead_stage.in_(lead_stages))
+
+    today_leads = lead_base.filter(Contract.inspection_scheduled_date == today).all()
+    tomorrow_leads = lead_base.filter(Contract.inspection_scheduled_date == tomorrow).all()
+    week_leads = lead_base.filter(Contract.inspection_scheduled_date > tomorrow,
+                                 Contract.inspection_scheduled_date <= week_end).order_by(Contract.inspection_scheduled_date).all()
+    pending_leads = lead_base.filter(or_(Contract.inspection_scheduled_date.is_(None),
+                                        Contract.inspection_scheduled_date < today)).order_by(Contract.created_at.desc()).all()
 
     return render_template("admin/day_plan.html",
                            today_visits=today_visits,
                            tomorrow_visits=tomorrow_visits,
                            week_visits=week_visits,
+                           today_enquiries=today_enquiries,
+                           tomorrow_enquiries=tomorrow_enquiries,
+                           week_enquiries=week_enquiries,
+                           pending_enquiries=pending_enquiries,
+                           today_leads=today_leads,
+                           tomorrow_leads=tomorrow_leads,
+                           week_leads=week_leads,
+                           pending_leads=pending_leads,
                            tomorrow=tomorrow, today=today)
 
 
@@ -2336,7 +2787,7 @@ def confirm_visit(visit_id):
 # =========================================================================== #
 @admin_bp.route("/renewals")
 @login_required
-@staff_required
+@manager_required
 def renewals():
     """Contracts approaching expiry (90/60/30) or expired, not yet renewed."""
     from ..reminders import renewal_reminders
@@ -2379,7 +2830,8 @@ def _clone_contract_for_renewal(src, quote=True):
             next_refill_date=e.next_refill_date))
 
     sq = None
-    if quote and plan:
+    if quote:
+        price_val = float(plan.price) if plan else float(src.price or 15000)
         sq = ServiceQuotation(
             service_type="amc",
             customer_name=nc.applicant_name,
@@ -2395,19 +2847,20 @@ def _clone_contract_for_renewal(src, quote=True):
         sq.generate_number()
         db.session.add(sq)
         db.session.flush()
-        detail = (f"{plan.visits_per_year} maintenance visits/year | "
-                  f"{plan.response_time} response time")
+        detail = (f"{plan.visits_per_year} maintenance visits/year | {plan.response_time} response time"
+                  if plan else f"{nc.total_visits or 4} maintenance visits/year")
+        plan_name = plan.name if plan else "Comprehensive Fire Safety AMC"
         db.session.add(ServiceQuotationItem(
             quotation_id=sq.id, category="AMC Services",
-            description=f"{plan.name} — AMC Renewal ({src.reference})\n{detail}",
-            unit="Year", quantity=1.0, rate=float(plan.price), sort_order=1))
+            description=f"{plan_name} — AMC Renewal ({src.reference})\n{detail}",
+            unit="Year", quantity=1.0, rate=price_val, sort_order=1))
     db.session.commit()
     return nc, sq
 
 
 @admin_bp.route("/contract/<int:contract_id>/renew", methods=["POST"])
 @login_required
-@staff_required
+@manager_required
 def renew_contract(contract_id):
     src = db.session.get(Contract, contract_id) or abort(404)
     nc, sq = _clone_contract_for_renewal(src, quote=True)
@@ -2416,7 +2869,7 @@ def renew_contract(contract_id):
             customer_id=nc.customer_id, event_type="quote_sent",
             description=f"Renewal quotation raised for {src.reference} → {nc.reference}",
             ref_type="service_quotation", ref_id=(sq.id if sq else None),
-            created_by_id=current_user.id))
+            created_by_id=current_user.id if (current_user and current_user.is_authenticated) else None))
         db.session.commit()
         notify(nc.customer_id, "Your AMC renewal is ready",
                f"We've prepared a renewal quote for {src.reference}. "
@@ -2478,17 +2931,24 @@ def visit_checkin(visit_id):
 @staff_required
 def visit_checkout(visit_id):
     v = db.session.get(Visit, visit_id) or abort(404)
+    # Step 10 note: Checkout requires service report (scan/upload/checklist/work done) to be attached
+    has_report = bool(v.service_report_path or (v.checklist_items and v.checklist_items.count() > 0) or v.work_done or (v.photos and v.photos.count() > 0))
+    if not has_report:
+        flash("Checkout cannot be completed yet: please attach or scan the service report, or complete the online checklist report so it can be shared with the client.", "warning")
+        return redirect(url_for("admin.visit", visit_id=v.id))
+
     if not v.checkin_at:
         v.checkin_at = datetime.utcnow()
     v.checkout_at = datetime.utcnow()
     db.session.commit()
     if v.contract and v.contract.customer_id:
-        notify(v.contract.customer_id, "Your technician has left the site",
+        notify(v.contract.customer_id, "Your technician has completed site work & checked out",
                f"{v.technician.name if v.technician else 'Your technician'} checked out "
                f"after {v.label} at {v.contract.reference} — on site "
-               f"{v.onsite_duration_label or '0m'} ({v.checkin_at:%H:%M}–{v.checkout_at:%H:%M}).",
-               link=url_for("portal.contract", contract_id=v.contract_id))
-    flash(f"Checked out — on site {v.onsite_duration_label or '0m'}.", "success")
+               f"{v.onsite_duration_label or '0m'} ({v.checkin_at:%H:%M}–{v.checkout_at:%H:%M}). "
+               f"Your service report is ready for your review.",
+               link=url_for("portal.visit", visit_id=v.id))
+    flash(f"Checked out — on site {v.onsite_duration_label or '0m'}. Report shared with client.", "success")
     return redirect(url_for("admin.visit", visit_id=v.id))
 
 
@@ -2573,7 +3033,7 @@ def _broadcast_recipients(audience, value):
 
 @admin_bp.route("/broadcasts")
 @login_required
-@staff_required
+@admin_required
 def broadcasts():
     items = Broadcast.query.order_by(Broadcast.created_at.desc()).limit(50).all()
     areas = [a[0] for a in db.session.query(Contract.area).distinct().all() if a[0]]
@@ -2584,7 +3044,7 @@ def broadcasts():
 
 @admin_bp.route("/broadcast/new", methods=["POST"])
 @login_required
-@staff_required
+@admin_required
 def broadcast_new():
     f = request.form
     message = (f.get("message") or "").strip()
@@ -2605,7 +3065,7 @@ def broadcast_new():
 
 @admin_bp.route("/broadcast/<int:broadcast_id>/send")
 @login_required
-@staff_required
+@admin_required
 def broadcast_send(broadcast_id):
     """Show one wa.me 'Send' link per recipient — the staffer taps each (free, no API)."""
     b = db.session.get(Broadcast, broadcast_id) or abort(404)
@@ -2621,7 +3081,7 @@ def broadcast_send(broadcast_id):
 # =========================================================================== #
 @admin_bp.route("/contract/<int:contract_id>/installments", methods=["POST"])
 @login_required
-@staff_required
+@manager_required
 def contract_installments(contract_id):
     c = db.session.get(Contract, contract_id) or abort(404)
     f = request.form
@@ -2650,7 +3110,7 @@ def contract_installments(contract_id):
 
 @admin_bp.route("/installment/<int:inst_id>/pay", methods=["POST"])
 @login_required
-@staff_required
+@manager_required
 def installment_pay(inst_id):
     it = db.session.get(Installment, inst_id) or abort(404)
     it.paid = not it.paid
@@ -2673,7 +3133,7 @@ def installment_pay(inst_id):
 # =========================================================================== #
 @admin_bp.route("/insights")
 @login_required
-@staff_required
+@manager_required
 def insights():
     from sqlalchemy import func
     active = Contract.query.filter_by(status="active").all()
@@ -2716,3 +3176,194 @@ def insights():
                            confirmed=confirmed, pipeline=pipeline,
                            renewals_value=renewals_value,
                            areas=areas, max_area=max_area)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Note E & Notes C/D: On-site cash collection & 45-day delayed payment tracking
+# ─────────────────────────────────────────────────────────────────────────────
+
+@admin_bp.route("/visit/<int:visit_id>/collect-cash", methods=["POST"])
+@login_required
+@staff_required
+def visit_collect_cash(visit_id):
+    """Technician records cash received on-site (Note E).
+    Sets cash_collection_status = 'pending_approval' so manager can confirm 'CASH RECEIVED'."""
+    v = db.session.get(Visit, visit_id) or abort(404)
+    amount_str = (request.form.get("amount") or "").strip()
+    target_type = request.form.get("target_type", "contract")
+    quotation_id = request.form.get("quotation_id")
+    notes = (request.form.get("notes") or "").strip()
+
+    try:
+        amount = float(amount_str)
+        if amount <= 0:
+            raise ValueError()
+    except (ValueError, TypeError):
+        flash("Please enter a valid cash amount.", "warning")
+        return redirect(url_for("admin.visit", visit_id=v.id))
+
+    if target_type == "quotation" and quotation_id:
+        q = db.session.get(Quotation, quotation_id) or abort(404)
+        q.cash_collected_amount = amount
+        q.cash_collected_by_id = current_user.id
+        q.cash_collected_at = datetime.utcnow()
+        q.cash_collected_notes = notes
+        q.cash_collection_status = "pending_approval"
+        target_name = f"Material Quote {q.reference}"
+    else:
+        c = v.contract
+        c.cash_collected_amount = amount
+        c.cash_collected_by_id = current_user.id
+        c.cash_collected_at = datetime.utcnow()
+        c.cash_collected_notes = notes
+        c.cash_collection_status = "pending_approval"
+        target_name = f"AMC Contract {c.reference}"
+
+    db.session.commit()
+
+    cid = v.contract.customer_id
+    if cid:
+        db.session.add(CustomerJourneyEvent(
+            customer_id=cid,
+            event_type="cash_collected_onsite",
+            description=f"Technician {current_user.name} recorded ₹{amount:,.0f} cash collected on-site for {target_name}. Pending manager confirmation.",
+            ref_type="contract",
+            ref_id=v.contract_id,
+            created_by_id=current_user.id
+        ))
+        db.session.commit()
+
+    notify_managers(
+        f"Cash Collected on Site: ₹{amount:,.0f}",
+        f"Technician {current_user.name} collected ₹{amount:,.0f} cash on-site for {target_name}. Confirm 'CASH RECEIVED' to unlock client portal.",
+        link=url_for("admin.contract", contract_id=v.contract_id)
+    )
+
+    flash(f"Cash collection of ₹{amount:,.0f} recorded. Manager will confirm 'CASH RECEIVED' in Ops Console.", "success")
+    return redirect(url_for("admin.visit", visit_id=v.id))
+
+
+@admin_bp.route("/contract/<int:contract_id>/confirm-cash-received", methods=["POST"])
+@login_required
+@manager_required
+def confirm_cash_received(contract_id):
+    """Manager confirms 'CASH RECEIVED' for on-site cash collected by technician (Note E).
+    Marks contract paid, activates contract, unlocks client portal, and cascades to linked quote."""
+    if getattr(current_user, "role", "") not in ("manager", "admin"):
+        flash("Only a manager or admin can confirm cash receipt.", "danger")
+        return redirect(url_for("admin.contract", contract_id=contract_id))
+
+    c = db.session.get(Contract, contract_id) or abort(404)
+    amount = c.cash_collected_amount or c.price or 0
+    c.cash_collection_status = "confirmed"
+    c.payment_status = "paid"
+    c.payment_mode = "cash"
+    c.payment_date = date.today()
+    if c.status == "pending":
+        c.status = "active"
+
+    # Cascade to linked service quotation or material quotation
+    if hasattr(c, "amc_quote") and c.amc_quote:
+        c.amc_quote.payment_status = "paid"
+        c.amc_quote.payment_method = "cash"
+        c.amc_quote.payment_marked_at = datetime.utcnow()
+        if c.amc_quote.status in ("sent", "viewed", "negotiation_requested"):
+            c.amc_quote.status = "accepted"
+
+    for sq in getattr(c, "service_quotations", []):
+        if sq.payment_status != "paid":
+            sq.payment_status = "paid"
+            sq.payment_method = "cash"
+            sq.payment_marked_at = datetime.utcnow()
+            if sq.status in ("sent", "viewed", "negotiation_requested"):
+                sq.status = "accepted"
+
+    # Ensure customer account exists and has access
+    if not c.customer_id and c.applicant_phone:
+        u = User.query.filter_by(phone=c.applicant_phone).first()
+        if not u:
+            u = User(role="customer", name=c.applicant_name or "Customer",
+                     phone=c.applicant_phone, email=c.applicant_email or None,
+                     address=c.site_address)
+            db.session.add(u)
+            db.session.flush()
+        c.customer_id = u.id
+
+    if c.customer_id:
+        db.session.add(CustomerJourneyEvent(
+            customer_id=c.customer_id,
+            event_type="payment_received",
+            description=f"Cash payment of ₹{amount:,.0f} confirmed as CASH RECEIVED by Manager {current_user.name}. Portal fully unlocked.",
+            ref_type="contract",
+            ref_id=c.id,
+            created_by_id=current_user.id
+        ))
+        notify(c.customer_id, "Cash Payment Confirmed",
+               f"We've confirmed receipt of ₹{amount:,.0f} cash. Your Northern Star AMC portal is now active.",
+               link=url_for("portal.dashboard"))
+
+    db.session.commit()
+    flash(f"Cash payment of ₹{amount:,.0f} marked as CASH RECEIVED. Contract {c.reference} is active and customer portal unlocked.", "success")
+    return redirect(url_for("admin.contract", contract_id=c.id))
+
+
+@admin_bp.route("/quotation/<int:quote_id>/confirm-cash-received", methods=["POST"])
+@login_required
+@manager_required
+def quotation_confirm_cash_received(quote_id):
+    if getattr(current_user, "role", "") not in ("manager", "admin"):
+        flash("Only a manager or admin can confirm cash receipt.", "danger")
+        return redirect(request.referrer or url_for("admin.dashboard"))
+
+    q = db.session.get(Quotation, quote_id) or abort(404)
+    amount = q.cash_collected_amount or q.total or 0
+    q.cash_collection_status = "confirmed"
+    q.payment_status = "paid"
+    q.payment_mode = "cash"
+    q.payment_date = date.today()
+    if q.status == "pending":
+        q.status = "approved"
+
+    if q.contract and q.contract.customer_id:
+        db.session.add(CustomerJourneyEvent(
+            customer_id=q.contract.customer_id,
+            event_type="payment_received",
+            description=f"Cash payment of ₹{amount:,.0f} for {q.reference} confirmed as CASH RECEIVED by {current_user.name}.",
+            ref_type="contract",
+            ref_id=q.contract_id,
+            created_by_id=current_user.id
+        ))
+    db.session.commit()
+    flash(f"Cash payment of ₹{amount:,.0f} confirmed as CASH RECEIVED for quotation {q.reference}.", "success")
+    return redirect(request.referrer or url_for("admin.visit", visit_id=q.visit_id))
+
+
+@admin_bp.route("/contract/<int:contract_id>/send-payment-reminder", methods=["POST"])
+@login_required
+@manager_required
+def send_payment_reminder(contract_id):
+    """Delayed payment reminder (Notes C & D): Auto-reminders after visit 1 is completed."""
+    c = db.session.get(Contract, contract_id) or abort(404)
+    info = c.post_visit_payment_info
+    v_num = info.get("visit_number") or 1
+    amount = c.price or 0
+
+    if c.customer_id:
+        notify(
+            c.customer_id,
+            "Payment Reminder: AMC Fee Due",
+            f"Maintenance visit #{v_num} has been completed for {c.site_name or c.reference}. Please complete the outstanding AMC fee payment of ₹{amount:,.0f}.",
+            link=url_for("portal.agreement", contract_id=c.id) if not c.agreement_accepted else url_for("portal.dashboard")
+        )
+        status_note = "OVERDUE (45-day window expired)" if info.get("is_overdue") else f"Within 45-day window ({info.get('days_remaining')} days left)"
+        db.session.add(CustomerJourneyEvent(
+            customer_id=c.customer_id,
+            event_type="payment_reminder",
+            description=f"Payment reminder sent for AMC contract {c.reference} (₹{amount:,.0f}) — {status_note}.",
+            ref_type="contract",
+            ref_id=c.id,
+            created_by_id=current_user.id
+        ))
+        db.session.commit()
+
+    flash(f"Payment reminder sent to {c.applicant_name or 'customer'}.", "success")
+    return redirect(url_for("admin.contract", contract_id=c.id))

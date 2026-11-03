@@ -211,48 +211,98 @@ function closeCelebrate() {
 </div>
 {% endif %}
 
-<!-- Referral prompt modal (shown when ?prompt_referral=1 after 2nd+ good rating) -->
-{% if request.args.get('prompt_referral') == '1' %}
-<div id="referral-modal" style="display:flex;position:fixed;inset:0;z-index:70;background:rgba(15,23,42,.6);align-items:center;justify-content:center;padding:1rem">
-  <div id="referral-card" style="background:#fff;border-radius:20px;max-width:460px;width:100%;padding:36px 32px;transform:scale(.94);opacity:0;transition:transform .35s cubic-bezier(.34,1.56,.64,1),opacity .28s ease">
-    <div style="text-align:center;margin-bottom:20px">
-      <div style="display:inline-flex;align-items:center;justify-content:center;width:64px;height:64px;border-radius:50%;background:#fef3c7;margin-bottom:12px">
-        <svg style="width:30px;height:30px;color:#d97706" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+<!-- Google Review & Referral Prompt Modal (shown when ?prompt_review=1 or ?prompt_referral=1) -->
+{% if request.args.get('prompt_review') == '1' or request.args.get('prompt_referral') == '1' %}
+<div id="referral-modal" style="display:flex;position:fixed;inset:0;z-index:70;background:rgba(15,23,42,.65);backdrop-filter:blur(3px);align-items:center;justify-content:center;padding:1rem">
+  <div id="referral-card" style="background:#fff;border-radius:24px;max-width:500px;width:100%;padding:32px 28px;transform:scale(.94);opacity:0;transition:transform .32s cubic-bezier(.34,1.56,.64,1),opacity .25s ease;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25)">
+    <div style="text-align:center;margin-bottom:18px">
+      <div style="display:inline-flex;align-items:center;justify-content:center;width:56px;height:56px;border-radius:50%;background:#fef3c7;margin-bottom:10px">
+        <svg style="width:28px;height:28px;color:#d97706" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/></svg>
       </div>
-      <h2 style="font-size:1.25rem;font-weight:800;color:#16235b;margin:0 0 6px">You are loving our service!</h2>
-      <p style="color:#475569;font-size:.875rem;line-height:1.6;margin:0">Know someone who could benefit from Northern Star's fire safety services? Refer them and help keep more people safe.</p>
+      <h2 style="font-size:1.3rem;font-weight:800;color:#16235b;margin:0 0 4px">Thank you for loving our service!</h2>
+      <p style="color:#64748b;font-size:.85rem;line-height:1.5;margin:0">Your support helps keep homes and businesses fire-safe. Help us grow by leaving a Google review or referring a friend.</p>
     </div>
-    <form method="post" action="{{ url_for('portal.submit_referral', contract_id=v.contract_id) }}" class="space-y-3">
-      <div class="grid grid-cols-2 gap-3">
-        <label class="block col-span-2">
-          <span class="text-sm font-medium text-slate-700">Contact name <span class="text-red-500">*</span></span>
-          <input name="referee_name" required placeholder="Full name" class="mt-1 w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:border-amber-400 outline-none">
-        </label>
-        <label class="block">
-          <span class="text-sm font-medium text-slate-700">Phone</span>
-          <input name="referee_phone" type="tel" placeholder="Mobile number" class="mt-1 w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:border-amber-400 outline-none">
-        </label>
-        <label class="block">
-          <span class="text-sm font-medium text-slate-700">Area / City</span>
-          <input name="referee_area" placeholder="e.g. Vesu, Surat" class="mt-1 w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:border-amber-400 outline-none">
-        </label>
-        <label class="block col-span-2">
-          <span class="text-sm font-medium text-slate-700">Company / Building name</span>
-          <input name="referee_company" placeholder="Optional" class="mt-1 w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:border-amber-400 outline-none">
-        </label>
+
+    <!-- Tab Buttons -->
+    <div class="flex rounded-xl bg-slate-100 p-1 mb-5 text-xs font-semibold">
+      <button type="button" id="tab-btn-review" onclick="switchPromptTab('review')" class="flex-1 py-2 rounded-lg bg-white text-navy-800 shadow-sm transition">⭐ Google Review</button>
+      <button type="button" id="tab-btn-referral" onclick="switchPromptTab('referral')" class="flex-1 py-2 rounded-lg text-slate-500 hover:text-navy-800 transition">👥 Refer a Friend</button>
+    </div>
+
+    <!-- Review Section -->
+    <div id="tab-content-review" class="text-center space-y-4">
+      <div class="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-4 text-center">
+        <div class="flex justify-center text-amber-400 mb-2">
+          {% for _ in range(5) %}
+          <svg class="w-6 h-6 fill-current" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 0 0 .95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 0 0-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 0 0-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 0 0-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 0 0 .951-.69l1.07-3.292z"/></svg>
+          {% endfor %}
+        </div>
+        <p class="text-xs text-slate-700 font-medium">Takes only 30 seconds! Share your 5-star experience on Google.</p>
       </div>
-      <div class="flex gap-3 pt-2">
-        <button type="button" onclick="closeReferral()" class="flex-1 px-4 py-2.5 rounded-xl border border-slate-300 text-slate-600 font-medium text-sm hover:bg-slate-50">Maybe later</button>
-        <button class="flex-1 px-4 py-2.5 rounded-xl text-white font-semibold text-sm" style="background:var(--amber)">Submit Referral</button>
+      <a href="{{ GOOGLE_REVIEW_URL }}" target="_blank" rel="noopener noreferrer"
+         class="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-navy-800 hover:bg-navy-700 text-white font-semibold text-sm transition shadow-sm">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"/></svg>
+        Write a Review on Google →
+      </a>
+      <div>
+        <button type="button" onclick="closeReferral()" class="text-xs text-slate-400 hover:text-slate-600">Maybe later</button>
       </div>
-    </form>
+    </div>
+
+    <!-- Referral Section -->
+    <div id="tab-content-referral" style="display:none">
+      <form method="post" action="{{ url_for('portal.submit_referral', contract_id=v.contract_id) }}" class="space-y-3">
+        <div class="grid grid-cols-2 gap-3">
+          <label class="block col-span-2">
+            <span class="text-xs font-medium text-slate-700">Contact name <span class="text-red-500">*</span></span>
+            <input name="referee_name" required placeholder="Full name" class="mt-1 w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:border-amber-400 outline-none">
+          </label>
+          <label class="block">
+            <span class="text-xs font-medium text-slate-700">Phone</span>
+            <input name="referee_phone" type="tel" placeholder="Mobile number" class="mt-1 w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:border-amber-400 outline-none">
+          </label>
+          <label class="block">
+            <span class="text-xs font-medium text-slate-700">Area / City</span>
+            <input name="referee_area" placeholder="e.g. Vesu, Surat" class="mt-1 w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:border-amber-400 outline-none">
+          </label>
+          <label class="block col-span-2">
+            <span class="text-xs font-medium text-slate-700">Company / Building name</span>
+            <input name="referee_company" placeholder="Optional" class="mt-1 w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:border-amber-400 outline-none">
+          </label>
+        </div>
+        <div class="flex gap-3 pt-2">
+          <button type="button" onclick="closeReferral()" class="flex-1 px-4 py-2.5 rounded-xl border border-slate-300 text-slate-600 font-medium text-xs hover:bg-slate-50">Maybe later</button>
+          <button class="flex-1 px-4 py-2.5 rounded-xl text-white font-semibold text-xs" style="background:var(--amber)">Submit Referral</button>
+        </div>
+      </form>
+    </div>
   </div>
 </div>
 <script>
 (function(){
   var card = document.getElementById('referral-card');
   setTimeout(function(){ card.style.transform='scale(1)'; card.style.opacity='1'; }, 80);
+  {% if request.args.get('prompt_referral') == '1' and request.args.get('prompt_review') != '1' %}
+  switchPromptTab('referral');
+  {% endif %}
 })();
+function switchPromptTab(tab){
+  var btnRev = document.getElementById('tab-btn-review');
+  var btnRef = document.getElementById('tab-btn-referral');
+  var cntRev = document.getElementById('tab-content-review');
+  var cntRef = document.getElementById('tab-content-referral');
+  if (tab === 'referral') {
+    btnRef.className = 'flex-1 py-2 rounded-lg bg-white text-navy-800 shadow-sm transition';
+    btnRev.className = 'flex-1 py-2 rounded-lg text-slate-500 hover:text-navy-800 transition';
+    cntRef.style.display = 'block';
+    cntRev.style.display = 'none';
+  } else {
+    btnRev.className = 'flex-1 py-2 rounded-lg bg-white text-navy-800 shadow-sm transition';
+    btnRef.className = 'flex-1 py-2 rounded-lg text-slate-500 hover:text-navy-800 transition';
+    cntRev.style.display = 'block';
+    cntRef.style.display = 'none';
+  }
+}
 function closeReferral(){
   var m = document.getElementById('referral-modal');
   m.style.opacity='0'; m.style.transition='opacity .25s';

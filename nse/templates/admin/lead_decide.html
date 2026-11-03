@@ -1,56 +1,260 @@
 {% extends "base_ops.html" %}
-{% block title %}Decide — {{ c.reference }}{% endblock %}
+{% block title %}Decide Next Step — {{ c.reference }}{% endblock %}
 {% block content %}
-<section class="max-w-2xl mx-auto px-4 py-8">
+<section class="max-w-3xl mx-auto px-4 py-8">
   <a href="{{ url_for('admin.lead_detail', lead_id=c.id) }}" class="text-sm text-ink-subtle hover:text-ink">← {{ c.reference }}</a>
-  <h1 class="text-2xl font-extrabold text-ink mt-2 mb-1">What happens next?</h1>
-  <p class="text-sm text-ink-subtle mb-6">Inspection complete for {{ c.applicant_name or (c.customer.name if c.customer) }} — {{ c.site_name or c.site_address or '' }}. Choose one:</p>
+  <h1 class="text-2xl font-extrabold text-ink mt-2 mb-1">Decide What Happens Next</h1>
+  <p class="text-sm text-ink-subtle mb-6">Inspection complete for {{ c.applicant_name or (c.customer.name if c.customer) }} — {{ c.site_name or c.site_address or '' }}.</p>
 
-  <div class="space-y-4">
-
-    <!-- Audit fee only -->
-    <form method="post" class="card p-6">
-      <input type="hidden" name="action" value="audit_fee">
-      <h2 class="font-bold text-ink mb-1">Charge audit fee only</h2>
-      <p class="text-sm text-ink-subtle mb-3">Everything is OK — bill for the inspection, no AMC needed right now. A follow-up reminder is set for ~5 months out.</p>
-      <label class="block mb-3"><span class="text-sm font-medium text-ink-muted">Audit fee amount (₹)</span>
-        <input type="number" name="amount" min="0" step="1" class="mt-1.5 w-40 px-3 py-2.5" required></label>
-      <button class="btn btn-outline">Create audit fee quotation</button>
-    </form>
-
-    <!-- Raise AMC quotation -->
-    <form method="post" class="card p-6">
-      <input type="hidden" name="action" value="raise_quote">
-      <h2 class="font-bold text-ink mb-1">Raise an AMC quotation</h2>
-      <p class="text-sm text-ink-subtle mb-3">Issues were found — prepare a full quotation to send via WhatsApp for the client's approval and payment.</p>
-      <button class="btn btn-primary">Go to New Quotation →</button>
-    </form>
-
-    {% if c.project_type == 'existing' %}
-    <!-- Free AMC (handover only) -->
-    <form method="post" class="card p-6" style="border-color:#f59e0b">
-      <input type="hidden" name="action" value="free_amc">
-      <h2 class="font-bold text-ink mb-1">Activate complimentary 1-year AMC</h2>
-      <p class="text-sm text-ink-subtle mb-3">This project was completed by Northern Star — the first year of AMC is free from today. Activates immediately and schedules visits.</p>
-      <div class="grid sm:grid-cols-3 gap-3">
-        <label class="block"><span class="text-sm font-medium text-ink-muted">Plan</span>
-          <select name="plan_id" class="mt-1.5 w-full px-3 py-2.5">
-            <option value="">— No plan (custom) —</option>
-            {% for p in plans %}<option value="{{ p.id }}">{{ p.name }} ({{ p.visits_per_year }} visits)</option>{% endfor %}
-          </select></label>
-        <label class="block"><span class="text-sm font-medium text-ink-muted">Start date</span>
-          <input type="date" name="start_date" class="mt-1.5 w-full px-3 py-2.5"></label>
-        <label class="block"><span class="text-sm font-medium text-ink-muted">Visits</span>
-          <input type="number" name="total_visits" value="4" class="mt-1.5 w-full px-3 py-2.5"></label>
+  {% if fshcr %}
+  <!-- FSHCR Inspection Summary Banner -->
+  <div class="card p-5 mb-6 bg-slate-50 border border-slate-200">
+    <div class="flex items-center justify-between flex-wrap gap-3">
+      <div>
+        <div class="text-xs uppercase tracking-wide text-ink-subtle font-semibold">Fire Safety Health Checkup Report</div>
+        <div class="text-base font-bold text-ink mt-0.5">{{ fshcr.reference }} · Inspected by {{ fshcr.inspector_name or 'Technician' }}</div>
+        <div class="text-xs text-ink-subtle mt-0.5">{{ fshcr.report_date|datefmt if fshcr.report_date }} · {{ fshcr.property_name or c.site_name }}</div>
       </div>
-      <label class="block mt-3"><span class="text-sm font-medium text-ink-muted">Assign technician</span>
-        <select name="technician_id" class="mt-1.5 w-full px-3 py-2.5">
-          <option value="">— Unassigned —</option>
-          {% for t in technicians %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}
-        </select></label>
-      <button class="btn btn-amber mt-4">Activate free AMC — valid 1 year from start date</button>
-    </form>
+      <div class="text-right">
+        <div class="text-2xl font-black {% if fshcr.score and fshcr.score >= 85 %}text-green-600{% elif fshcr.score and fshcr.score >= 60 %}text-amber-600{% else %}text-red-600{% endif %}">
+          {{ fshcr.score if fshcr.score is not none else '—' }}<span class="text-sm text-ink-subtle">/100</span>
+        </div>
+        <span class="inline-block text-xs font-bold uppercase px-2.5 py-0.5 rounded-full {% if fshcr.outcome == 'ok' %}bg-green-100 text-green-800 border border-green-200{% elif fshcr.outcome == 'needs_rework' %}bg-red-100 text-red-800 border border-red-200{% else %}bg-amber-100 text-amber-800 border border-amber-200{% endif %}">
+          {{ 'OK (Satisfactory)' if fshcr.outcome == 'ok' else ('Issues Found' if fshcr.outcome == 'issues' else 'Needs Rework') }}
+        </span>
+      </div>
+    </div>
+
+    <!-- Quick Report Share Buttons -->
+    <div class="mt-4 pt-3 border-t border-slate-200 flex items-center justify-between flex-wrap gap-2 text-xs">
+      <span class="text-ink-subtle">Share inspection report with client:</span>
+      <div class="flex items-center gap-2">
+        <a href="{{ url_for('admin.health_report_whatsapp', report_id=fshcr.id) }}" target="_blank"
+           class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold text-white shadow-sm hover:opacity-90"
+           style="background:#25D366;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+          Share Report on WhatsApp
+        </a>
+        <a href="{{ url_for('admin.health_report_email', report_id=fshcr.id) }}"
+           class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold bg-navy-800 text-white hover:bg-navy-700">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+          Email Report PDF
+        </a>
+        <a href="{{ url_for('admin.health_report_pdf', report_id=fshcr.id) }}" class="text-primary hover:underline font-medium">Download PDF ↓</a>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="space-y-6">
+    {% if c.project_type in ('existing', 'handover') or c.is_handover %}
+    <!-- HANDOVER BRANCH: SITE IS READY (FREE 1-YEAR AMC vs PAID AMC) -->
+    <div class="card p-6 border-2 border-primary bg-blue-50/20 shadow-sm mb-6">
+      <div class="flex items-center justify-between flex-wrap gap-2 mb-2">
+        <h2 class="text-lg font-bold text-ink flex items-center gap-2">
+          <span class="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold">★</span>
+          BRANCH: Site is Ready (Handover Project)
+        </h2>
+        <span class="text-xs bg-blue-100 text-blue-800 px-3 py-1 rounded-full font-bold">Manager Decision: Free vs Paid</span>
+      </div>
+      <p class="text-sm text-ink-subtle mb-5">
+        The engineering team and maintenance technician have jointly inspected and signed the report. As the manager, choose between <strong>FREE 1-Year AMC</strong> or <strong>PAID AMC</strong>.
+      </p>
+
+      <div class="grid md:grid-cols-2 gap-5">
+        <!-- 4a: Free 1-Year AMC -->
+        <div class="bg-white border-2 border-emerald-400 rounded-xl p-5 shadow-xs flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between gap-2 mb-2">
+              <span class="px-2.5 py-0.5 rounded text-xs font-bold bg-emerald-100 text-emerald-800">Option 4a</span>
+              <span class="text-xs font-bold text-emerald-700">₹0 (Complimentary)</span>
+            </div>
+            <h3 class="font-extrabold text-ink text-base">Free 1-Year AMC</h3>
+            <p class="text-xs text-ink-subtle mt-1 mb-4 leading-relaxed">
+              Contract starts with a clear <strong>valid until</strong> date, payment is treated as done, a technician is assigned, and 4 scheduled maintenance visits open up.
+            </p>
+
+            <form method="post" class="space-y-3">
+              <input type="hidden" name="action" value="free_amc">
+              <div>
+                <label class="block text-xs font-semibold text-ink-muted mb-1">AMC Plan</label>
+                <select name="plan_id" class="w-full text-sm px-3 py-2 border rounded-lg">
+                  <option value="">— Standard Handover AMC (4 visits) —</option>
+                  {% for p in plans %}<option value="{{ p.id }}">{{ p.name }} ({{ p.visits_per_year }} visits)</option>{% endfor %}
+                </select>
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class="block text-xs font-semibold text-ink-muted mb-1">Start Date</label>
+                  <input type="date" name="start_date" value="{{ c.inspection_scheduled_date.isoformat() if c.inspection_scheduled_date }}" class="w-full text-sm px-2.5 py-1.5 border rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-xs font-semibold text-ink-muted mb-1">Visits</label>
+                  <input type="number" name="total_visits" value="4" min="1" max="12" class="w-full text-sm px-2.5 py-1.5 border rounded-lg" required>
+                </div>
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-ink-muted mb-1">Assign Technician <span class="text-danger">*</span></label>
+                <select name="technician_id" class="w-full text-sm px-3 py-2 border rounded-lg" required>
+                  <option value="">— Select Technician —</option>
+                  {% for t in technicians %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}
+                </select>
+              </div>
+              <button type="submit" class="btn btn-primary w-full mt-3 font-bold text-sm bg-emerald-600 hover:bg-emerald-500 border-none">
+                Activate Free 1-Year AMC →
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <!-- 4b: Paid AMC -->
+        <div class="bg-white border-2 border-amber-400 rounded-xl p-5 shadow-xs flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between gap-2 mb-2">
+              <span class="px-2.5 py-0.5 rounded text-xs font-bold bg-amber-100 text-amber-800">Option 4b</span>
+              <span class="text-xs font-bold text-amber-700">Commercial Contract</span>
+            </div>
+            <h3 class="font-extrabold text-ink text-base">Paid AMC</h3>
+            <p class="text-xs text-ink-subtle mt-1 mb-4 leading-relaxed">
+              Same quotation path as a new customer: quotation generated with the handover "as-is" condition, shared via WhatsApp link, paid via UPI/Cash/Cheque, agreement signed, and visits opened.
+            </p>
+
+            <form method="post" class="space-y-3">
+              <input type="hidden" name="action" value="paid_amc">
+              <div>
+                <label class="block text-xs font-semibold text-ink-muted mb-1">Select AMC Plan / Tier</label>
+                <select name="plan_id" class="w-full text-sm px-3 py-2 border rounded-lg">
+                  {% for p in plans %}<option value="{{ p.id }}">{{ p.name }} — ₹{{ p.price|int }} ({{ p.visits_per_year }} visits)</option>{% endfor %}
+                  <option value="">Custom Quotation in Editor</option>
+                </select>
+              </div>
+              <div class="p-3 bg-amber-50 rounded-lg text-xs text-amber-900 border border-amber-200">
+                <strong>Includes Handover Terms:</strong> Carries the extra condition that the site is taken "as-is" after joint inspection.
+              </div>
+              <button type="submit" class="btn w-full mt-3 text-white font-bold text-sm shadow-sm" style="background:#f59e0b;">
+                ⚡ Generate Paid AMC Quotation →
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
     {% endif %}
+
+    <!-- BRANCH 1: OK RESULT -->
+    <div class="card p-6 border-2 {% if fshcr and fshcr.outcome == 'ok' %}border-green-500 shadow-md bg-green-50/20{% else %}border-hairline{% endif %}">
+      <div class="flex items-center justify-between gap-2 mb-2">
+        <h2 class="text-lg font-bold text-ink flex items-center gap-2">
+          <span class="w-6 h-6 rounded-full bg-green-100 text-green-700 flex items-center justify-center text-xs font-bold">1</span>
+          BRANCH: Result is OK (Postpone AMC)
+        </h2>
+        {% if fshcr and fshcr.outcome == 'ok' %}
+        <span class="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full font-bold">Recommended Outcome</span>
+        {% endif %}
+      </div>
+      <p class="text-sm text-ink-subtle mb-4">
+        Everything is safe and functional. Manager decision: Charge a small audit fee or <strong>₹0 (No fees)</strong>, postpone AMC, and schedule a reminder to follow up in <strong>4–6 months</strong>.
+      </p>
+
+      <form method="post" class="space-y-4">
+        <input type="hidden" name="action" value="audit_fee">
+        
+        <div class="grid sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-ink-muted mb-1">Audit Fee Amount (₹)</label>
+            <div class="flex items-center gap-2">
+              <span class="text-ink-subtle font-semibold">₹</span>
+              <input type="number" name="amount" id="auditAmount" min="0" step="1" value="0" class="w-full px-3 py-2 border rounded-lg" required>
+            </div>
+            <!-- Quick Chips -->
+            <div class="flex items-center gap-2 mt-2">
+              <button type="button" onclick="document.getElementById('auditAmount').value=0" class="text-xs px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-ink font-medium">₹0 (Free)</button>
+              <button type="button" onclick="document.getElementById('auditAmount').value=999" class="text-xs px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-ink font-medium">₹999</button>
+              <button type="button" onclick="document.getElementById('auditAmount').value=1500" class="text-xs px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-ink font-medium">₹1,500</button>
+              <button type="button" onclick="document.getElementById('auditAmount').value=2500" class="text-xs px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-ink font-medium">₹2,500</button>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-ink-muted mb-1">Follow-up Reminder Period</label>
+            <select name="followup_months" class="w-full px-3 py-2 border rounded-lg">
+              <option value="4">4 Months (~120 days)</option>
+              <option value="5" selected>5 Months (~150 days) — Recommended</option>
+              <option value="6">6 Months (~180 days)</option>
+            </select>
+            <p class="text-xs text-ink-subtle mt-1.5">A reminder notification will trigger in the CRM before this date.</p>
+          </div>
+        </div>
+
+        <div class="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-900 flex items-start gap-2">
+          <svg class="w-4 h-4 text-blue-600 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+          <div>
+            <strong>Third-Party Payment Linkage:</strong>
+            If audit fee &gt; ₹0, an online payment link (with Razorpay Checkout &amp; UPI QR code) will be generated automatically and pre-filled in WhatsApp so client can pay instantly on their phone.
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary w-full sm:w-auto">Confirm OK Decision &amp; Postpone AMC</button>
+      </form>
+    </div>
+
+
+    <!-- BRANCH 2: PROBLEMS FOUND -->
+    <div class="card p-6 border-2 {% if fshcr and fshcr.outcome == 'issues' %}border-amber-500 shadow-md bg-amber-50/20{% else %}border-hairline{% endif %}">
+      <div class="flex items-center justify-between gap-2 mb-2">
+        <h2 class="text-lg font-bold text-ink flex items-center gap-2">
+          <span class="w-6 h-6 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center text-xs font-bold">2</span>
+          BRANCH: Problems Were Found (Generate Quotation)
+        </h2>
+        {% if fshcr and fshcr.outcome == 'issues' %}
+        <span class="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-bold">Action Required</span>
+        {% endif %}
+      </div>
+      <p class="text-sm text-ink-subtle mb-3">
+        Defects or maintenance issues were analysed on site. An itemized quotation can be created instantly, or fine-tuned by the manager in the backend and shared same day with the client via WhatsApp and Email.
+      </p>
+
+      {% if defects %}
+      <!-- Analysed Problems Preview -->
+      <div class="bg-white border border-amber-200 rounded-xl p-4 mb-4">
+        <div class="text-xs font-bold uppercase tracking-wide text-amber-900 mb-2 flex items-center justify-between">
+          <span>Identified Inspection Defects ({{ defects|length }} items)</span>
+          <span class="text-[11px] font-normal text-amber-800">Auto-mapped from health report</span>
+        </div>
+        <ul class="space-y-1.5 text-xs text-slate-700">
+          {% for d in defects %}
+          <li class="flex items-start gap-2">
+            <span class="text-red-500 font-bold">•</span>
+            <div><strong>{{ d.category }}:</strong> {{ d.description or d.label }}</div>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+
+      <div class="grid sm:grid-cols-2 gap-3 pt-2">
+        <!-- Instant Quote Form -->
+        <form method="post">
+          <input type="hidden" name="action" value="instant_quote">
+          <button type="submit" class="btn w-full text-white font-semibold flex items-center justify-center gap-2" style="background:#f59e0b;">
+            <span>⚡ Create Instant Quotation</span>
+          </button>
+          <p class="text-[11px] text-ink-subtle text-center mt-1">One-click quotation with pre-mapped rates &amp; instant WhatsApp link</p>
+        </form>
+
+        <!-- Backend Custom Quote Form -->
+        <form method="post">
+          <input type="hidden" name="action" value="raise_quote">
+          <button type="submit" class="btn btn-outline w-full flex items-center justify-center gap-2">
+            <span>✏️ Customize in Backend</span>
+          </button>
+          <p class="text-[11px] text-ink-subtle text-center mt-1">Open quote editor with preloaded items to adjust rates/items</p>
+        </form>
+      </div>
+    </div>
+
+
+
 
   </div>
 </section>

@@ -139,6 +139,15 @@ def admin_required(fn):
     return wrapper
 
 
+def manager_required(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if not current_user.is_authenticated or not current_user.is_manager:
+            abort(403)
+        return fn(*args, **kwargs)
+    return wrapper
+
+
 def team_leader_required(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):
@@ -151,9 +160,13 @@ def team_leader_required(fn):
 def customer_required(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):
-        if not current_user.is_authenticated or current_user.role != "customer":
-            flash("Please log in as a customer to view this.", "warning")
+        if not current_user.is_authenticated:
             return redirect(url_for("auth.login"))
+        if current_user.role != "customer":
+            flash("Customer portal is for customers only.", "warning")
+            if current_user.is_technician:
+                return redirect(url_for("admin.day_plan"))
+            return redirect(url_for("admin.dashboard"))
         return fn(*args, **kwargs)
     return wrapper
 
@@ -188,35 +201,66 @@ def verify_otp(phone, code):
 # --------------------------------------------------------------------------- #
 # File uploads
 # --------------------------------------------------------------------------- #
+DEFAULT_ALLOWED_EXT = {
+    "png", "jpg", "jpeg", "gif", "webp",
+    "pdf", "doc", "docx",
+    "mp4", "mov", "webm", "m4v", "avi",
+    "wav", "mp3", "ogg", "m4a", "aac",
+}
+
+
 def _allowed(filename, allowed_ext):
+    if not allowed_ext:
+        allowed_ext = current_app.config.get("ALLOWED_ALL_UPLOADS") or DEFAULT_ALLOWED_EXT
     return "." in filename and filename.rsplit(".", 1)[1].lower() in allowed_ext
 
 
-def save_upload(file_storage, subdir, allowed_ext):
+def save_upload(file_storage, subdir="general", allowed_ext=None):
     """Persist an uploaded file and return a reference for later rendering.
 
-    Two backends, chosen at runtime:
+    Backends supported:
       * Vercel Blob (when BLOB_READ_WRITE_TOKEN is set) — returns an absolute
-        https:// URL. Used in production, where the local filesystem is
-        read-only/ephemeral.
-      * Local disk (dev) — writes under static/uploads/<subdir>/ and returns a
+        https:// URL. Used in production on Vercel.
+      * Supabase Storage (when SUPABASE_STORAGE_BUCKET and SUPABASE_URL + SUPABASE_KEY are set)
+        — returns an absolute https:// URL pointing to the public bucket object.
+      * Local disk (dev fallback) — writes under static/uploads/<subdir>/ and returns a
         path relative to the static folder (for url_for('static', filename=...)).
 
-    Either form is resolved for templates/links by `upload_url()` below.
+    All forms are resolved for templates/links by `upload_url()` below.
     """
     if not file_storage or not file_storage.filename:
         return None
     if not _allowed(file_storage.filename, allowed_ext):
         return None
-    safe = secure_filename(file_storage.filename)
+    safe = secure_filename(file_storage.filename) or "upload"
     unique = f"{uuid.uuid4().hex[:8]}_{safe}"
 
+    # 1. Vercel Blob (production)
     token = current_app.config.get("BLOB_READ_WRITE_TOKEN")
     if token:
-        return _save_to_blob(file_storage, f"{subdir}/{unique}", token)
+        try:
+            return _save_to_blob(file_storage, f"{subdir}/{unique}", token)
+        except Exception as e:
+            current_app.logger.warning("Vercel Blob upload failed, falling back: %s", e)
 
+    # 2. Supabase Storage (cloud deployment alternative)
+    sb_bucket = current_app.config.get("SUPABASE_STORAGE_BUCKET") or os.getenv("SUPABASE_STORAGE_BUCKET")
+    sb_url = current_app.config.get("SUPABASE_URL") or os.getenv("SUPABASE_URL")
+    sb_key = (
+        current_app.config.get("SUPABASE_KEY")
+        or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        or os.getenv("SUPABASE_KEY")
+    )
+    if sb_bucket and sb_url and sb_key:
+        try:
+            return _save_to_supabase(file_storage, f"{subdir}/{unique}", sb_url, sb_key, sb_bucket)
+        except Exception as e:
+            current_app.logger.warning("Supabase Storage upload failed, falling back: %s", e)
+
+    # 3. Local disk (dev / fallback)
     dest_dir = os.path.join(current_app.config["UPLOAD_FOLDER"], subdir)
     os.makedirs(dest_dir, exist_ok=True)
+    file_storage.seek(0)
     file_storage.save(os.path.join(dest_dir, unique))
     return f"uploads/{subdir}/{unique}"
 
@@ -228,7 +272,9 @@ def _save_to_blob(file_storage, pathname, token):
     suffix to keep the pathname predictable. Raises on a failed upload so the
     caller doesn't silently store a broken reference.
     """
+    file_storage.seek(0)
     data = file_storage.read()
+    file_storage.seek(0)
     resp = requests.put(
         f"https://blob.vercel-storage.com/{pathname}",
         data=data,
@@ -243,6 +289,28 @@ def _save_to_blob(file_storage, pathname, token):
     )
     resp.raise_for_status()
     return resp.json()["url"]
+
+
+def _save_to_supabase(file_storage, pathname, supabase_url, supabase_key, bucket="uploads"):
+    """Upload bytes to Supabase Storage REST API; return the public URL."""
+    file_storage.seek(0)
+    data = file_storage.read()
+    file_storage.seek(0)
+    base_url = supabase_url.rstrip("/")
+    url = f"{base_url}/storage/v1/object/{bucket}/{pathname}"
+    resp = requests.post(
+        url,
+        data=data,
+        headers={
+            "Authorization": f"Bearer {supabase_key}",
+            "apikey": supabase_key,
+            "Content-Type": file_storage.mimetype or "application/octet-stream",
+            "x-upsert": "true",
+        },
+        timeout=30,
+    )
+    resp.raise_for_status()
+    return f"{base_url}/storage/v1/object/public/{bucket}/{pathname}"
 
 
 def upload_url(path):
@@ -406,3 +474,61 @@ def upi_qr_data_uri(vpa, payee_name, amount, note=""):
     """Return (upi_link, data_uri_png) for a UPI QR, or (link, None) on failure."""
     link = upi_link(vpa, payee_name, amount, note)
     return link, qr_data_uri(link)
+
+
+
+# Terms & Conditions for Installation, System Work & Projects (non-AMC)
+INSTALLATION_TERMS = [
+    "Material taken in consideration is ISI-marked and original. Certificates of materials will be provided on request.",
+    "Payment terms: 50% advance along with purchase order, 50% against delivery / installation completion.",
+    "All prices are quoted as per BOQ and design by Northern Star Engineering. If dimensions change at site, quantities & price vary accordingly.",
+    "Water and uninterrupted electricity required for installation, fabrication, testing, and commissioning shall be provided by the client at site free of cost.",
+    "Civil work, structural cutting, core-drilling, masonry, and patching are in the client's scope unless explicitly specified in this quotation.",
+    "Work shall commence within 7 days from the receipt of confirmed purchase order and advance payment.",
+    "Equipment supplied carries manufacturer warranty against manufacturing defects for 12 months from delivery.",
+    "Quotation is valid for 15 days from the date of issue. Piping and metal rates are subject to prevailing market variations.",
+    "Statutory fire NOC approvals, government fees, and liaison expenses (if required) are chargeable extra at actuals.",
+    "All disputes are subject to the exclusive jurisdiction of courts in Surat, Gujarat.",
+]
+
+def get_quotation_terms(q):
+    """Return the correct list of terms and conditions for a quotation based on
+    service_type, handover status, and complimentary AMC."""
+    if not q:
+        return list(AMC_QUOTATION_TERMS)
+    st = (getattr(q, "service_type", None) or "amc").lower()
+    if st == "audit":
+        return list(AUDIT_TERMS)
+    elif st == "amc":
+        terms = list(AMC_QUOTATION_TERMS)
+    else:
+        # Other services carry installation/project terms
+        terms = list(INSTALLATION_TERMS)
+    is_handover = False
+    is_free = False
+    contract = getattr(q, "contract", None)
+    if contract:
+        if getattr(contract, "is_handover", False) or getattr(contract, "project_type", "") in ("existing", "handover"):
+            is_handover = True
+        if getattr(contract, "free_amc", False):
+            is_free = True
+    notes_lower = (getattr(q, "notes", "") or "").lower()
+    proj_lower = (getattr(q, "project_name", "") or "").lower()
+    if "handover" in notes_lower or "handover" in proj_lower:
+        is_handover = True
+    if "free" in notes_lower or "complimentary" in notes_lower or (bool(getattr(q, "items", [])) and getattr(q, "grand_total", 1) == 0):
+        is_free = True
+
+    # For handovers, one extra condition is added to the terms (the site is taken “as-is” after the joint inspection)
+    if is_handover:
+        handover_clause = "The site and its fire protection systems are taken over on an 'as-is' basis following the joint inspection by the engineering and maintenance teams."
+        if handover_clause not in terms:
+            terms.append(handover_clause)
+
+    # Free AMC adds a “first year free” line
+    if is_free:
+        free_line = "First year AMC is provided complimentary (₹0 fee) by Northern Star Engineering as part of the project handover."
+        if free_line not in terms:
+            terms.insert(0, free_line)
+
+    return terms

@@ -15,9 +15,20 @@
         {% if c.site_address %}<p class="text-sm text-slate-500">{{ c.site_address }}{% if c.area %}, {{ c.area }}{% endif %}</p>{% endif %}
         {% if c.application_notes %}<p class="text-sm text-slate-600 mt-2 bg-slate-50 rounded-lg p-3">{{ c.application_notes }}</p>{% endif %}
         {% if c.voice_note %}
-        <div class="mt-2 flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm">
-          <svg class="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3M8 22h8"/></svg>
-          <span><span class="font-medium text-blue-800">Voice note:</span> <span class="text-blue-700">{{ c.voice_note }}</span></span>
+        {% set is_vn_audio = c.voice_note.lower().endswith(('.webm', '.wav', '.mp3', '.ogg', '.m4a', '.aac', '.mp4')) or 'uploads/' in c.voice_note or 'blob.vercel' in c.voice_note or 'supabase' in c.voice_note or c.voice_note.startswith('http') %}
+        <div class="mt-2 flex flex-col gap-2 bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm">
+          <div class="flex items-center gap-2">
+            <svg class="w-4 h-4 text-blue-600 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3M8 22h8"/></svg>
+            <span class="font-semibold text-blue-900">Customer Voice Note:</span>
+          </div>
+          {% if is_vn_audio %}
+          <div class="flex items-center gap-3">
+            <audio controls preload="metadata" class="w-full h-8" src="{{ c.voice_note|upload_url }}"></audio>
+            <a href="{{ c.voice_note|upload_url }}" download class="text-xs text-blue-700 underline whitespace-nowrap">Download</a>
+          </div>
+          {% else %}
+          <span class="text-blue-700 italic">{{ c.voice_note }}</span>
+          {% endif %}
         </div>
         {% endif %}
       </div>
@@ -106,6 +117,61 @@
   {% endif %}
 
   {% else %}
+  {# ── Note E: Technician cash collection awaiting manager confirmation ────────── #}
+  {% if c.cash_collection_status == 'pending_approval' %}
+  <div class="bg-amber-50 border-2 border-amber-400 rounded-2xl p-5 mt-5 shadow-sm">
+    <div class="flex items-start justify-between flex-wrap gap-3">
+      <div>
+        <span class="text-xs px-2.5 py-0.5 rounded-full bg-amber-200 text-amber-900 font-bold uppercase tracking-wider">Action Needed · On-Site Cash Collected</span>
+        <h3 class="text-lg font-bold text-amber-900 mt-1">₹{{ '{:,.0f}'.format(c.cash_collected_amount or 0) }} collected on-site by {{ c.cash_collector.name if c.cash_collector else 'Technician' }}</h3>
+        <p class="text-sm text-amber-800 mt-1">
+          Recorded on {{ c.cash_collected_at.strftime('%d %b %Y, %H:%M') if c.cash_collected_at else 'site visit' }}.
+          {% if c.cash_collected_notes %}<br><strong>Notes:</strong> {{ c.cash_collected_notes }}{% endif %}
+        </p>
+        <p class="text-xs text-amber-700 mt-1">Confirming receipt sets payment to Paid, activates contract, and unlocks the customer portal.</p>
+      </div>
+      {% if current_user.role in ('manager', 'admin') %}
+      <form method="post" action="{{ url_for('admin.confirm_cash_received', contract_id=c.id) }}">
+        <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5 py-2.5 rounded-xl shadow text-sm">
+          ✓ CASH RECEIVED — Confirm &amp; Unlock Portal
+        </button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── Notes C & D: Delayed payment 45-day post-visit collection window ──────────── #}
+  {% set pinfo = c.post_visit_payment_info %}
+  {% if pinfo.active %}
+  <div class="rounded-2xl p-5 mt-5 border {% if pinfo.is_overdue %}bg-red-50 border-red-300 shadow-sm{% else %}bg-amber-50 border-amber-300{% endif %}">
+    <div class="flex items-start justify-between flex-wrap gap-3">
+      <div>
+        {% if pinfo.is_overdue %}
+        <span class="text-xs px-2.5 py-0.5 rounded-full bg-red-200 text-red-900 font-bold uppercase tracking-wider">🚨 Payment Overdue (45-Day Window Expired)</span>
+        <h3 class="text-lg font-bold text-red-900 mt-1">₹{{ '{:,.0f}'.format(c.price or 0) }} pending after Visit #{{ pinfo.visit_number }}</h3>
+        <p class="text-sm text-red-800 mt-1">
+          Visit #{{ pinfo.visit_number }} completed on {{ pinfo.visit_date.strftime('%d %b %Y') }} ({{ pinfo.days_elapsed }} days ago).
+          The 45-day post-visit collection window expired {{ -pinfo.days_remaining }} day(s) ago! Follow-up required.
+        </p>
+        {% else %}
+        <span class="text-xs px-2.5 py-0.5 rounded-full bg-amber-200 text-amber-900 font-bold uppercase tracking-wider">⏱️ Post-Visit 1 Collection Window</span>
+        <h3 class="text-lg font-bold text-amber-900 mt-1">₹{{ '{:,.0f}'.format(c.price or 0) }} due within 45 days</h3>
+        <p class="text-sm text-amber-800 mt-1">
+          Visit #{{ pinfo.visit_number }} completed on {{ pinfo.visit_date.strftime('%d %b %Y') }}.
+          {{ pinfo.days_remaining }} day(s) remaining (due by {{ pinfo.due_date.strftime('%d %b %Y') }}).
+        </p>
+        {% endif %}
+      </div>
+      <form method="post" action="{{ url_for('admin.send_payment_reminder', contract_id=c.id) }}">
+        <button class="bg-navy-800 hover:bg-navy-700 text-white font-semibold px-4 py-2 rounded-xl text-sm shadow">
+          📩 Send Payment Reminder &amp; Follow-up
+        </button>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+
   <!-- Payment status -->
   <form method="post" action="{{ url_for('admin.contract_payment', contract_id=c.id) }}" class="bg-white rounded-2xl border border-slate-200 p-4 mt-5 flex flex-wrap items-end gap-3">
     <div><span class="text-xs text-slate-500">Payment mode</span>

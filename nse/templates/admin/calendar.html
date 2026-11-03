@@ -46,7 +46,7 @@
         {% if by_day[day_num] is defined %}
         <div class="space-y-1">
           {% for v in by_day[day_num] %}
-          <a href="{{ url_for('admin.client_portfolio', user_id=v.contract.customer_id) if v.contract.customer_id else url_for('admin.contract', contract_id=v.contract_id) }}"
+          <a href="{{ url_for('admin.visit', visit_id=v.id) }}"
              class="block text-[10px] leading-tight px-1.5 py-1 rounded font-medium hover:opacity-80 transition
              {% if v.status == 'completed' %}bg-green-100 text-green-800
              {% elif v.status == 'in_progress' %}bg-amber-100 text-amber-800

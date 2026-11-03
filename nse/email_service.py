@@ -210,3 +210,42 @@ def send_enquiry_confirmation(enquiry) -> bool:
         html=body,
     )
     return _send(msg)
+
+
+def send_health_report_email(report, pdf_bytes: Optional[bytes] = None, recipient_email: Optional[str] = None, client_name: Optional[str] = None, report_url: Optional[str] = None) -> bool:
+    """Email the Fire System Health Checkup Report PDF to the customer."""
+    to = recipient_email
+    if not to and report.contract:
+        to = report.contract.applicant_email or (report.contract.customer.email if report.contract.customer else None)
+    if not to:
+        log.warning("send_health_report_email: no recipient email for report %s", report.reference)
+        return False
+
+    cname = client_name
+    if not cname and report.contract:
+        cname = report.contract.applicant_name or (report.contract.customer.name if report.contract.customer else "Valued Client")
+    if not cname:
+        cname = report.property_contact or "Valued Client"
+
+    if report.outcome == "ok":
+        next_action = "Your fire safety systems are in good working order. No immediate repairs are required. Our team has scheduled a periodic follow-up check in 4–6 months."
+    elif report.outcome == "needs_rework":
+        next_action = "Handover installation defects must be rectified by the site project engineering team before regular AMC maintenance can commence."
+    else:
+        next_action = "Certain fire protection components require servicing or repair. A customized quotation has been generated and will be shared with you by our technical manager."
+
+    body = render_template(
+        "email/health_report_sent.html",
+        report=report,
+        client_name=cname,
+        next_action=next_action,
+        report_url=report_url or url_for("public.public_health_report", report_id=report.id, token=report.generate_token(), _external=True),
+    )
+    msg = Message(
+        subject=_subject(f"Fire System Health Checkup Report — {report.reference}"),
+        recipients=[to],
+        html=body,
+    )
+    filename = f"{report.reference}.pdf"
+    return _send(msg, pdf_bytes, filename)
+

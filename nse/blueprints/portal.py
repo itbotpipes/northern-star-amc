@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta, date
 
 import io
 
@@ -13,7 +13,7 @@ from ..models import (Contract, Visit, Quotation, ServiceRequest, Payment,
                       Notification, RefillOrder, ServiceQuotation,
                       ServiceQuotationItem, CustomerJourneyEvent, VisitFeedback,
                       Equipment, HealthCheckReport, Referral, SupportTicket,
-                      TicketAttachment, AMCPlan, VisitDefect, Installment, Enquiry, User)
+                      TicketAttachment, AMCPlan, VisitDefect, Enquiry, User)
 from ..utils import (customer_required, notify, notify_staff, WAIVER_TEXT,
                      AMC_AGREEMENT_CLAUSES, AMC_AGREEMENT_VERSION, save_upload)
 from ..email_service import (send_quote_accepted_alert, send_negotiation_alert)
@@ -22,6 +22,11 @@ from ..pdf_generator import (generate_quotation_pdf, generate_health_report_pdf,
                             generate_material_quotation_pdf)
 
 portal_bp = Blueprint("portal", __name__, url_prefix="/portal")
+
+
+# Note: Profile completion is guided via banner and new-user onboarding,
+# without forcefully bouncing existing customers away from the dashboard.
+
 
 
 def _own_contract(contract_id):
@@ -35,34 +40,112 @@ def _own_contract(contract_id):
 @login_required
 @customer_required
 def dashboard():
-    contracts = Contract.query.filter_by(customer_id=current_user.id)\
-        .order_by(Contract.created_at.desc()).all()
+    phone_digits = "".join(filter(str.isdigit, current_user.phone or ""))
+    phone_last10 = phone_digits[-10:] if len(phone_digits) >= 10 else phone_digits
+
+    contract_filters = [Contract.customer_id == current_user.id]
+    if current_user.phone:
+        contract_filters.append(Contract.applicant_phone == current_user.phone)
+        if phone_last10:
+            contract_filters.append(Contract.applicant_phone.ilike(f"%{phone_last10}%"))
+    contracts = Contract.query.filter(or_(*contract_filters)).order_by(Contract.created_at.desc()).all()
+
     requests_ = ServiceRequest.query.filter_by(customer_id=current_user.id)\
         .order_by(ServiceRequest.created_at.desc()).all()
+
     # Service quotations (sales proposals) needing the customer's attention.
     # Match by customer_id OR phone so pre-login applications are always found.
-    pending_quotes = ServiceQuotation.query.filter(
-        or_(
-            ServiceQuotation.customer_id == current_user.id,
-            ServiceQuotation.customer_phone == current_user.phone,
-        ),
+    quote_filters = [ServiceQuotation.customer_id == current_user.id]
+    if current_user.phone:
+        quote_filters.append(ServiceQuotation.customer_phone == current_user.phone)
+        if phone_last10:
+            quote_filters.append(ServiceQuotation.customer_phone.ilike(f"%{phone_last10}%"))
+    all_quotes = ServiceQuotation.query.filter(
+        or_(*quote_filters),
         ServiceQuotation.status.in_(["sent", "viewed", "negotiation_requested"]),
     ).order_by(ServiceQuotation.created_at.desc()).all()
+
+    # Separate into negotiation replied, negotiation in progress, and regular pending
+    negotiation_replied_quotes = [
+        q for q in all_quotes
+        if q.staff_response and q.status in ("sent", "viewed", "negotiation_requested")
+    ]
+    negotiation_in_progress_quotes = [
+        q for q in all_quotes
+        if q.status == "negotiation_requested" and not q.staff_response
+    ]
+    pending_quotes = [
+        q for q in all_quotes
+        if q.status in ("sent", "viewed") and not q.staff_response
+    ]
+
     refills = RefillOrder.query.filter_by(customer_id=current_user.id)\
         .order_by(RefillOrder.created_at.desc()).all()
-    inquiries = Enquiry.query.filter(
-        or_(
-            Enquiry.customer_id == current_user.id,
-            Enquiry.phone == current_user.phone,
-        )
-    ).order_by(Enquiry.created_at.desc()).all()
+
+    inquiry_filters = [Enquiry.customer_id == current_user.id]
+    if current_user.phone:
+        inquiry_filters.append(Enquiry.phone == current_user.phone)
+        if phone_last10:
+            inquiry_filters.append(Enquiry.phone.ilike(f"%{phone_last10}%"))
+    inquiries = Enquiry.query.filter(or_(*inquiry_filters)).order_by(Enquiry.created_at.desc()).all()
+
+    # Scheduled inspections (visible on customer dashboard like quotations)
+    scheduled_inspections = []
+    for c in contracts:
+        if c.inspection_scheduled_date and c.status not in ("active", "completed", "cancelled", "expired"):
+            hr_completed = any(hr.status == "completed" for hr in getattr(c, "health_reports", []))
+            if not hr_completed:
+                scheduled_inspections.append({
+                    "id": c.id,
+                    "type": "amc_request",
+                    "reference": c.reference,
+                    "service_name": "Fire Safety Site Inspection & Survey",
+                    "site_name": c.site_name or c.applicant_name or f"AMC Application #{c.reference}",
+                    "scheduled_date": c.inspection_scheduled_date,
+                    "time_slot": "Standard Hours (10:00 AM – 06:00 PM)",
+                    "technician": c.inspection_technician,
+                    "technician_name": c.inspection_technician.name if c.inspection_technician else "Technician Assigned",
+                    "technician_phone": c.inspection_technician.phone if c.inspection_technician else None,
+                    "address": c.site_address or c.area or "On-Site",
+                    "link": url_for("portal.amc_requests"),
+                    "badge": "Inspection Scheduled",
+                })
+
+    for inq in inquiries:
+        if inq.visit_scheduled_date and inq.status in ("site_visit_scheduled", "assigned") and not inq.visit_completed_at:
+            scheduled_inspections.append({
+                "id": inq.id,
+                "type": "inquiry",
+                "reference": inq.ref_code,
+                "service_name": inq.service_requirement or "On-Site Fire Safety Inspection",
+                "site_name": inq.name or f"Inquiry #{inq.ref_code}",
+                "scheduled_date": inq.visit_scheduled_date,
+                "time_slot": inq.visit_time_slot or "Standard Hours (10:00 AM – 06:00 PM)",
+                "technician": inq.assigned_to,
+                "technician_name": inq.assigned_to.name if inq.assigned_to else "Technician Assigned",
+                "technician_phone": inq.assigned_to.phone if inq.assigned_to else None,
+                "address": inq.address or inq.city or "On-Site",
+                "link": url_for("portal.amc_requests"),
+                "badge": "Site Visit Scheduled",
+            })
+
+    scheduled_inspections.sort(key=lambda x: x["scheduled_date"])
+
     # Only surface action buttons for services the customer actually uses.
     has_emergencies = any(r.request_type == "emergency" for r in requests_)
     has_refills = bool(refills)
+    has_finalised_contract = any(
+        c.status in ("active", "completed") or (c.agreement_accepted and c.payment_status == "paid")
+        for c in contracts
+    )
     return render_template("portal/dashboard.html", contracts=contracts,
                            requests=requests_, pending_quotes=pending_quotes,
+                           negotiation_replied_quotes=negotiation_replied_quotes,
+                           negotiation_in_progress_quotes=negotiation_in_progress_quotes,
+                           scheduled_inspections=scheduled_inspections,
                            refills=refills, inquiries=inquiries,
-                           has_emergencies=has_emergencies, has_refills=has_refills)
+                           has_emergencies=has_emergencies, has_refills=has_refills,
+                           has_finalised_contract=has_finalised_contract)
 
 
 @portal_bp.route("/contract/<int:contract_id>")
@@ -99,19 +182,43 @@ def agreement_accept(contract_id):
     if c.agreement_accepted:
         flash("You have already accepted this agreement.", "info")
         return redirect(url_for("portal.contract", contract_id=c.id))
-    if request.form.get("agree") != "1":
+    if request.form.get("agree") not in ("1", "on", "true") and request.form.get("accepted") not in ("1", "on", "true"):
         flash("Please tick the box to confirm you have read and agree.", "warning")
         return redirect(url_for("portal.agreement", contract_id=c.id))
     c.agreement_accepted = True
     c.agreement_accepted_at = datetime.utcnow()
     c.agreement_version = AMC_AGREEMENT_VERSION
+
+    # If the contract is paid or complimentary, activate it and schedule quarterly maintenance visits!
+    if c.payment_status == "paid" or c.free_amc or c.price == 0:
+        c.status = "active"
+        c.lead_stage = "agreement_signed"
+        if not c.start_date:
+            from datetime import date
+            c.start_date = date.today()
+            c.end_date = c.start_date + timedelta(days=365)
+        if not c.visits:
+            n_visits = c.total_visits or 4
+            interval = max(1, 365 // n_visits)
+            for i in range(n_visits):
+                db.session.add(Visit(
+                    contract_id=c.id, visit_number=i + 1,
+                    scheduled_date=c.start_date + timedelta(days=interval * i),
+                    status="scheduled"
+                ))
+        db.session.add(CustomerJourneyEvent(
+            customer_id=current_user.id, event_type="contract_activated",
+            description=f"AMC contract {c.reference} is now live and active after agreement signed.",
+            ref_type="contract", ref_id=c.id
+        ))
+
     db.session.add(CustomerJourneyEvent(
         customer_id=current_user.id, event_type="agreement_accepted",
-        description=f"Customer accepted the AMC agreement (v{AMC_AGREEMENT_VERSION}) for {c.reference}",
+        description=f"Customer accepted and signed the AMC agreement (v{AMC_AGREEMENT_VERSION}) for {c.reference}",
         ref_type="contract", ref_id=c.id))
     db.session.commit()
-    notify_staff(f"AMC agreement accepted — {c.reference}",
-                 f"{current_user.name} accepted the maintenance agreement for {c.reference}.",
+    notify_staff(f"AMC agreement signed — {c.reference}",
+                 f"{current_user.name} signed the maintenance agreement for {c.reference}.",
                  link=url_for("admin.contract", contract_id=c.id))
     flash("Thank you — your AMC agreement is confirmed.", "success_chime")
     return redirect(url_for("portal.contract", contract_id=c.id))
@@ -216,18 +323,21 @@ def visit_approve(visit_id):
                  link=url_for("admin.visit", visit_id=v.id))
     flash("Thank you! Your feedback has been shared with our team.", "success")
 
-    # Check if referral prompt should appear: 2+ good ratings with no existing referral
-    good_ratings = VisitFeedback.query.filter(
-        VisitFeedback.customer_id == current_user.id,
-        VisitFeedback.rating_overall >= 4,
-        VisitFeedback.rating_overall.isnot(None),
-    ).count()
-    existing_referral = Referral.query.filter_by(
-        contract_id=v.contract_id,
-        submitted_by_id=current_user.id,
-    ).first()
-    if good_ratings >= 2 and not existing_referral:
-        return redirect(url_for("portal.visit", visit_id=v.id, prompt_referral=1))
+    # Check if review/referral prompt should appear
+    if overall >= 4:
+        good_ratings = VisitFeedback.query.filter(
+            VisitFeedback.customer_id == current_user.id,
+            VisitFeedback.rating_overall >= 4,
+            VisitFeedback.rating_overall.isnot(None),
+        ).count()
+        existing_referral = Referral.query.filter_by(
+            contract_id=v.contract_id,
+            submitted_by_id=current_user.id,
+        ).first()
+        is_referral_target = (good_ratings >= 2 and not existing_referral)
+        return redirect(url_for("portal.visit", visit_id=v.id,
+                                prompt_review=1,
+                                prompt_referral=1 if is_referral_target else 0))
     return redirect(url_for("portal.visit", visit_id=v.id))
 
 
@@ -423,13 +533,13 @@ def service_quotation(sq_id):
 
 @portal_bp.route("/service-quotation/<int:sq_id>/pdf")
 @login_required
-@customer_required
 def service_quotation_pdf(sq_id):
-    """Customer-facing PDF download (ownership-checked) — mirrors the staff route
-    so the portal button doesn't hit the staff-only /ops endpoint (403)."""
-    sq = db.session.get(ServiceQuotation, sq_id)
-    if not sq or sq.customer_id != current_user.id:
-        abort(404)
+    """Formal PDF downloads are staff-only (Step 18).
+    Clients review their quotations online within the portal."""
+    if not current_user.is_staff:
+        flash("Formal PDF downloads are restricted to authorized staff. You can view all quotation details and terms directly in your portal.", "info")
+        return redirect(url_for("portal.service_quotation", sq_id=sq_id))
+    sq = db.session.get(ServiceQuotation, sq_id) or abort(404)
     pdf = generate_quotation_pdf(sq)
     if not pdf:
         abort(500)
@@ -441,9 +551,21 @@ def service_quotation_pdf(sq_id):
 @login_required
 @customer_required
 def service_quotation_accept(sq_id):
+    phone_digits = "".join(filter(str.isdigit, current_user.phone or ""))
+    phone_last10 = phone_digits[-10:] if len(phone_digits) >= 10 else phone_digits
     sq = db.session.get(ServiceQuotation, sq_id)
-    if not sq or sq.customer_id != current_user.id:
+    if not sq:
         abort(404)
+    user_match = (
+        sq.customer_id == current_user.id
+        or (current_user.phone and sq.customer_phone == current_user.phone)
+        or (phone_last10 and sq.customer_phone and phone_last10 in sq.customer_phone)
+    )
+    if not user_match:
+        abort(404)
+    if not sq.customer_id:
+        sq.customer_id = current_user.id
+
     if sq.status not in ("sent", "viewed", "negotiation_requested"):
         flash("This quotation cannot be accepted at its current stage.", "warning")
         return redirect(url_for("portal.service_quotation", sq_id=sq_id))
@@ -468,14 +590,68 @@ def service_quotation_accept(sq_id):
     return redirect(url_for("portal.service_quotation", sq_id=sq_id))
 
 
+@portal_bp.route("/service-quotation/<int:sq_id>/reject", methods=["POST"])
+@login_required
+@customer_required
+def service_quotation_reject(sq_id):
+    phone_digits = "".join(filter(str.isdigit, current_user.phone or ""))
+    phone_last10 = phone_digits[-10:] if len(phone_digits) >= 10 else phone_digits
+    sq = db.session.get(ServiceQuotation, sq_id)
+    if not sq:
+        abort(404)
+    user_match = (
+        sq.customer_id == current_user.id
+        or (current_user.phone and sq.customer_phone == current_user.phone)
+        or (phone_last10 and sq.customer_phone and phone_last10 in sq.customer_phone)
+    )
+    if not user_match:
+        abort(404)
+    if not sq.customer_id:
+        sq.customer_id = current_user.id
+
+    if sq.status not in ("sent", "viewed", "negotiation_requested"):
+        flash("This quotation cannot be declined at its current stage.", "warning")
+        return redirect(url_for("portal.service_quotation", sq_id=sq_id))
+
+    reason = request.form.get("rejection_reason", "").strip()
+    sq.status = "rejected"
+    sq.responded_at = datetime.utcnow()
+    desc = f"Customer declined quotation {sq.reference}" + (f": {reason[:100]}" if reason else "")
+    db.session.add(CustomerJourneyEvent(
+        customer_id=current_user.id,
+        event_type="quote_rejected",
+        description=desc,
+        ref_type="service_quotation", ref_id=sq.id,
+    ))
+    db.session.commit()
+    notify_staff(
+        f"Quotation {sq.reference} DECLINED",
+        f"{sq.customer_name} declined quotation of ₹{sq.grand_total:,.0f}." + (f" Reason: {reason}" if reason else ""),
+        link=url_for("sq.detail_quotation", sq_id=sq.id))
+    flash("Quotation declined. You can contact our team anytime if your requirements change.", "info")
+    return redirect(url_for("portal.service_quotation", sq_id=sq_id))
+
+
 @portal_bp.route("/service-quotation/<int:sq_id>/negotiate", methods=["POST"])
 @login_required
 @customer_required
 def service_quotation_negotiate(sq_id):
+    phone_digits = "".join(filter(str.isdigit, current_user.phone or ""))
+    phone_last10 = phone_digits[-10:] if len(phone_digits) >= 10 else phone_digits
     sq = db.session.get(ServiceQuotation, sq_id)
-    if not sq or sq.customer_id != current_user.id:
+    if not sq:
         abort(404)
-    if sq.status not in ("sent", "viewed"):
+    user_match = (
+        sq.customer_id == current_user.id
+        or (current_user.phone and sq.customer_phone == current_user.phone)
+        or (phone_last10 and sq.customer_phone and phone_last10 in sq.customer_phone)
+    )
+    if not user_match:
+        abort(404)
+    if not sq.customer_id:
+        sq.customer_id = current_user.id
+
+    if sq.status not in ("sent", "viewed") and not (sq.status == "negotiation_requested" and sq.staff_response):
         flash("Negotiation can only be requested on a pending quotation.", "warning")
         return redirect(url_for("portal.service_quotation", sq_id=sq_id))
 
@@ -510,22 +686,34 @@ def service_quotation_negotiate(sq_id):
 def profile():
     if request.method == "POST":
         f = request.form
-        current_user.name         = f.get("name", current_user.name).strip() or current_user.name
-        current_user.company_name = f.get("company_name", "").strip() or None
-        current_user.gst_number   = f.get("gst_number", "").strip() or None
-        current_user.address      = f.get("address", "").strip() or None
-        current_user.area         = f.get("area", "").strip() or None
-        current_user.city         = f.get("city", "").strip() or "Surat, Gujarat"
-        if "email" in f:
-            new_email = f.get("email", "").strip() or None
-            if new_email and new_email != current_user.email:
-                existing_email_user = User.query.filter(User.email == new_email, User.id != current_user.id).first()
-                if existing_email_user:
-                    flash("That email address is already in use by another account.", "warning")
-                else:
-                    current_user.email = new_email
-            elif not new_email:
-                current_user.email = None
+        name = (f.get("name") or "").strip()
+        new_email = (f.get("email") or "").strip() or None
+        address = (f.get("address") or "").strip() or None
+        area = (f.get("area") or "").strip() or None
+        city = (f.get("city") or "").strip() or "Surat, Gujarat"
+
+        # All details are MANDATORY except Company / Business Details
+        if not name or not new_email or not address or not area or not city:
+            flash("Full Name, Email, Area, City, and Address are mandatory.", "danger")
+            return redirect(url_for("portal.profile"))
+
+        if new_email and new_email != current_user.email:
+            existing_email_user = User.query.filter(User.email == new_email, User.id != current_user.id).first()
+            if existing_email_user:
+                flash("That email address is already in use by another account.", "warning")
+                return redirect(url_for("portal.profile"))
+            current_user.email = new_email
+        elif not new_email:
+            flash("Email address is mandatory.", "danger")
+            return redirect(url_for("portal.profile"))
+
+        current_user.name         = name
+        current_user.address      = address
+        current_user.area         = area
+        current_user.city         = city
+        # Company / Business details are explicitly OPTIONAL
+        current_user.company_name = (f.get("company_name") or "").strip() or None
+        current_user.gst_number   = (f.get("gst_number") or "").strip() or None
         # Optional photo / ID card upload. A failed upload (e.g. read-only FS on
         # Vercel with no Blob token) must NOT block the rest of the profile from
         # saving — wrap it so the text details always persist.
@@ -558,8 +746,8 @@ def profile():
             flash("Your details were saved, but the photo could not be uploaded. "
                   "Please try a smaller image.", "warning")
         else:
-            flash("Profile updated.", "success")
-        return redirect(url_for("portal.profile"))
+            flash("Profile updated successfully. Welcome to your Northern Star portal!", "success")
+        return redirect(url_for("portal.dashboard"))
     from ..reminders import payment_reminders
     my_reminders = payment_reminders(customer_id=current_user.id)
     return render_template("portal/profile.html", my_reminders=my_reminders)
@@ -608,15 +796,40 @@ def submit_referral(contract_id):
 # Customer journey timeline
 # ─────────────────────────────────────────────────────────────────
 
-@portal_bp.route("/journey")
+@portal_bp.route("/amc-requests", endpoint="amc_requests")
+@portal_bp.route("/journey", endpoint="journey")
 @login_required
 @customer_required
-def journey():
+def amc_requests():
+    """My AMC Requests page - tracks in-progress applications, site surveys, and quotes."""
+    phone_digits = "".join(filter(str.isdigit, current_user.phone or ""))
+    phone_last10 = phone_digits[-10:] if len(phone_digits) >= 10 else phone_digits
+    contract_filters = [Contract.customer_id == current_user.id]
+    if current_user.phone:
+        contract_filters.append(Contract.applicant_phone == current_user.phone)
+        if phone_last10:
+            contract_filters.append(Contract.applicant_phone.ilike(f"%{phone_last10}%"))
+    contracts = (Contract.query
+                 .filter(or_(*contract_filters))
+                 .order_by(Contract.created_at.desc())
+                 .all())
+    pending_requests = [
+        c for c in contracts 
+        if c.status == "pending" or (c.lead_stage and c.lead_stage in ("inquiry", "inspection_scheduled", "inspection_done", "quote_sent"))
+    ]
+    active_contracts = [
+        c for c in contracts 
+        if c.status in ("active", "completed")
+    ]
     events = (CustomerJourneyEvent.query
               .filter_by(customer_id=current_user.id)
               .order_by(CustomerJourneyEvent.created_at.desc())
               .all())
-    return render_template("portal/journey.html", events=events)
+    return render_template("portal/amc_requests.html",
+                           pending_requests=pending_requests,
+                           active_contracts=active_contracts,
+                           all_contracts=contracts,
+                           events=events)
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -728,6 +941,13 @@ def raise_ticket():
     db.session.add(ticket)
     db.session.flush()   # get ticket.id for attachments
 
+    # Actual voice note audio upload (if recorded)
+    voice_file = request.files.get("voice_audio")
+    if voice_file and voice_file.filename:
+        vpath = save_upload(voice_file, subdir="tickets")
+        if vpath:
+            ticket.voice_note = vpath
+
     # Photo / video attachments
     files = request.files.getlist("attachments")
     for f in files:
@@ -771,7 +991,7 @@ def retrigger_ticket(ticket_id):
         flash("Ticket cannot be re-triggered yet — please wait 24 hours or until staff reply.", "info")
         return redirect(url_for("portal.ticket_detail", ticket_id=t.id))
 
-    from datetime import datetime
+    from datetime import datetime, timedelta, date
     t.retrigger_count = (t.retrigger_count or 0) + 1
     t.retriggered_at = datetime.utcnow()
     db.session.commit()

@@ -42,19 +42,40 @@ class User(UserMixin, db.Model):
 
     @property
     def is_staff(self):
-        return self.role in ("technician", "admin", "manager", "team_leader")
+        return self.role in ("technician", "admin", "manager", "team_leader", "owner")
+
+    @property
+    def has_completed_profile(self):
+        return bool(
+            self.name and self.name.strip() and
+            self.email and self.email.strip() and
+            self.address and self.address.strip() and
+            self.area and self.area.strip() and
+            self.city and self.city.strip()
+        )
+
+    @property
+    def has_completed_business_details(self):
+        return bool(
+            self.company_name and self.company_name.strip() and
+            self.gst_number and self.gst_number.strip()
+        )
+
+    @property
+    def is_owner(self):
+        return self.role == "owner"
 
     @property
     def is_admin(self):
-        return self.role == "admin"
+        return self.role in ("admin", "owner")
 
     @property
     def is_manager(self):
-        return self.role == "manager"
+        return self.role in ("manager", "admin", "owner")
 
     @property
     def is_team_leader(self):
-        return self.role in ("team_leader", "manager", "admin")
+        return self.role in ("team_leader", "manager", "admin", "owner")
 
     @property
     def is_technician(self):
@@ -218,7 +239,15 @@ class Contract(db.Model):
     price = db.Column(db.Integer, default=0)
     payment_mode = db.Column(db.String(20), default="cash")    # cash/online
     payment_status = db.Column(db.String(20), default="pending")
-    payment_date = db.Column(db.Date)                          # when contract fee received
+    payment_date = db.Column(db.Date)
+
+    # On-site cash collection by technician (pending manager approval)
+    cash_collected_amount = db.Column(db.Float, nullable=True)
+    cash_collected_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    cash_collected_at = db.Column(db.DateTime, nullable=True)
+    cash_collected_notes = db.Column(db.String(255), nullable=True)
+    cash_collection_status = db.Column(db.String(30), default="none")  # none / pending_approval / confirmed
+    cash_collector = db.relationship("User", foreign_keys=[cash_collected_by_id])
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     # AMC agreement (T&C click-through accepted by the customer in-app)
@@ -274,25 +303,34 @@ class Contract(db.Model):
         return max(qs, key=lambda q: q.created_at or datetime.min)
 
     @property
+
+    def is_handover(self):
+
+        return (self.project_type or "").lower() in ("existing", "handover")
+
+
+
+    @property
     def can_activate(self):
-        """True when there is no linked AMC quote, or the client has accepted it.
+        """True only if quotation was accepted (or complimentary first-year handover).
 
         Blocks `Activate & generate visits` while a quote is still sent / viewed
-        / under negotiation / rejected — staff must wait for the client's accept.
+        / under negotiation / rejected — staff must wait for client acceptance.
         """
-        q = self.amc_quote
-        return (q is None) or (q.status == "accepted")
+        if self.free_amc:
+            return True
+        q = self.amc_quote or (self.service_quotations[0] if self.service_quotations else None)
+        return q is not None and q.status == "accepted"
 
     @property
     def quote_locked_price(self):
-        """Annual price locked from an accepted quote (pre-GST subtotal), else None.
+        """Annual price locked from an accepted quote (GST-inclusive grand total).
 
         When set, the contract activation price field is read-only — the figure
         was already agreed in the quotation, so it cannot be changed again here.
         """
-        q = self.amc_quote
+        q = self.amc_quote or (self.service_quotations[0] if self.service_quotations else None)
         if q and q.status == "accepted":
-            # GST-inclusive grand total — the full amount the client agreed to pay.
             return int(round(q.grand_total))
         return None
 
@@ -333,6 +371,36 @@ class Contract(db.Model):
     def visit_material_quotes(self):
         """All material quotations raised against this contract's visits."""
         return [q for q in self.quotations if q.visit_id]
+
+    @property
+    def post_visit_payment_info(self):
+        """Delayed payment tracking (Notes C and D):
+        When work begins before payment is received, once Visit 1 is completed,
+        a 45-day payment collection window starts.
+        If money is not received within 45 days, it is flagged as overdue in Ops console.
+        """
+        if self.payment_status == "paid":
+            return {"active": False, "is_overdue": False, "days_remaining": None}
+
+        completed_visits = [v for v in sorted(self.visits, key=lambda x: x.visit_number) if v.status == "completed"]
+        if not completed_visits:
+            return {"active": False, "is_overdue": False, "days_remaining": None}
+
+        v1 = completed_visits[0]
+        v_date = v1.completed_date or (v1.checkout_at.date() if v1.checkout_at else v1.scheduled_date) or date.today()
+        days_elapsed = (date.today() - v_date).days
+        days_remaining = 45 - days_elapsed
+        is_overdue = days_remaining < 0
+
+        return {
+            "active": True,
+            "visit_number": v1.visit_number,
+            "visit_date": v_date,
+            "days_elapsed": days_elapsed,
+            "days_remaining": days_remaining,
+            "is_overdue": is_overdue,
+            "due_date": v_date + timedelta(days=45),
+        }
 
     # ----- Wave 11: renewal lifecycle ---------------------------------------
     @property
@@ -665,6 +733,14 @@ class Quotation(db.Model):
     # Wave 6 — payment tracking for a visit-linked material quote
     payment_status = db.Column(db.String(20), default="pending")  # pending/paid
     payment_date = db.Column(db.Date)
+
+    # On-site cash collection by technician (pending manager approval)
+    cash_collected_amount = db.Column(db.Float, nullable=True)
+    cash_collected_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    cash_collected_at = db.Column(db.DateTime, nullable=True)
+    cash_collected_notes = db.Column(db.String(255), nullable=True)
+    cash_collection_status = db.Column(db.String(30), default="none")  # none / pending_approval / confirmed
+    cash_collector = db.relationship("User", foreign_keys=[cash_collected_by_id])
     # Wave 6 — liability waiver acknowledged when the client rejects a quote
     rejection_acknowledged = db.Column(db.Boolean, default=False)
     waiver_text = db.Column(db.Text)
@@ -1178,15 +1254,18 @@ class ServiceQuotation(db.Model):
     # ------------------------------------------------------------------ helpers
     @property
     def subtotal(self):
-        return sum(i.total for i in self.items)
+        # Quote amount must never be negative
+        return max(0.0, round(sum(i.total for i in self.items), 2))
 
     @property
     def gst_amount(self):
-        return round(self.subtotal * (self.gst_percent or 0) / 100, 2)
+        gst_pct = max(0.0, float(self.gst_percent or 0))
+        return round(self.subtotal * gst_pct / 100, 2)
 
     @property
     def grand_total(self):
-        return self.subtotal + self.gst_amount
+        # Grand total must never be negative
+        return max(0.0, round(self.subtotal + self.gst_amount, 2))
 
     @property
     def total(self):
@@ -1259,6 +1338,16 @@ class ServiceQuotation(db.Model):
         }.get(self.payment_method, (self.payment_method or "").title())
 
 
+    def get_terms(self):
+
+        from .utils import get_quotation_terms
+
+        return get_quotation_terms(self)
+
+
+
+
+
 class ServiceQuotationItem(db.Model):
     __tablename__ = "service_quotation_items"
 
@@ -1273,7 +1362,10 @@ class ServiceQuotationItem(db.Model):
 
     @property
     def total(self):
-        return round((self.quantity or 0) * (self.rate or 0), 2)
+        # Line item rates and quantities must never produce a negative total
+        qty = max(0.0, float(self.quantity or 0))
+        rate = max(0.0, float(self.rate or 0))
+        return round(qty * rate, 2)
 
 
 # --------------------------------------------------------------------------- #
@@ -1536,6 +1628,113 @@ class HealthCheckReport(db.Model):
         ("ex_pa",     "Public Addressing System"),
         ("ex_lifts",  "External Lifts"),
     ]
+
+    @classmethod
+    def compute_score(cls, answers: dict) -> tuple[int, str, list[dict]]:
+        """
+        Calculate an objective Fire Safety Score out of 100 based on Indian NBC / NFPA audit weights:
+          1. Pump House & Fire Pumping System: 30 pts (12 items)
+          2. Power, Electrical & Diesel Control: 25 pts (13 items)
+          3. Fire Hydrant & Sprinkler Network: 30 pts (20 items)
+          4. Life Safety & Evacuation Readiness: 15 pts (3+ items)
+        
+        Returns: (score [0-100], suggested_outcome ['ok' | 'issues'], defects [list of dicts])
+        """
+        if not answers or not isinstance(answers, dict):
+            return (100, "ok", [])
+
+        # Build lookup for all item labels
+        label_map = {}
+        for sec_name, qs in cls.SECTIONS:
+            for k, lbl in qs:
+                label_map[k] = (sec_name, lbl)
+        for k, lbl, _has_cnt in cls.HYDRANT_ITEMS:
+            label_map[k] = ("Fire Hydrant & Sprinklers", lbl)
+        for k, lbl in cls.EXTRAS:
+            label_map[k] = ("Life Safety & Evacuation", lbl)
+
+        # Categorize into the 4 audit scoring domains
+        domains = [
+            ("Pump House & Fire Pumping System", 30, [
+                "ph_heat", "ph_vent", "ph_water", "ph_coupling",
+                "ps_valves", "ps_leaks", "ps_seal", "ps_suction",
+                "ps_system", "ps_switch", "ps_reservoir", "ps_flowtest"
+            ]),
+            ("Electrical & Diesel Engine Backup", 25, [
+                "es_pilot", "es_transfer", "es_isolating", "es_reverse",
+                "es_normal", "es_oil", "es_jockey", "es_switches",
+                "de_fuel", "de_selector", "de_voltage", "de_charge", "de_power"
+            ]),
+            ("Fire Hydrant & Sprinkler Network", 30, [k for k, _, _ in cls.HYDRANT_ITEMS]),
+            ("Life Safety & Evacuation", 15, ["ex_evac", "ex_pa", "ex_lifts"]),
+        ]
+
+        total_earned = 0.0
+        total_possible = 0.0
+        defects = []
+        critical_failed = False
+
+        # High-risk items that immediately affect safety
+        critical_keys = {"ps_reservoir", "hy_charged", "de_fuel", "ps_leaks", "es_jockey"}
+
+        for domain_name, max_weight, keys in domains:
+            domain_eval_count = 0
+            domain_pass_count = 0
+            for k in keys:
+                val = (answers.get(k) or "").strip().lower()
+                if val in ("yes", "no"):
+                    domain_eval_count += 1
+                    if val == "yes":
+                        domain_pass_count += 1
+                    elif val == "no":
+                        sec_category, lbl = label_map.get(k, (domain_name, k))
+                        defects.append({
+                            "key": k,
+                            "category": sec_category,
+                            "label": lbl,
+                            "description": f"{lbl} — Inspection failure / repair needed",
+                        })
+                        if k in critical_keys:
+                            critical_failed = True
+
+            if domain_eval_count > 0:
+                domain_score = (domain_pass_count / domain_eval_count) * max_weight
+                total_earned += domain_score
+                total_possible += max_weight
+            else:
+                # If section not evaluated on this site (e.g. no lifts or diesel), credit baseline
+                total_earned += max_weight
+                total_possible += max_weight
+
+        final_score = int(round(total_earned)) if total_possible > 0 else 100
+        # Deduct penalty for critical safety hazards (e.g. empty reservoir, pump leaks, low diesel fuel)
+        critical_count = sum(1 for d in defects if d["key"] in critical_keys)
+        final_score = max(0, min(100, final_score - (critical_count * 10)))
+
+        # Outcome suggestion: >= 85 and no critical fails -> ok, else -> issues
+        if final_score >= 85 and not critical_failed and len(defects) <= 2:
+            suggested_outcome = "ok"
+        else:
+            suggested_outcome = "issues"
+
+        return (final_score, suggested_outcome, defects)
+
+    def get_detected_defects(self) -> list[dict]:
+        """Return defects list based on stored answers."""
+        _, _, defects = self.compute_score(self.answers)
+        return defects
+
+    def generate_token(self) -> str:
+        """Secure stateless token for public report access without requiring customer login."""
+        import hmac, hashlib
+        from flask import current_app
+        secret = (current_app.config.get("SECRET_KEY") or "nse_report_secret_key").encode()
+        msg = f"hcr_{self.id}_{self.created_at}".encode()
+        return hmac.new(secret, msg, hashlib.sha256).hexdigest()[:24]
+
+    def verify_token(self, token: str) -> bool:
+        return token and token == self.generate_token()
+
 
 
 # --------------------------------------------------------------------------- #

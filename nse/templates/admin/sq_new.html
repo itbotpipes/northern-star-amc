@@ -6,6 +6,15 @@
   <h1 class="text-2xl font-extrabold text-ink mt-2 mb-6">New Service Quotation</h1>
 
   <form method="post" id="sqForm" class="space-y-6">
+        {% if fshcr_defects %}
+    <div class="card p-4 border-l-4 border-amber-500 bg-amber-50 mb-4">
+      <div class="flex items-center gap-2">
+        <span class="text-amber-800 font-bold text-sm">✓ Health Checkup Defects Pre-loaded</span>
+        <span class="text-xs bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full font-semibold">{{ fshcr_defects|length }} items</span>
+      </div>
+      <p class="text-xs text-amber-700 mt-1">These {{ fshcr_defects|length }} line items were identified during on-site fire safety inspection. Review rates and descriptions below.</p>
+    </div>
+    {% endif %}
     {% if from_survey_id %}
     <div class="card p-4 border-l-4 border-amber-400 bg-amber-50">
       <p class="text-sm text-amber-800 font-medium">Created from site survey — client details pre-filled. Add your line items and rates below.</p>
@@ -136,15 +145,27 @@
             </tr>
           </thead>
           <tbody id="itemsBody">
-            <!-- Default 1 row -->
-            <tr class="item-row border-b border-hairline">
-              <td class="px-2 py-1.5"><input name="item_category" placeholder="e.g. Maintenance" class="w-full px-2 py-1.5 text-sm"></td>
-              <td class="px-2 py-1.5"><input name="item_desc" required list="sq-inv-list" oninput="sqFill(this);priceHint(this)" placeholder="Type to search inventory…" class="w-full px-2 py-1.5 text-sm"></td>
-              <td class="px-2 py-1.5"><input name="item_unit" list="sq-unit-list" value="Nos" class="w-full px-2 py-1.5 text-sm text-center"></td>
-              <td class="px-2 py-1.5"><input name="item_qty" type="number" step="0.01" value="1" class="w-full px-2 py-1.5 text-sm text-center" oninput="calcRow(this)"></td>
-              <td class="px-2 py-1.5"><input name="item_rate" type="number" step="0.01" value="0" class="w-full px-2 py-1.5 text-sm text-right" oninput="calcRow(this)"><div class="price-hint text-[11px] text-right leading-tight mt-0.5" style="opacity:.6"></div></td>
-              <td class="px-2 py-1.5 text-center"><button type="button" onclick="removeRow(this)" class="text-danger text-lg leading-none hover:opacity-70">×</button></td>
-            </tr>
+            {% if fshcr_defects %}
+              {% for d in fshcr_defects %}
+              <tr class="item-row border-b border-hairline">
+                <td class="px-2 py-1.5"><input name="item_category" value="{{ d.category or 'Repairs' }}" placeholder="Category" class="w-full px-2 py-1.5 text-sm"></td>
+                <td class="px-2 py-1.5"><input name="item_desc" required list="sq-inv-list" value="{{ d.description or d.label }}" oninput="sqFill(this);priceHint(this)" placeholder="Item description" class="w-full px-2 py-1.5 text-sm"></td>
+                <td class="px-2 py-1.5"><input name="item_unit" list="sq-unit-list" value="Nos" class="w-full px-2 py-1.5 text-sm text-center"></td>
+                <td class="px-2 py-1.5"><input name="item_qty" type="number" step="0.01" min="0" value="1" class="w-full px-2 py-1.5 text-sm text-center" oninput="calcRow(this)"></td>
+                <td class="px-2 py-1.5"><input name="item_rate" type="number" step="0.01" min="0" value="650" class="w-full px-2 py-1.5 text-sm text-right" oninput="calcRow(this)"><div class="price-hint text-[11px] text-right leading-tight mt-0.5" style="opacity:.6"></div></td>
+                <td class="px-2 py-1.5 text-center"><button type="button" onclick="removeRow(this)" class="text-danger text-lg leading-none hover:opacity-70">×</button></td>
+              </tr>
+              {% endfor %}
+            {% else %}
+              <tr class="item-row border-b border-hairline">
+                <td class="px-2 py-1.5"><input name="item_category" placeholder="e.g. Maintenance" class="w-full px-2 py-1.5 text-sm"></td>
+                <td class="px-2 py-1.5"><input name="item_desc" required list="sq-inv-list" oninput="sqFill(this);priceHint(this)" placeholder="Type to search inventory…" class="w-full px-2 py-1.5 text-sm"></td>
+                <td class="px-2 py-1.5"><input name="item_unit" list="sq-unit-list" value="Nos" class="w-full px-2 py-1.5 text-sm text-center"></td>
+                <td class="px-2 py-1.5"><input name="item_qty" type="number" step="0.01" min="0" value="1" class="w-full px-2 py-1.5 text-sm text-center" oninput="calcRow(this)"></td>
+                <td class="px-2 py-1.5"><input name="item_rate" type="number" step="0.01" min="0" value="0" class="w-full px-2 py-1.5 text-sm text-right" oninput="calcRow(this)"><div class="price-hint text-[11px] text-right leading-tight mt-0.5" style="opacity:.6"></div></td>
+                <td class="px-2 py-1.5 text-center"><button type="button" onclick="removeRow(this)" class="text-danger text-lg leading-none hover:opacity-70">×</button></td>
+              </tr>
+            {% endif %}
           </tbody>
         </table>
       </div>
@@ -156,7 +177,7 @@
       <div class="mt-4 flex flex-col items-end gap-1 text-sm">
         <div class="flex gap-8"><span class="text-ink-subtle">Subtotal:</span><span id="previewSubtotal" class="font-semibold w-28 text-right">₹0.00</span></div>
         <div class="flex gap-8 items-center">
-          <span class="text-ink-subtle">GST <input name="gst_percent" id="gstPct" type="number" step="0.1" value="18" class="w-14 px-1 py-0.5 text-center text-xs inline border border-hairline-strong rounded" oninput="updateTotals()"> %:</span>
+          <span class="text-ink-subtle">GST <input name="gst_percent" id="gstPct" type="number" step="0.1" min="0" value="18" class="w-14 px-1 py-0.5 text-center text-xs inline border border-hairline-strong rounded" oninput="updateTotals()"> %:</span>
           <span id="previewGST" class="font-semibold w-28 text-right">₹0.00</span>
         </div>
         <div class="flex gap-8 border-t border-hairline pt-2 mt-1"><span class="font-bold text-ink">Grand Total:</span><span id="previewTotal" class="font-extrabold text-ink w-28 text-right">₹0.00</span></div>
@@ -280,8 +301,8 @@ function rowTemplate() {
     <td class="px-2 py-1.5"><input name="item_category" placeholder="Category" class="w-full px-2 py-1.5 text-sm"></td>
     <td class="px-2 py-1.5"><input name="item_desc" list="sq-inv-list" oninput="sqFill(this);priceHint(this)" placeholder="Type to search inventory…" class="w-full px-2 py-1.5 text-sm"></td>
     <td class="px-2 py-1.5"><input name="item_unit" list="sq-unit-list" value="Nos" class="w-full px-2 py-1.5 text-sm text-center"></td>
-    <td class="px-2 py-1.5"><input name="item_qty" type="number" step="0.01" value="1" class="w-full px-2 py-1.5 text-sm text-center" oninput="calcRow(this)"></td>
-    <td class="px-2 py-1.5"><input name="item_rate" type="number" step="0.01" value="0" class="w-full px-2 py-1.5 text-sm text-right" oninput="calcRow(this)"><div class="price-hint text-[11px] text-right leading-tight mt-0.5" style="opacity:.6"></div></td>
+    <td class="px-2 py-1.5"><input name="item_qty" type="number" step="0.01" min="0" value="1" class="w-full px-2 py-1.5 text-sm text-center" oninput="calcRow(this)"></td>
+    <td class="px-2 py-1.5"><input name="item_rate" type="number" step="0.01" min="0" value="0" class="w-full px-2 py-1.5 text-sm text-right" oninput="calcRow(this)"><div class="price-hint text-[11px] text-right leading-tight mt-0.5" style="opacity:.6"></div></td>
     <td class="px-2 py-1.5 text-center"><button type="button" onclick="removeRow(this)" class="text-danger text-lg leading-none hover:opacity-70">×</button></td>
   </tr>`;
 }
@@ -298,11 +319,11 @@ function fmt(n) { return '₹' + n.toLocaleString('en-IN', {minimumFractionDigit
 function updateTotals() {
   let sub = 0;
   document.querySelectorAll('.item-row').forEach(row => {
-    const qty  = parseFloat(row.querySelector('[name=item_qty]')?.value || 0);
-    const rate = parseFloat(row.querySelector('[name=item_rate]')?.value || 0);
+    const qty  = Math.max(0, parseFloat(row.querySelector('[name=item_qty]')?.value || 0));
+    const rate = Math.max(0, parseFloat(row.querySelector('[name=item_rate]')?.value || 0));
     sub += qty * rate;
   });
-  const gst = sub * (parseFloat(document.getElementById('gstPct').value || 18) / 100);
+  const gst = sub * (Math.max(0, parseFloat(document.getElementById('gstPct').value || 18)) / 100);
   document.getElementById('previewSubtotal').textContent = fmt(sub);
   document.getElementById('previewGST').textContent = fmt(gst);
   document.getElementById('previewTotal').textContent = fmt(sub + gst);

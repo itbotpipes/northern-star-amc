@@ -63,7 +63,43 @@
     <td class="lbl">Report Ref</td><td>{{ r.reference }}</td>
     <td class="lbl">Date</td><td>{{ r.report_date.strftime('%d-%m-%Y') if r.report_date else '' }}</td>
   </tr>
+  <tr>
+    <td class="lbl">Safety Score</td>
+    <td>
+      {% if r.score is not none %}
+        <strong style="font-size:10pt;color:{% if r.score >= 85 %}#16a34a{% elif r.score >= 60 %}#d97706{% else %}#dc2626{% endif %}">{{ r.score }} / 100</strong>
+      {% else %}
+        —
+      {% endif %}
+    </td>
+    <td class="lbl">Inspection Result</td>
+    <td>
+      {% if r.outcome == 'ok' %}
+        <strong style="color:#16a34a">OK — Satisfactory</strong>
+      {% elif r.outcome == 'needs_rework' %}
+        <strong style="color:#dc2626">Needs Rework (Site Defect)</strong>
+      {% elif r.outcome == 'issues' %}
+        <strong style="color:#d97706">Problems Found (Action Required)</strong>
+      {% else %}
+        {{ r.outcome|title if r.outcome else 'Pending' }}
+      {% endif %}
+    </td>
+  </tr>
 </table>
+
+<div style="background-color:#f8fafc;border:1px solid #cbd5e1;padding:6px 10px;margin-top:6px;border-radius:4px;font-size:8pt">
+  <strong style="color:#16235b">Next Step of Action:</strong>
+  {% if r.outcome == 'ok' %}
+    Fire safety systems are compliant and operational. No immediate repairs required. Next periodic follow-up audit recommended in 4–6 months.
+  {% elif r.outcome == 'needs_rework' %}
+    Specific installation defects must be rectified by site engineering / installation contractor before AMC maintenance handover.
+  {% elif r.outcome == 'issues' %}
+    Certain critical or maintenance components require servicing/replacement. An itemized service quotation has been prepared for rectification.
+  {% else %}
+    Inspection completed; technical team will advise on further preventive actions.
+  {% endif %}
+</div>
+
 
 {#
   yn(key, ans) — render a Yes / No / N/A indicator for a given answer key.
@@ -130,6 +166,32 @@
 
 <p class="valid">This report is valid for 12 months on the basis of weekly inspection of the system by the Occupant / Owner / Authorized Person.</p>
 
+{% if r.contract and (r.contract.project_type in ('existing', 'handover') or r.contract.is_handover) %}
+<div class="section-title">JOINT HANDOVER SIGN-OFF (PROJECT ENGINEER + MAINTENANCE TECHNICIAN)</div>
+<table class="sign-tbl" style="margin-top:15px;">
+  <tr>
+    <td style="border-top:1px solid #333;width:30%;text-align:center">
+      <strong>{{ r.contract.handover_engineer or 'Project Engineer' }}</strong><br>
+      <span style="font-size:8pt;color:#666">Handed Over By (Project Team)</span>
+    </td>
+    <td style="width:5%"></td>
+    <td style="border-top:1px solid #333;width:30%;text-align:center">
+      <strong>{{ r.contract.handover_technician or 'Maintenance Technician' }}</strong><br>
+      <span style="font-size:8pt;color:#666">Accepted By (Maintenance Team)</span>
+    </td>
+    <td style="width:5%"></td>
+    <td style="border-top:1px solid #333;width:30%;text-align:center">
+      <strong>{{ r.contract.spoc_name or (r.contract.customer.name if r.contract.customer else 'Client SPOC') }}</strong><br>
+      <span style="font-size:8pt;color:#666">Client / Facility SPOC</span>
+    </td>
+  </tr>
+</table>
+{% if r.contract.handover_signed_at %}
+<p style="text-align:center;font-size:8pt;color:#555;margin-top:6px">
+  Joint inspection sign-off digitally recorded on {{ r.contract.handover_signed_at.strftime('%d-%b-%Y %H:%M') }}
+</p>
+{% endif %}
+{% else %}
 <table class="sign-tbl">
   <tr>
     <td style="border-top:1px solid #333;width:45%">Client Sign &amp; Stamp</td>
@@ -137,6 +199,7 @@
     <td style="border-top:1px solid #333;width:45%">Inspected By: {{ r.inspector_name or '' }} ({{ company_name }})</td>
   </tr>
 </table>
+{% endif %}
 
 </body>
 </html>

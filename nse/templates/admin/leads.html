@@ -5,56 +5,71 @@
   <div class="flex items-center justify-between flex-wrap gap-3 mb-6">
     <div>
       <h1 class="text-2xl font-extrabold text-ink">Leads</h1>
-      <p class="text-sm text-ink-subtle">Enquiries and handovers awaiting inspection, decision, or a quote.</p>
+      <p class="text-sm text-ink-subtle">Customer enquiries and engineering maintenance handovers awaiting inspection or quotation.</p>
     </div>
-    <button type="button" onclick="document.getElementById('newLeadForm').classList.toggle('hidden')" class="btn btn-primary">+ New lead</button>
+    <div class="flex items-center gap-2">
+      <button type="button" onclick="openNewLead('new')" class="btn btn-secondary text-sm">+ New Enquiry</button>
+      <button type="button" onclick="openNewLead('existing')" class="btn btn-primary text-sm flex items-center gap-1.5 shadow-sm">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+        + New Handover
+      </button>
+    </div>
   </div>
 
   <!-- Manual intake (phone-in enquiry, or a staff-created handover) -->
-  <form method="post" id="newLeadForm" class="card p-6 space-y-4 mb-8 hidden">
-    <h2 class="font-bold text-ink">New lead</h2>
+  <form method="post" id="newLeadForm" class="card p-6 space-y-4 mb-8 hidden border-2 border-primary/30">
+    <div class="flex items-center justify-between">
+      <h2 class="font-bold text-ink text-base" id="formHeading">New Lead</h2>
+      <button type="button" onclick="document.getElementById('newLeadForm').classList.add('hidden')" class="text-ink-subtle hover:text-ink text-sm">✕ Close</button>
+    </div>
     <div class="grid sm:grid-cols-2 gap-3">
-      <label class="flex items-start gap-2 border border-hairline-strong rounded-lg px-4 py-3 cursor-pointer">
+      <label class="flex items-start gap-2 border border-hairline-strong rounded-lg px-4 py-3 cursor-pointer hover:bg-slate-50 transition">
         <input type="radio" name="project_type" value="new" checked onchange="toggleSpoc()">
         <span><span class="font-semibold text-ink block text-sm">New customer enquiry</span><span class="text-xs text-ink-subtle">Phone-in lead — treat like a fresh site.</span></span>
       </label>
-      <label class="flex items-start gap-2 border border-hairline-strong rounded-lg px-4 py-3 cursor-pointer">
+      <label class="flex items-start gap-2 border border-hairline-strong rounded-lg px-4 py-3 cursor-pointer hover:bg-slate-50 transition">
         <input type="radio" name="project_type" value="existing" onchange="toggleSpoc()">
-        <span><span class="font-semibold text-ink block text-sm">Project handover</span><span class="text-xs text-ink-subtle">Engineering team handing a completed site to maintenance.</span></span>
+        <span><span class="font-semibold text-ink block text-sm">Project handover</span><span class="text-xs text-ink-subtle">Engineering team handing completed site to maintenance.</span></span>
       </label>
     </div>
     <div class="grid sm:grid-cols-2 gap-4">
-      <label class="block"><span class="text-sm font-medium text-ink-muted">Client name <span class="text-danger">*</span></span>
-        <input name="name" required class="mt-1.5 w-full px-3 py-2.5"></label>
+      <label class="block"><span class="text-sm font-medium text-ink-muted">Client / Organisation name <span class="text-danger">*</span></span>
+        <input name="name" required class="mt-1.5 w-full px-3 py-2.5 rounded-lg border border-hairline"></label>
       <label class="block"><span class="text-sm font-medium text-ink-muted">Phone <span class="text-danger">*</span></span>
-        <input name="phone" required class="mt-1.5 w-full px-3 py-2.5"></label>
+        <input name="phone" required class="mt-1.5 w-full px-3 py-2.5 rounded-lg border border-hairline"></label>
       <label class="block"><span class="text-sm font-medium text-ink-muted">Email</span>
-        <input name="email" type="email" class="mt-1.5 w-full px-3 py-2.5"></label>
+        <input name="email" type="email" class="mt-1.5 w-full px-3 py-2.5 rounded-lg border border-hairline"></label>
       <label class="block"><span class="text-sm font-medium text-ink-muted">Property type</span>
-        <select name="property_type" class="mt-1.5 w-full px-3 py-2.5">
+        <select name="property_type" class="mt-1.5 w-full px-3 py-2.5 rounded-lg border border-hairline">
           <option>Residential apartment</option><option>Housing society</option><option>Office</option>
           <option>Shop / showroom</option><option>Commercial complex</option><option>Industrial unit</option><option>Other</option>
         </select></label>
-      <label class="block"><span class="text-sm font-medium text-ink-muted">Site name</span>
-        <input name="site_name" class="mt-1.5 w-full px-3 py-2.5"></label>
-      <label class="block"><span class="text-sm font-medium text-ink-muted">Area</span>
-        <input name="area" class="mt-1.5 w-full px-3 py-2.5"></label>
+      <label class="block"><span class="text-sm font-medium text-ink-muted">Site / Project name</span>
+        <input name="site_name" class="mt-1.5 w-full px-3 py-2.5 rounded-lg border border-hairline"></label>
+      <label class="block"><span class="text-sm font-medium text-ink-muted">Area / City</span>
+        <input name="area" class="mt-1.5 w-full px-3 py-2.5 rounded-lg border border-hairline"></label>
     </div>
     <label class="block"><span class="text-sm font-medium text-ink-muted">Site address</span>
-      <textarea name="site_address" rows="2" class="mt-1.5 w-full px-3 py-2.5"></textarea></label>
-    <label class="block"><span class="text-sm font-medium text-ink-muted">Problem reported (if any)</span>
-      <textarea name="problem_description" rows="2" class="mt-1.5 w-full px-3 py-2.5" placeholder="What did the client describe?"></textarea></label>
+      <textarea name="site_address" rows="2" class="mt-1.5 w-full px-3 py-2.5 rounded-lg border border-hairline"></textarea></label>
+    <label class="block"><span class="text-sm font-medium text-ink-muted">Scope / Notes</span>
+      <textarea name="problem_description" rows="2" class="mt-1.5 w-full px-3 py-2.5 rounded-lg border border-hairline" placeholder="Project details or client notes..."></textarea></label>
 
-    <div id="spocPanel" class="hidden grid sm:grid-cols-3 gap-4 pt-3 border-t border-hairline">
-      <label class="block"><span class="text-sm font-medium text-ink-muted">SPOC name</span>
-        <input name="spoc_name" class="mt-1.5 w-full px-3 py-2.5" placeholder="Single point of contact"></label>
-      <label class="block"><span class="text-sm font-medium text-ink-muted">SPOC phone</span>
-        <input name="spoc_phone" class="mt-1.5 w-full px-3 py-2.5"></label>
-      <label class="block"><span class="text-sm font-medium text-ink-muted">SPOC role</span>
-        <input name="spoc_role" class="mt-1.5 w-full px-3 py-2.5" placeholder="e.g. AMC/PMC engineer, Facility manager"></label>
+    <div id="spocPanel" class="hidden p-4 rounded-xl bg-blue-50/60 border border-blue-200 space-y-3">
+      <div class="flex items-center gap-2">
+        <span class="text-xs font-bold uppercase tracking-wider text-blue-900">SPOC — Client Contact Person</span>
+        <span class="text-[11px] text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full font-semibold">Handover Only</span>
+      </div>
+      <div class="grid sm:grid-cols-3 gap-3">
+        <label class="block"><span class="text-xs font-semibold text-ink-muted">SPOC Name <span class="text-danger">*</span></span>
+          <input name="spoc_name" class="mt-1 w-full px-3 py-2 text-sm rounded-lg border border-hairline" placeholder="Contact person name"></label>
+        <label class="block"><span class="text-xs font-semibold text-ink-muted">SPOC Phone <span class="text-danger">*</span></span>
+          <input name="spoc_phone" class="mt-1 w-full px-3 py-2 text-sm rounded-lg border border-hairline" placeholder="Contact phone number"></label>
+        <label class="block"><span class="text-xs font-semibold text-ink-muted">SPOC Role</span>
+          <input name="spoc_role" class="mt-1 w-full px-3 py-2 text-sm rounded-lg border border-hairline" placeholder="e.g. PMC Engineer, Facility Manager"></label>
+      </div>
     </div>
 
-    <button class="btn btn-primary">Create lead</button>
+    <button class="btn btn-primary">Create Lead Record →</button>
   </form>
 
   <!-- Lead list -->
@@ -73,9 +88,21 @@
       <tbody>
         {% for c in leads %}
         <tr class="border-t border-hairline hover:bg-slate-50">
-          <td class="px-4 py-2 mono">{{ c.reference }}</td>
-          <td class="px-4 py-2">{{ c.applicant_name or (c.customer.name if c.customer) }}<div class="text-xs text-ink-subtle">{{ c.site_name or c.site_address or '' }}</div></td>
-          <td class="px-4 py-2">{{ 'Handover' if c.project_type == 'existing' else 'New' }}</td>
+          <td class="px-4 py-2 mono font-bold text-xs">{{ c.reference }}</td>
+          <td class="px-4 py-2">
+            <div class="font-semibold text-ink">{{ c.applicant_name or (c.customer.name if c.customer) }}</div>
+            <div class="text-xs text-ink-subtle">{{ c.site_name or c.site_address or '' }}</div>
+            {% if (c.project_type in ('existing', 'handover') or c.is_handover) and c.spoc_name %}
+            <div class="text-[11px] text-blue-700 font-medium mt-0.5">SPOC: {{ c.spoc_name }}{% if c.spoc_role %} ({{ c.spoc_role }}){% endif %} · {{ c.spoc_phone }}</div>
+            {% endif %}
+          </td>
+          <td class="px-4 py-2">
+            {% if c.project_type in ('existing', 'handover') or c.is_handover %}
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-blue-100 text-blue-800 border border-blue-200">Handover</span>
+            {% else %}
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-slate-100 text-slate-700">Enquiry</span>
+            {% endif %}
+          </td>
           <td class="px-4 py-2">
             <span class="px-2 py-0.5 rounded-full text-xs font-semibold"
               style="background:{{ '#fdecea' if c.lead_stage=='rework' else '#fbf0dc' if c.lead_stage in ('new','inspection_scheduled') else '#eef1fb' }};color:{{ '#d23f3f' if c.lead_stage=='rework' else '#b45309' if c.lead_stage in ('new','inspection_scheduled') else '#2f6fed' }}">
@@ -85,10 +112,10 @@
           <td class="px-4 py-2">
             {% if c.inspection_scheduled_date %}{{ c.inspection_scheduled_date|datefmt }}{% if c.inspection_technician %} · {{ c.inspection_technician.name }}{% endif %}{% else %}—{% endif %}
           </td>
-          <td class="px-4 py-2 text-right"><a href="{{ url_for('admin.lead_detail', lead_id=c.id) }}" class="text-primary hover:underline">Open →</a></td>
+          <td class="px-4 py-2 text-right"><a href="{{ url_for('admin.lead_detail', lead_id=c.id) }}" class="text-primary font-semibold hover:underline">Open →</a></td>
         </tr>
         {% else %}
-        <tr><td colspan="6" class="px-4 py-8 text-center text-ink-subtle">No open leads. New enquiries from the customer portal will appear here.</td></tr>
+        <tr><td colspan="6" class="px-4 py-8 text-center text-ink-subtle">No open leads. New enquiries from the customer portal or staff handovers will appear here.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -98,6 +125,27 @@
 function toggleSpoc() {
   var existing = document.querySelector('input[name=project_type]:checked').value === 'existing';
   document.getElementById('spocPanel').classList.toggle('hidden', !existing);
+  document.getElementById('formHeading').innerText = existing ? 'New Project Handover' : 'New Customer Enquiry';
 }
+
+function openNewLead(type) {
+  var f = document.getElementById('newLeadForm');
+  f.classList.remove('hidden');
+  var radios = f.querySelectorAll('input[name=project_type]');
+  radios.forEach(function(r) {
+    r.checked = (r.value === type);
+  });
+  toggleSpoc();
+  f.scrollIntoView({ behavior: 'smooth' });
+}
+
+// Auto-open handover form if query parameter ?type=handover
+document.addEventListener('DOMContentLoaded', function() {
+  var params = new URLSearchParams(window.location.search);
+  var t = params.get('type');
+  if (t === 'handover' || t === 'existing') {
+    openNewLead('existing');
+  }
+});
 </script>
 {% endblock %}

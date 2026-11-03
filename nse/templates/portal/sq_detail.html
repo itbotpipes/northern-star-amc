@@ -16,12 +16,64 @@
   {% elif sq.status == 'accepted' %}
   <div class="mt-4 bg-green-50 border border-green-200 rounded-xl p-4 flex items-center justify-between gap-3 flex-wrap">
     <span class="text-green-800 font-semibold text-sm">
-      {% if sq.is_paid %}Payment received — thank you!{% else %}You have accepted this quotation.{% endif %}
+      {% if sq.is_paid %}✓ Payment received &amp; confirmed — thank you!{% else %}You have accepted this quotation.{% endif %}
     </span>
-    {% if RAZORPAY_ENABLED and not sq.is_paid %}
-    <a href="{{ url_for('portal.service_quotation_pay_online', sq_id=sq.id) }}" class="btn btn-primary text-sm px-5">Pay {{ sq.grand_total|rupees }} online</a>
+    {% if sq.is_paid and sq.contract_id %}
+      {% if not sq.contract.agreement_accepted %}
+      <a href="{{ url_for('portal.agreement', contract_id=sq.contract_id) }}" class="btn btn-primary text-sm px-4">Sign AMC Agreement →</a>
+      {% else %}
+      <a href="{{ url_for('portal.contract', contract_id=sq.contract_id) }}" class="btn btn-ghost text-sm px-4">View My AMC</a>
+      {% endif %}
+    {% elif not sq.is_paid %}
+      <span class="text-xs text-green-700">Choose payment method below</span>
     {% endif %}
   </div>
+
+  {% if not sq.is_paid %}
+  <div class="card p-5 mt-4 border-2 border-emerald-300 bg-surface-1">
+    <div class="flex items-center gap-2 mb-2">
+      <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800">Payment Options</span>
+      <h3 class="font-extrabold text-ink text-base">Pay ₹{{ sq.grand_total|rupees }}</h3>
+    </div>
+    <p class="text-xs text-ink-muted mb-3">Pay instantly via UPI or choose cash/cheque for office confirmation:</p>
+    
+    <div class="grid sm:grid-cols-3 gap-3">
+      <!-- UPI / QR -->
+      <a href="{{ url_for('public.public_quote_upi', token=sq.public_token) }}"
+         class="card p-3.5 border border-hairline hover:border-primary transition flex flex-col items-center text-center gap-1.5 shadow-2xs">
+        <div class="w-9 h-9 rounded-full bg-blue-100 text-blue-700 grid place-items-center">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        </div>
+        <span class="font-bold text-xs text-ink">Pay by UPI / GPay</span>
+        <span class="text-[11px] text-ink-subtle">Scan dynamic QR code</span>
+      </a>
+
+      <!-- Cash -->
+      <form method="post" action="{{ url_for('public.public_quote_pay', token=sq.public_token) }}" class="m-0">
+        <input type="hidden" name="method" value="cash">
+        <button type="submit" class="w-full h-full card p-3.5 border border-hairline hover:border-primary transition flex flex-col items-center text-center gap-1.5 cursor-pointer shadow-2xs">
+          <div class="w-9 h-9 rounded-full bg-emerald-100 text-emerald-700 grid place-items-center">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/></svg>
+          </div>
+          <span class="font-bold text-xs text-ink">Pay by Cash</span>
+          <span class="text-[11px] text-ink-subtle">Office confirms payment</span>
+        </button>
+      </form>
+
+      <!-- Cheque -->
+      <form method="post" action="{{ url_for('public.public_quote_pay', token=sq.public_token) }}" class="m-0">
+        <input type="hidden" name="method" value="cheque">
+        <button type="submit" class="w-full h-full card p-3.5 border border-hairline hover:border-primary transition flex flex-col items-center text-center gap-1.5 cursor-pointer shadow-2xs">
+          <div class="w-9 h-9 rounded-full bg-amber-100 text-amber-700 grid place-items-center">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/></svg>
+          </div>
+          <span class="font-bold text-xs text-ink">Pay by Cheque</span>
+          <span class="text-[11px] text-ink-subtle">Office confirms on receipt</span>
+        </button>
+      </form>
+    </div>
+  </div>
+  {% endif %}
   {% elif sq.status == 'negotiation_requested' %}
   <div class="mt-4 bg-amber-50 border border-amber-200 rounded-xl p-4 text-amber-800 text-sm">Negotiation requested. Our sales manager will call you at <strong>{{ sq.customer_phone }}</strong> shortly.</div>
   {% elif sq.status == 'rejected' %}
@@ -36,7 +88,26 @@
         <p class="text-ink-subtle text-sm">Issued: {{ sq.created_at.strftime('%d %B %Y') }} · Valid for {{ sq.valid_days }} days</p>
         {% if sq.project_name %}<p class="font-semibold text-ink mt-1">{{ sq.project_name }}</p>{% endif %}
       </div>
-      <!-- PDF download intentionally not available for quotations -->
+      <!-- Top Action: Accept button directly at top -->
+      {% if sq.status in ('sent', 'viewed') or (sq.status == 'negotiation_requested' and sq.staff_response) %}
+      <div class="flex items-center gap-2">
+        <form method="post" action="{{ url_for('portal.service_quotation_accept', sq_id=sq.id) }}" class="m-0">
+          <button type="submit" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-sm shadow-sm transition flex items-center gap-2 cursor-pointer">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            Accept Quotation ({{ sq.grand_total|rupees }})
+          </button>
+        </form>
+      </div>
+      {% elif sq.status == 'accepted' %}
+      <span class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-100 text-emerald-800 font-bold text-xs">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        Quotation Accepted
+      </span>
+      {% elif sq.status == 'rejected' %}
+      <span class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-rose-100 text-rose-800 font-bold text-xs">
+        Quotation Declined
+      </span>
+      {% endif %}
     </div>
 
     <!-- Client / Business info -->
@@ -105,46 +176,87 @@
       </table>
     </div>
 
+    <div class="mt-4 pt-4 border-t border-hairline">
+      <h3 class="text-xs font-bold uppercase tracking-wider text-ink-subtle mb-2">Terms &amp; Conditions</h3>
+      <ol class="text-xs text-ink-subtle space-y-1 list-decimal pl-4">
+        {% for t in sq.get_terms() %}
+        <li>{{ t }}</li>
+        {% endfor %}
+      </ol>
+    </div>
     <p class="text-xs text-ink-subtle mt-3">Payment terms: 50% advance, 50% on delivery. GST @ {{ sq.gst_percent }}% extra. Offer valid for {{ sq.valid_days }} days from issue date.</p>
   </div>
 
-  <!-- Action buttons (only when pending) -->
-  {% if sq.status in ('sent', 'viewed') %}
-  <div class="grid sm:grid-cols-2 gap-4 mt-6">
+  <!-- Action buttons: Accept, Request Negotiation, Reject Quote -->
+  {% if sq.status in ('sent', 'viewed') or (sq.status == 'negotiation_requested' and sq.staff_response) %}
+  <div class="grid sm:grid-cols-3 gap-4 mt-6">
     <!-- Accept -->
-    <div class="card p-5 border-green-200 bg-green-50">
-      <h3 class="font-bold text-green-800 mb-1">Accept Quotation</h3>
-      <p class="text-green-700 text-sm mb-4">Happy with the quote? Click below to confirm. Our team will contact you within 24 hours to proceed.</p>
+    <div class="card p-5 border-emerald-200 bg-emerald-50 flex flex-col justify-between">
+      <div>
+        <div class="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold mb-2">✓</div>
+        <h3 class="font-bold text-emerald-900 mb-1">Accept Quotation</h3>
+        <p class="text-emerald-700 text-xs mb-4">Happy with the quote? Confirm acceptance for <strong>{{ sq.grand_total|rupees }}</strong>. Our team will contact you within 24 hours to proceed.</p>
+      </div>
       <form method="post" action="{{ url_for('portal.service_quotation_accept', sq_id=sq.id) }}">
-        <button class="btn btn-primary w-full">Accept Quotation</button>
+        <button type="submit" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-sm transition">
+          Accept Quotation ({{ sq.grand_total|rupees }})
+        </button>
       </form>
     </div>
 
-    <!-- Negotiate -->
-    <div class="card p-5 border-amber-200 bg-amber-50">
-      <h3 class="font-bold text-amber-800 mb-1">Request Negotiation</h3>
-      <p class="text-amber-700 text-sm mb-3">Need a better price or have questions? Leave a note and our sales manager will call you.</p>
+    <!-- Request Negotiation -->
+    <div class="card p-5 border-amber-200 bg-amber-50 flex flex-col justify-between">
+      <div>
+        <div class="w-8 h-8 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center font-bold mb-2">💬</div>
+        <h3 class="font-bold text-amber-900 mb-1">Request Negotiation</h3>
+        <p class="text-amber-700 text-xs mb-2">Need a better price or have questions? Leave a note and our sales manager will call you.</p>
+      </div>
       <form method="post" action="{{ url_for('portal.service_quotation_negotiate', sq_id=sq.id) }}">
-        <textarea name="negotiation_note" rows="2" class="w-full px-3 py-2 text-sm mb-3" placeholder="Optional: share your concern or counter-offer…"></textarea>
-        <div class="flex items-center justify-between gap-3">
-          <button class="btn text-sm px-4 py-2.5" style="background:#f59e0b;color:#fff">Request Negotiation</button>
-          <a href="tel:{{ sales_phone }}" class="btn btn-ghost text-sm px-4 py-2.5">Call: {{ sales_phone }}</a>
+        <textarea name="negotiation_note" rows="2" class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-amber-300 bg-white mb-2" placeholder="Optional: share your concern or counter-offer…"></textarea>
+        <div class="flex items-center justify-between gap-2">
+          <button type="submit" class="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-xs transition">
+            Request Negotiation
+          </button>
+          <a href="tel:{{ sales_phone }}" class="text-[11px] font-semibold text-amber-800 hover:underline">📞 Call Office</a>
         </div>
+      </form>
+    </div>
+
+    <!-- Reject Quote alongside Request a Negotiation -->
+    <div class="card p-5 border-rose-200 bg-rose-50 flex flex-col justify-between">
+      <div>
+        <div class="w-8 h-8 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center font-bold mb-2">✕</div>
+        <h3 class="font-bold text-rose-900 mb-1">Reject Quotation</h3>
+        <p class="text-rose-700 text-xs mb-2">Not satisfied with this quote? Let us know so our team can close or archive this file.</p>
+      </div>
+      <form method="post" action="{{ url_for('portal.service_quotation_reject', sq_id=sq.id) }}" onsubmit="return confirm('Are you sure you want to decline this quotation?');">
+        <input type="text" name="rejection_reason" class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-rose-300 bg-white mb-2" placeholder="Optional reason (e.g. Budget, Found another vendor)">
+        <button type="submit" class="w-full py-2 bg-rose-600 hover:bg-rose-700 text-white font-semibold rounded-lg text-xs transition">
+          Reject Quotation
+        </button>
       </form>
     </div>
   </div>
   {% endif %}
 
   <!-- Staff response to negotiation -->
-  {% if sq.status == 'negotiation_requested' and sq.staff_response %}
+  {% if sq.staff_response %}
   <div class="card p-5 mt-5 border-blue-200 bg-blue-50">
-    <h3 class="font-bold text-blue-800 mb-2">Response from our team</h3>
-    <p class="text-blue-700 text-sm">{{ sq.staff_response }}</p>
-    <div class="mt-3 flex gap-3">
-      <form method="post" action="{{ url_for('portal.service_quotation_accept', sq_id=sq.id) }}">
-        <button class="btn btn-primary text-sm">Accept revised offer</button>
+    <div class="flex items-center gap-2 mb-2">
+      <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider bg-blue-100 text-blue-800">Office Reply</span>
+      <h3 class="font-bold text-blue-900">Response from our team</h3>
+    </div>
+    <p class="text-blue-800 text-sm leading-relaxed mb-3 bg-white/70 p-3 rounded-lg border border-blue-200">{{ sq.staff_response }}</p>
+    {% if sq.status in ('sent', 'viewed', 'negotiation_requested') %}
+    <div class="flex items-center gap-3">
+      <form method="post" action="{{ url_for('portal.service_quotation_accept', sq_id=sq.id) }}" class="m-0">
+        <button type="submit" class="btn btn-primary text-xs px-4 py-2">✓ Accept revised offer ({{ sq.grand_total|rupees }})</button>
+      </form>
+      <form method="post" action="{{ url_for('portal.service_quotation_reject', sq_id=sq.id) }}" class="m-0" onsubmit="return confirm('Decline this offer?');">
+        <button type="submit" class="btn btn-ghost text-xs text-rose-700 hover:bg-rose-100 px-3 py-2">Decline Offer</button>
       </form>
     </div>
+    {% endif %}
   </div>
   {% endif %}
 </section>

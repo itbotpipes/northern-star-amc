@@ -219,7 +219,7 @@
       <td class="lbl">GST No. (NSE)</td>
       <td>{{ company_gst }}</td>
       <td class="lbl">Certificate No.</td>
-      <td>NSE-CERT-{{ c.id:04d }}</td>
+      <td>NSE-CERT-{{ "%04d"|format(c.id) }}</td>
     </tr>
   </table>
 
@@ -251,7 +251,7 @@
   <div class="cert-footer">
     This certificate is issued in good faith based on the maintenance records of Northern Star Engineering.
     It does not substitute statutory NOC requirements from the Fire Department.
-    Certificate No. NSE-CERT-{{ c.id:04d }} &nbsp;|&nbsp; Generated {{ issued_date }} &nbsp;|&nbsp; {{ company_email }}
+    Certificate No. NSE-CERT-{{ "%04d"|format(c.id) }} &nbsp;|&nbsp; Generated {{ issued_date }} &nbsp;|&nbsp; {{ company_email }}
   </div>
 
 </div><!-- /frame-inner -->

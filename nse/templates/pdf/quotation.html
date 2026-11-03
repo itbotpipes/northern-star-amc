@@ -296,7 +296,7 @@
 <ol class="terms-list">
   {% for t in audit_terms %}<li>{{ t }}</li>{% endfor %}
 </ol>
-{% elif q.service_type == 'amc' and amc_terms %}
+{% elif amc_terms %}
 <ol class="terms-list">
   {% for t in amc_terms %}<li>{{ t }}</li>{% endfor %}
 </ol>

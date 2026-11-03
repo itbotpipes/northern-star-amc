@@ -55,6 +55,28 @@ def create_app(config_class=Config, root=None):
     # Jinja helpers
     app.jinja_env.filters["rupees"] = rupees
     app.jinja_env.filters["upload_url"] = upload_url
+    app.jinja_env.globals.update(
+        getattr=getattr,
+        hasattr=hasattr,
+        isinstance=isinstance,
+        type=type,
+        len=len,
+        str=str,
+        int=int,
+        float=float,
+        bool=bool,
+        round=round,
+        sum=sum,
+        min=min,
+        max=max,
+        list=list,
+        dict=dict,
+        set=set,
+        enumerate=enumerate,
+        zip=zip,
+        any=any,
+        all=all,
+    )
 
     @app.context_processor
     def inject_globals():
@@ -100,11 +122,21 @@ def create_app(config_class=Config, root=None):
                     renewal_count = 0
                 try:
                     from .models import Contract, ReworkItem, Enquiry
-                    open_lead_count = Contract.query.filter(
-                        Contract.lead_stage.isnot(None),
-                        Contract.lead_stage != "rework").count()
+                    if current_user and current_user.is_authenticated and not getattr(current_user, "is_manager", False):
+                        open_lead_count = Contract.query.filter(
+                            Contract.inspection_technician_id == current_user.id,
+                            Contract.lead_stage.in_(["new", "inspection_scheduled"])
+                        ).count()
+                        open_enquiry_count = Enquiry.query.filter(
+                            Enquiry.assigned_to_id == current_user.id,
+                            Enquiry.status.notin_(["closed", "responded"])
+                        ).count()
+                    else:
+                        open_lead_count = Contract.query.filter(
+                            Contract.lead_stage.isnot(None),
+                            Contract.lead_stage != "rework").count()
+                        open_enquiry_count = Enquiry.query.filter(Enquiry.status.in_(["new", "assigned"])).count()
                     open_rework_count = ReworkItem.query.filter_by(status="open").count()
-                    open_enquiry_count = Enquiry.query.filter(Enquiry.status.in_(["new", "assigned"])).count()
                 except Exception:
                     open_lead_count = 0
                     open_rework_count = 0
@@ -126,6 +158,7 @@ def create_app(config_class=Config, root=None):
             "COMPANY_EMAIL": app.config["COMPANY_EMAIL"],
             "COMPANY_ADDRESS": app.config["COMPANY_ADDRESS"],
             "COMPANY_UPI_ID": app.config.get("COMPANY_UPI_ID", ""),
+            "GOOGLE_REVIEW_URL": app.config.get("GOOGLE_REVIEW_URL", "https://search.google.com/local/writereview?placeid=ChIJNorthernStarFire"),
             "AI_ENABLED": Config.ai_enabled(),
             "unread_notifications": unread,
             "recent_notifications": recent_notifications,
@@ -161,6 +194,59 @@ def create_app(config_class=Config, root=None):
         return response
 
     with app.app_context():
-        db.create_all()
+        try:
+            db.create_all()
+        except Exception as e:
+            app.logger.warning(f"db.create_all deferred: {e}")
+        # Safe idempotent schema auto-sync for newly added columns (PostgreSQL & SQLite)
+        try:
+            from sqlalchemy import text
+            with db.engine.begin() as conn:
+                for table, cols in [
+                    ("contracts", [
+                        ("cash_collected_amount", "DOUBLE PRECISION"),
+                        ("cash_collected_by_id", "INTEGER REFERENCES users(id)"),
+                        ("cash_collected_at", "TIMESTAMP"),
+                        ("cash_collected_notes", "TEXT"),
+                        ("cash_collection_status", "VARCHAR(30) DEFAULT 'none'"),
+                        ("voice_note", "VARCHAR(255)"),
+                        ("free_amc", "BOOLEAN DEFAULT FALSE"),
+                        ("project_type", "VARCHAR(50) DEFAULT 'amc'"),
+                        ("spoc_name", "VARCHAR(120)"),
+                        ("spoc_phone", "VARCHAR(20)"),
+                        ("spoc_role", "VARCHAR(60)"),
+                        ("handover_engineer", "VARCHAR(120)"),
+                        ("handover_technician", "VARCHAR(120)"),
+                        ("handover_signed_at", "TIMESTAMP"),
+                        ("handover_doc_path", "VARCHAR(255)"),
+                        ("handover_report_id", "INTEGER REFERENCES health_check_reports(id)")
+                    ]),
+                    ("quotations", [
+                        ("cash_collected_amount", "DOUBLE PRECISION"),
+                        ("cash_collected_by_id", "INTEGER REFERENCES users(id)"),
+                        ("cash_collected_at", "TIMESTAMP"),
+                        ("cash_collected_notes", "TEXT"),
+                        ("cash_collection_status", "VARCHAR(30) DEFAULT 'none'"),
+                        ("waiver_text", "TEXT"),
+                        ("rejection_acknowledged", "BOOLEAN DEFAULT FALSE"),
+                        ("negotiation_note", "TEXT"),
+                        ("staff_response", "TEXT")
+                    ]),
+                    ("service_quotations", [
+                        ("cash_collected_amount", "DOUBLE PRECISION"),
+                        ("cash_collected_by_id", "INTEGER REFERENCES users(id)"),
+                        ("cash_collected_at", "TIMESTAMP"),
+                        ("cash_collected_notes", "TEXT"),
+                        ("cash_collection_status", "VARCHAR(30) DEFAULT 'none'"),
+                        ("staff_response", "TEXT")
+                    ])
+                ]:
+                    for col_name, col_type in cols:
+                        try:
+                            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col_name} {col_type}"))
+                        except Exception:
+                            pass
+        except Exception:
+            pass
 
     return app

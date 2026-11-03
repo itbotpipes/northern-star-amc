@@ -1,54 +1,119 @@
 {% extends "base_ops.html" %}
 {% block title %}My Day Plan — Ops Console{% endblock %}
 {% block content %}
-<section class="max-w-3xl mx-auto px-4 py-10">
-  <div class="mb-6">
+<section class="max-w-4xl mx-auto px-4 py-8 space-y-8">
+  <div class="mb-4">
     <h1 class="text-2xl font-extrabold text-ink">My Day Plan</h1>
     <p class="text-ink-subtle text-sm mt-1">
-      Visits assigned to you — accept or flag conflicts before the day arrives.
+      All scheduled maintenance visits, inquiry site inspections, and AMC lead surveys assigned to you.
     </p>
   </div>
 
   <!-- TODAY -->
-  <div class="mb-8">
-    <h2 class="text-sm font-semibold text-ink-muted uppercase tracking-wider mb-3">
-      Today — {{ today.strftime('%d %b %Y') }}
-    </h2>
-    {% if today_visits %}
+  <div>
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-xs font-bold text-ink uppercase tracking-wider flex items-center gap-2">
+        <span class="w-2.5 h-2.5 rounded-full bg-primary animate-pulse"></span>
+        Today — {{ today.strftime('%d %b %Y') }}
+      </h2>
+      {% set today_total = (today_visits|length) + (today_enquiries|length) + (today_leads|length) %}
+      <span class="text-xs font-bold px-2 py-0.5 rounded-full {{ 'bg-primary text-white' if today_total else 'bg-slate-100 text-slate-500' }}">
+        {{ today_total }} Tasks
+      </span>
+    </div>
+
+    {% if today_visits or today_enquiries or today_leads %}
     <div class="space-y-3">
+      {% for e in today_enquiries %}
+      {% include "admin/_day_plan_enquiry_card.html" %}
+      {% endfor %}
+      {% for c in today_leads %}
+      {% include "admin/_day_plan_lead_card.html" %}
+      {% endfor %}
       {% for v in today_visits %}
       {% include "admin/_day_plan_card.html" %}
       {% endfor %}
     </div>
     {% else %}
-    <div class="card p-6 text-center text-ink-subtle text-sm">No visits scheduled for today.</div>
+    <div class="card p-6 text-center text-ink-subtle text-sm bg-slate-50/50">No visits or inspections scheduled for today.</div>
     {% endif %}
   </div>
 
   <!-- TOMORROW -->
-  <div class="mb-8">
-    <h2 class="text-sm font-semibold text-ink-muted uppercase tracking-wider mb-3">
-      Tomorrow — {{ tomorrow.strftime('%d %b %Y') }}
-    </h2>
-    {% if tomorrow_visits %}
-    <p class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
-      Please confirm or flag conflicts for tomorrow's visits so the ops team can plan.
+  <div>
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-xs font-bold text-ink uppercase tracking-wider flex items-center gap-2">
+        <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+        Tomorrow — {{ tomorrow.strftime('%d %b %Y') }}
+      </h2>
+      {% set tomorrow_total = (tomorrow_visits|length) + (tomorrow_enquiries|length) + (tomorrow_leads|length) %}
+      <span class="text-xs font-bold px-2 py-0.5 rounded-full {{ 'bg-amber-500 text-white' if tomorrow_total else 'bg-slate-100 text-slate-500' }}">
+        {{ tomorrow_total }} Tasks
+      </span>
+    </div>
+
+    {% if tomorrow_visits or tomorrow_enquiries or tomorrow_leads %}
+    <p class="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-3">
+      Please confirm or flag conflicts for tomorrow's schedule so the office and customers are prepared.
     </p>
     <div class="space-y-3">
+      {% for e in tomorrow_enquiries %}
+      {% include "admin/_day_plan_enquiry_card.html" %}
+      {% endfor %}
+      {% for c in tomorrow_leads %}
+      {% include "admin/_day_plan_lead_card.html" %}
+      {% endfor %}
       {% for v in tomorrow_visits %}
       {% include "admin/_day_plan_card.html" %}
       {% endfor %}
     </div>
     {% else %}
-    <div class="card p-6 text-center text-ink-subtle text-sm">No visits scheduled for tomorrow.</div>
+    <div class="card p-6 text-center text-ink-subtle text-sm bg-slate-50/50">No visits or inspections scheduled for tomorrow.</div>
     {% endif %}
   </div>
 
-  <!-- THIS WEEK -->
-  {% if week_visits %}
+  <!-- PENDING / UNSCHEDULED ASSIGNED INSPECTIONS -->
+  {% if pending_enquiries or pending_leads %}
   <div>
-    <h2 class="text-sm font-semibold text-ink-muted uppercase tracking-wider mb-3">Next 7 days</h2>
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-xs font-bold text-amber-900 uppercase tracking-wider flex items-center gap-2">
+        <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+        Assigned to You — Ready for Site Visit & Inspection
+      </h2>
+      <span class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800">
+        {{ (pending_enquiries|length) + (pending_leads|length) }} Action Required
+      </span>
+    </div>
     <div class="space-y-3">
+      {% for e in pending_enquiries %}
+      {% include "admin/_day_plan_enquiry_card.html" %}
+      {% endfor %}
+      {% for c in pending_leads %}
+      {% include "admin/_day_plan_lead_card.html" %}
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- THIS WEEK -->
+  {% if week_visits or week_enquiries or week_leads %}
+  <div>
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-xs font-bold text-ink uppercase tracking-wider flex items-center gap-2">
+        <span class="w-2.5 h-2.5 rounded-full bg-slate-400"></span>
+        Upcoming (Next 7 Days)
+      </h2>
+      <span class="text-xs font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+        {{ (week_visits|length) + (week_enquiries|length) + (week_leads|length) }} Tasks
+      </span>
+    </div>
+    <div class="space-y-3">
+      {% for e in week_enquiries %}
+      {% include "admin/_day_plan_enquiry_card.html" %}
+      {% endfor %}
+      {% for c in week_leads %}
+      {% include "admin/_day_plan_lead_card.html" %}
+      {% endfor %}
       {% for v in week_visits %}
       {% include "admin/_day_plan_card.html" %}
       {% endfor %}

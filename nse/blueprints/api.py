@@ -33,8 +33,8 @@ from ..models import (
     User, Contract, Visit, ServiceRequest, Notification,
     ServiceQuotation, Quotation, QuotationItem, SupportTicket, VisitFeedback,
     CustomerJourneyEvent, Referral, RefillOrder, RefillItem, AMCPlan,
-    Equipment, VisitDefect, VisitChecklistItem, VisitPhoto, InventoryItem,
-    Enquiry, InquiryChecklistItem, InquiryPhoto, InquiryHistory,
+    Equipment, VisitChecklistItem, VisitPhoto, InventoryItem,
+    Enquiry, InquiryChecklistItem, InquiryHistory,
 )
 from ..utils import (
     generate_otp, verify_otp, notify, notify_staff, notify_team_leaders,
@@ -237,6 +237,11 @@ def otp_verify():
     name = (body.get("name") or "").strip()
     if not phone or not verify_otp(phone, code):
         return jsonify(error="Invalid or expired OTP."), 401
+
+    # Staff must log in with email and password
+    staff_user = User.query.filter(User.phone == phone, User.role != "customer").first()
+    if staff_user and staff_user.is_staff:
+        return jsonify(error="Staff members must sign in with email and password."), 403
 
     user = User.query.filter_by(phone=phone, role="customer").first()
     if not user:
@@ -513,6 +518,18 @@ def dashboard():
                       .filter(ServiceQuotation.customer_id == u.id,
                               ServiceQuotation.status.in_(["sent", "viewed"]))
                       .count())
+    scheduled_inspections_count = (
+        Contract.query.filter(
+            Contract.customer_id == u.id,
+            Contract.inspection_scheduled_date.isnot(None),
+            Contract.status.notin_(["active", "completed", "cancelled", "expired"]),
+        ).count()
+        + Enquiry.query.filter(
+            Enquiry.customer_id == u.id,
+            Enquiry.visit_scheduled_date.isnot(None),
+            Enquiry.status.in_(["site_visit_scheduled", "assigned"]),
+        ).count()
+    )
     open_tickets = (SupportTicket.query
                     .filter(SupportTicket.customer_id == u.id,
                             SupportTicket.status.in_(["open", "acknowledged"]))
@@ -524,6 +541,7 @@ def dashboard():
         counts={
             "contracts": len(contracts),
             "pending_quotes": pending_quotes,
+            "scheduled_inspections": scheduled_inspections_count,
             "open_tickets": open_tickets,
             "unread_notifications": unread,
         },
@@ -695,6 +713,31 @@ def service_quotation_negotiate(sq_id):
     db.session.commit()
     notify_staff("Quotation — revision requested",
                  f"{g.current_user.name} on {sq.reference}: {note[:120]}",
+                 link=url_for("sq.detail_quotation", sq_id=sq.id))
+    return jsonify(ok=True, quotation=service_quote_json(sq, full=True))
+
+
+@api_bp.route("/service-quotations/<int:sq_id>/reject", methods=["POST"])
+@customer_only
+def service_quotation_reject(sq_id):
+    sq = _own_sq(sq_id)
+    if not sq:
+        return jsonify(error="Quotation not found."), 404
+    if sq.status in ("accepted", "rejected"):
+        return jsonify(error="This quotation has already been responded to."), 400
+    body = request.get_json(silent=True) or {}
+    reason = (body.get("reason") or "").strip()
+    sq.status = "rejected"
+    sq.responded_at = datetime.utcnow()
+    if not sq.customer_id:
+        sq.customer_id = g.current_user.id
+    db.session.add(CustomerJourneyEvent(
+        customer_id=g.current_user.id, event_type="quote_rejected",
+        description=f"Declined quotation {sq.reference}" + (f": {reason[:100]}" if reason else ""),
+        ref_type="service_quotation", ref_id=sq.id))
+    db.session.commit()
+    notify_staff("Quotation declined",
+                 f"{g.current_user.name} declined {sq.reference}." + (f" Reason: {reason}" if reason else ""),
                  link=url_for("sq.detail_quotation", sq_id=sq.id))
     return jsonify(ok=True, quotation=service_quote_json(sq, full=True))
 
@@ -1340,17 +1383,20 @@ def tech_visit_checkout(visit_id):
     v = _own_tech_visit(visit_id)
     if not v:
         return jsonify(error="Visit not found."), 404
+    has_report = bool(v.service_report_path or (v.checklist_items and v.checklist_items.count() > 0) or v.work_done or (v.photos and v.photos.count() > 0))
+    if not has_report:
+        return jsonify(error="Checkout cannot be processed yet. Please attach the service report (photo/file) or complete the checklist first."), 400
     if not v.checkin_at:
         v.checkin_at = datetime.utcnow()
     v.checkout_at = datetime.utcnow()
     db.session.commit()
     c = v.contract
     if c and c.customer_id:
-        notify(c.customer_id, "Your technician has left the site",
+        notify(c.customer_id, "Your technician has completed site work & checked out",
                f"{v.technician.name if v.technician else 'Your technician'} checked out "
                f"after {v.label} at {c.reference} — on site "
-               f"{v.onsite_duration_label or '0m'}.",
-               link=url_for("portal.contract", contract_id=v.contract_id))
+               f"{v.onsite_duration_label or '0m'}. Your service report is ready for review.",
+               link=url_for("portal.visit", visit_id=v.id))
     return jsonify(ok=True, visit=tech_visit_detail_json(v))
 
 

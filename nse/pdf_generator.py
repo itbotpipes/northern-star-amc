@@ -82,7 +82,8 @@ def generate_quotation_pdf(quotation) -> Optional[bytes]:
     )
     logo_url = "/static/img/logo-full.png" if os.path.exists(logo_path) else ""
 
-    from .utils import AMC_QUOTATION_TERMS, AUDIT_TERMS
+    from .utils import get_quotation_terms, AUDIT_TERMS
+    terms = get_quotation_terms(quotation)
     html = render_template(
         "pdf/quotation.html",
         q=quotation,
@@ -92,7 +93,7 @@ def generate_quotation_pdf(quotation) -> Optional[bytes]:
         company_email=company_email,
         company_gst=company_gst,
         logo_url=logo_url,
-        amc_terms=AMC_QUOTATION_TERMS,
+        amc_terms=terms,
         audit_terms=AUDIT_TERMS,
     )
     return _html_to_pdf(html)

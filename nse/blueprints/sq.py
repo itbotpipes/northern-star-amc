@@ -10,18 +10,17 @@ material-replacement quotes during active AMC visits).
 from datetime import datetime
 
 from flask import (Blueprint, render_template, request, redirect,
-                   url_for, flash, abort, send_file, current_app)
+                   url_for, flash, abort, send_file)
 from flask_login import login_required, current_user
 
 from ..extensions import db
 from ..models import (ServiceQuotation, ServiceQuotationItem,
                       CustomerJourneyEvent, User, Contract,
                       RefillOrder, ServiceRequest, InventoryItem,
-                      Enquiry, InquiryHistory)
-from ..utils import staff_required, notify, notify_team_leaders, whatsapp_url, public_url, qr_data_uri
+                      Enquiry, InquiryHistory, HealthCheckReport)
+from ..utils import staff_required, manager_required, notify, notify_team_leaders, whatsapp_url, public_url, qr_data_uri
 from ..pdf_generator import generate_quotation_pdf
-from ..email_service import (send_quotation_email, send_quote_accepted_alert,
-                              send_negotiation_alert)
+from ..email_service import send_quotation_email
 import io
 
 sq_bp = Blueprint("sq", __name__, url_prefix="/ops/sq")
@@ -213,8 +212,8 @@ def new_quotation():
                 category     = cats[i] if i < len(cats) else "General",
                 description  = desc.strip(),
                 unit         = units[i] if i < len(units) else "Job",
-                quantity     = float(qtys[i] or 1) if i < len(qtys) else 1,
-                rate         = float(rates[i] or 0) if i < len(rates) else 0,
+                quantity     = max(0.0, float(qtys[i] or 1)) if i < len(qtys) else 1.0,
+                rate         = max(0.0, float(rates[i] or 0)) if i < len(rates) else 0.0,
                 sort_order   = i,
             ))
 
@@ -260,12 +259,25 @@ def new_quotation():
     # client details (and link the quote + power price history #10c).
     projects = Contract.query.order_by(Contract.created_at.desc()).all()
     customers = User.query.filter_by(role="customer").order_by(User.name.asc()).all()
+    fshcr_defects = []
+    if contract:
+        fshcr = (HealthCheckReport.query.filter_by(contract_id=contract.id)
+                 .order_by(HealthCheckReport.created_at.desc()).first())
+        if fshcr:
+            fshcr_defects = fshcr.get_detected_defects()
+    hr_id = request.args.get("health_report_id", type=int)
+    if hr_id and not fshcr_defects:
+        fshcr = db.session.get(HealthCheckReport, hr_id)
+        if fshcr:
+            fshcr_defects = fshcr.get_detected_defects()
+
     return render_template("admin/sq_new.html",
                            contract=contract, sr=sr, ro=ro,
                            inventory=inventory, prefill=prefill,
                            projects=projects, customers=customers,
                            from_survey_id=from_survey_id,
-                           inquiry=inquiry)
+                           inquiry=inquiry,
+                           fshcr_defects=fshcr_defects)
 
 
 # --------------------------------------------------------------------------- #
@@ -452,8 +464,15 @@ def detail_quotation(sq_id):
 
         elif action == "respond_negotiation":
             sq.staff_response = request.form.get("staff_response", "").strip()
+            if sq.customer_id:
+                notify(sq.customer_id, f"Reply on {sq.reference} Negotiation",
+                       f"Our team responded to your negotiation: '{sq.staff_response[:100]}'",
+                       link=url_for("portal.service_quotation", sq_id=sq.id))
+            _log_event(sq.customer_id, "negotiation_replied",
+                       f"Team replied to negotiation on {sq.reference}: {sq.staff_response[:100]}",
+                       "service_quotation", sq.id)
             db.session.commit()
-            flash("Response saved.", "success")
+            flash("Response saved and customer notified.", "success")
 
         elif action == "revise_send":
             # Revise line-item rates in place and re-send to the customer for a
@@ -463,7 +482,7 @@ def detail_quotation(sq_id):
                 raw = request.form.get(f"rate_{item.id}")
                 if raw not in (None, ""):
                     try:
-                        item.rate = float(raw)
+                        item.rate = max(0.0, float(raw))
                     except ValueError:
                         pass
             db.session.flush()
@@ -502,9 +521,23 @@ def detail_quotation(sq_id):
     whatsapp_share = whatsapp_url(sq.customer_phone, wa_message)
     share_qr = qr_data_uri(share_link)
 
+    whatsapp_creds_share = None
+    if sq.is_paid and sq.customer_phone:
+        creds_msg = (
+            f"Namaste {sq.customer_name},\n"
+            f"Your payment of ₹{sq.grand_total:,.0f} for {sq.reference} has been received and confirmed! Thank you.\n\n"
+            f"Your Northern Star Customer Portal credentials:\n"
+            f"• Portal Login: {public_url('auth.login')}\n"
+            f"• Registered Mobile: {sq.customer_phone}\n"
+            f"• Login Method: Enter your phone number to receive a 1-time secure OTP (no password needed)\n"
+            + (f"• Review & sign your AMC agreement: {public_url('portal.agreement', contract_id=sq.contract_id)}\n" if sq.contract_id else f"• View your services: {public_url('portal.dashboard')}\n")
+            + "Northern Star Engineering"
+        )
+        whatsapp_creds_share = whatsapp_url(sq.customer_phone, creds_msg)
+
     return render_template("admin/sq_detail.html", sq=sq, journey=journey,
                            share_link=share_link, whatsapp_share=whatsapp_share,
-                           share_qr=share_qr)
+                           share_qr=share_qr, whatsapp_creds_share=whatsapp_creds_share)
 
 
 @sq_bp.route("/<int:sq_id>/qr")
@@ -541,8 +574,8 @@ def edit_quotation(sq_id):
         sq.customer_email   = f.get("customer_email", sq.customer_email or "").strip()
         sq.project_name     = f.get("project_name", sq.project_name or "").strip()
         sq.customer_address = f.get("customer_address", sq.customer_address or "").strip()
-        sq.gst_percent      = float(f.get("gst_percent") or sq.gst_percent)
-        sq.valid_days       = int(f.get("valid_days") or sq.valid_days)
+        sq.gst_percent      = max(0.0, float(f.get("gst_percent") or sq.gst_percent))
+        sq.valid_days       = max(1, int(f.get("valid_days") or sq.valid_days))
         sq.notes            = f.get("notes", sq.notes or "").strip()
 
         for item in sq.items:
@@ -563,8 +596,8 @@ def edit_quotation(sq_id):
                 category     = cats[i] if i < len(cats) else "General",
                 description  = desc.strip(),
                 unit         = units[i] if i < len(units) else "Job",
-                quantity     = float(qtys[i] or 1) if i < len(qtys) else 1,
-                rate         = float(rates[i] or 0) if i < len(rates) else 0,
+                quantity     = max(0.0, float(qtys[i] or 1)) if i < len(qtys) else 1.0,
+                rate         = max(0.0, float(rates[i] or 0)) if i < len(rates) else 0.0,
                 sort_order   = i,
             ))
         db.session.flush()
@@ -590,7 +623,7 @@ def edit_quotation(sq_id):
 
 @sq_bp.route("/<int:sq_id>/delete", methods=["POST"])
 @login_required
-@staff_required
+@manager_required
 def delete_quotation(sq_id):
     sq = db.session.get(ServiceQuotation, sq_id) or abort(404)
 
@@ -616,7 +649,7 @@ def delete_quotation(sq_id):
 
 @sq_bp.route("/<int:sq_id>/mark-paid", methods=["POST"])
 @login_required
-@staff_required
+@manager_required
 def mark_paid(sq_id):
     sq = db.session.get(ServiceQuotation, sq_id) or abort(404)
     method = request.form.get("payment_method", sq.payment_method or "cash")
@@ -633,18 +666,57 @@ def mark_paid(sq_id):
     # Cascade to a linked AMC contract's payment status.
     if sq.contract:
         sq.contract.payment_status = "paid"
+        if not sq.contract.price or sq.contract.price == 0:
+            sq.contract.price = int(sq.grand_total)
+        sq.contract.lead_stage = "pending_agreement"
         if hasattr(sq.contract, "payment_date"):
             sq.contract.payment_date = datetime.utcnow()
+
+    # Note A: Ensure customer account exists and credentials are active
+    if not sq.customer_id:
+        phone = (sq.customer_phone or "").strip()
+        email = (sq.customer_email or "").strip()
+        user = None
+        if phone:
+            user = User.query.filter_by(phone=phone).first()
+        if not user and email:
+            user = User.query.filter_by(email=email).first()
+        if not user and phone:
+            user = User(
+                role="customer",
+                name=sq.customer_name or f"Customer {phone[-4:]}",
+                phone=phone,
+                email=email or None,
+                company_name=sq.project_name or None,
+                address=sq.customer_address or None,
+            )
+            db.session.add(user)
+            db.session.flush()
+        if user:
+            sq.customer_id = user.id
+
+    if sq.contract and not sq.contract.customer_id and sq.customer_id:
+        sq.contract.customer_id = sq.customer_id
 
     _log_event(sq.customer_id, "payment_received",
                f"Payment received for {sq.reference} (₹{sq.grand_total:,.0f}) via {sq.payment_method_label}",
                "service_quotation", sq.id)
+    if sq.customer_id:
+        _log_event(sq.customer_id, "credentials_issued",
+                   f"Customer portal access issued for {sq.customer_name} ({sq.customer_phone}). Login via Mobile OTP.",
+                   "service_quotation", sq.id)
     db.session.commit()
 
     if sq.customer_id:
-        notify(sq.customer_id, "Payment received — thank you!",
-               f"We've recorded your payment of ₹{sq.grand_total:,.0f} for {sq.reference}.",
-               link=url_for("portal.service_quotation", sq_id=sq.id))
+        if sq.contract_id:
+            notify(sq.customer_id, "Payment confirmed — sign your AMC agreement",
+                   f"We've confirmed your payment of ₹{sq.grand_total:,.0f} for {sq.reference}. "
+                   f"Please review and accept your AMC maintenance agreement to activate your contract.",
+                   link=url_for("portal.agreement", contract_id=sq.contract_id))
+        else:
+            notify(sq.customer_id, "Payment received — thank you!",
+                   f"We've recorded your payment of ₹{sq.grand_total:,.0f} for {sq.reference}.",
+                   link=url_for("portal.service_quotation", sq_id=sq.id))
     flash(f"{sq.reference} marked as paid ({sq.payment_method_label}).", "success")
     return redirect(url_for("sq.detail_quotation", sq_id=sq.id))
 

@@ -4,11 +4,33 @@
 <section class="max-w-3xl mx-auto px-4 py-8">
   <a href="{{ url_for('admin.leads') }}" class="text-sm text-ink-subtle hover:text-ink">← Leads</a>
 
+  {% if just_scheduled and whatsapp_share %}
+  <div class="mt-4 p-5 rounded-2xl bg-emerald-50 border border-emerald-200 shadow-sm flex items-start justify-between flex-wrap gap-4">
+    <div class="flex items-start gap-3">
+      <div class="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 grid place-items-center flex-shrink-0">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+      </div>
+      <div>
+        <h3 class="font-bold text-emerald-950 text-base">Inspection Scheduled! Send WhatsApp Update</h3>
+        <p class="text-sm text-emerald-800 mt-0.5">
+          Notification dispatched to client and technician. You can now send the scheduled visit details directly to <strong>{{ client_phone }}</strong> via WhatsApp.
+        </p>
+      </div>
+    </div>
+    <a href="{{ whatsapp_share }}" target="_blank"
+       class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-white text-sm shadow-sm transition hover:opacity-95"
+       style="background:#25D366;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+      Send WhatsApp Message →
+    </a>
+  </div>
+  {% endif %}
+
   <div class="flex items-center justify-between flex-wrap gap-3 mt-2 mb-6">
     <div>
       <h1 class="text-2xl font-extrabold text-ink mono">{{ c.reference }}</h1>
       <p class="text-sm text-ink-subtle">{{ c.applicant_name or (c.customer.name if c.customer) }} · {{ c.site_name or c.site_address or '' }}
-        · {{ 'Project handover' if c.project_type == 'existing' else 'New enquiry' }}</p>
+        · {{ 'Project handover' if c.project_type in ('existing', 'handover') or c.is_handover else 'New enquiry' }}</p>
     </div>
     <span class="px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-800">{{ c.lead_stage|replace('_',' ')|title }}</span>
   </div>
@@ -17,34 +39,150 @@
   <div class="card p-6 mb-6">
     <h2 class="font-bold text-ink mb-3">Details</h2>
     <div class="grid sm:grid-cols-2 gap-3 text-sm">
-      <div><span class="text-ink-subtle">Phone</span><div class="font-semibold">{{ c.applicant_phone or (c.customer.phone if c.customer) or '—' }}</div></div>
+      <div>
+        <span class="text-ink-subtle">Phone</span>
+        <div class="font-semibold flex items-center gap-2">
+          {{ c.applicant_phone or (c.customer.phone if c.customer) or '—' }}
+          {% if whatsapp_share %}
+          <a href="{{ whatsapp_share }}" target="_blank" title="Send WhatsApp Message"
+             class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full text-emerald-800 bg-emerald-100 hover:bg-emerald-200">
+            💬 WhatsApp
+          </a>
+          {% endif %}
+        </div>
+      </div>
       <div><span class="text-ink-subtle">Email</span><div class="font-semibold">{{ c.applicant_email or '—' }}</div></div>
       <div><span class="text-ink-subtle">Area</span><div class="font-semibold">{{ c.area or '—' }}</div></div>
       <div><span class="text-ink-subtle">Property type</span><div class="font-semibold">{{ c.property_type or '—' }}</div></div>
-      {% if c.project_type == 'existing' %}
+      {% if c.site_address %}
+      <div class="sm:col-span-2"><span class="text-ink-subtle">Full site address</span><div class="font-semibold">{{ c.site_address }}</div></div>
+      {% endif %}
+      {% if c.latitude and c.longitude %}
+      <div class="sm:col-span-2">
+        <span class="text-ink-subtle">Exact GPS Location</span>
+        <div class="mt-0.5">
+          <a href="https://maps.google.com/?q={{ c.latitude }},{{ c.longitude }}" target="_blank"
+             class="inline-flex items-center gap-1.5 text-sm font-semibold text-primary hover:underline">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-6.6-7-11a7 7 0 0 1 14 0c0 4.4-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>
+            View on Google Maps ({{ c.latitude }}, {{ c.longitude }}) ↗
+          </a>
+        </div>
+      </div>
+      {% endif %}
+      {% if c.project_type in ('existing', 'handover') or c.is_handover %}
       <div><span class="text-ink-subtle">SPOC</span><div class="font-semibold">{{ c.spoc_name or '—' }}{% if c.spoc_role %} ({{ c.spoc_role }}){% endif %}{% if c.spoc_phone %} · {{ c.spoc_phone }}{% endif %}</div></div>
       {% endif %}
     </div>
     {% if c.problem_description %}
-    <div class="mt-3 pt-3 border-t border-hairline"><span class="text-ink-subtle text-sm">Problem reported</span>
-      <p class="text-sm text-ink mt-1">{{ c.problem_description }}</p></div>
+    <div class="mt-3 pt-3 border-t border-hairline">
+      <span class="text-ink-subtle text-sm">Problem reported</span>
+      <p class="text-sm text-ink mt-1">{{ c.problem_description }}</p>
+    </div>
+    {% endif %}
+    {% if c.voice_note %}
+    <div class="mt-3 pt-3 border-t border-hairline">
+      {% set is_audio = c.voice_note.lower().endswith(('.webm', '.wav', '.mp3', '.ogg', '.m4a', '.aac', '.mp4')) or 'uploads/' in c.voice_note or 'blob.vercel' in c.voice_note or 'supabase' in c.voice_note or c.voice_note.startswith('http') %}
+      {% if is_audio %}
+      <div class="bg-blue-50/70 border border-blue-200 rounded-xl p-3.5">
+        <div class="flex items-center justify-between gap-2 mb-2">
+          <span class="text-blue-900 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3M8 22h8"/></svg>
+            Customer Voice Note (Actual Audio)
+          </span>
+          <span class="text-[11px] text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full font-semibold">Recorded by client</span>
+        </div>
+        <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+          <audio controls preload="metadata" class="w-full sm:flex-1 h-10 rounded-lg shadow-xs" src="{{ c.voice_note|upload_url }}"></audio>
+          <a href="{{ c.voice_note|upload_url }}" download class="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-white border border-blue-200 text-blue-800 hover:bg-blue-50 transition shadow-2xs self-end sm:self-center flex-shrink-0">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download
+          </a>
+        </div>
+      </div>
+      {% else %}
+      <span class="text-ink-subtle text-sm flex items-center gap-1.5 font-medium">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3M8 22h8"/></svg>
+        Voice requirement
+      </span>
+      <p class="text-sm text-ink italic mt-1 bg-surface-2 p-3 rounded-lg">{{ c.voice_note }}</p>
+      {% endif %}
+    </div>
     {% endif %}
   </div>
 
-  <!-- Inspection scheduling -->
+  <!-- Attached photos & videos -->
+  {% if attachments %}
+  <div class="card p-6 mb-6">
+    <h2 class="font-bold text-ink mb-3">Attached site photos &amp; videos ({{ attachments|length }})</h2>
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {% for att in attachments %}
+      <div class="border border-hairline rounded-lg overflow-hidden bg-surface-2 p-1 text-center">
+        {% if att.attachment_type == 'video' %}
+        <video src="{{ att.file_path|upload_url }}" controls class="w-full h-32 object-cover rounded"></video>
+        {% elif att.attachment_type == 'audio' %}
+        <div class="h-32 flex flex-col items-center justify-center p-2 bg-blue-50/80 rounded border border-blue-200">
+          <svg class="w-7 h-7 text-blue-600 mb-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3M8 22h8"/></svg>
+          <audio controls preload="none" class="w-full h-8" src="{{ att.file_path|upload_url }}"></audio>
+        </div>
+        {% else %}
+        <a href="{{ att.file_path|upload_url }}" target="_blank">
+          <img src="{{ att.file_path|upload_url }}" alt="Site photo" class="w-full h-32 object-cover rounded hover:opacity-90 transition">
+        </a>
+        {% endif %}
+        <div class="text-[11px] text-ink-subtle truncate mt-1 px-1">{{ att.caption or 'Attachment' }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Inspection scheduling / re-editing -->
   {% if c.lead_stage in ('new', 'inspection_scheduled') %}
   <div class="card p-6 mb-6">
-    <h2 class="font-bold text-ink mb-3">{{ 'Reschedule' if c.inspection_scheduled_date else 'Schedule' }} inspection</h2>
+    <div class="flex items-center justify-between flex-wrap gap-2 mb-2">
+      <h2 class="font-bold text-ink">{{ 'Reschedule' if c.inspection_scheduled_date else 'Schedule' }} inspection</h2>
+      {% if c.inspection_scheduled_date %}
+      <span class="text-xs px-2.5 py-1 rounded-full font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+        Current Visit: {{ c.inspection_scheduled_date|datefmt }}
+      </span>
+      {% endif %}
+    </div>
+    <p class="text-xs text-ink-subtle mb-4">
+      Customer gets a date when the technician will come &amp; visit at the site. You can re-edit the date at any time to reschedule; an updated notification and WhatsApp update will be prepared.
+    </p>
+
     <form method="post" action="{{ url_for('admin.schedule_inspection', lead_id=c.id) }}" class="grid sm:grid-cols-3 gap-3 items-end">
-      <label class="block"><span class="text-sm font-medium text-ink-muted">Date</span>
-        <input type="date" name="inspection_date" value="{{ c.inspection_scheduled_date.isoformat() if c.inspection_scheduled_date }}" class="mt-1.5 w-full px-3 py-2.5" required></label>
-      <label class="block"><span class="text-sm font-medium text-ink-muted">Technician / inspector</span>
+      <label class="block">
+        <span class="text-sm font-medium text-ink-muted">Inspection Date</span>
+        <input type="date" name="inspection_date" value="{{ c.inspection_scheduled_date.isoformat() if c.inspection_scheduled_date }}" class="mt-1.5 w-full px-3 py-2.5" required>
+      </label>
+      <label class="block">
+        <span class="text-sm font-medium text-ink-muted">Assigned Technician</span>
         <select name="technician_id" class="mt-1.5 w-full px-3 py-2.5">
           <option value="">— Assign later —</option>
           {% for t in technicians %}<option value="{{ t.id }}" {{ 'selected' if c.inspection_technician_id==t.id }}>{{ t.name }}</option>{% endfor %}
-        </select></label>
-      <button class="btn btn-primary">Schedule &amp; notify</button>
+        </select>
+      </label>
+      <button class="btn btn-primary">
+        {{ 'Update & Notify Client' if c.inspection_scheduled_date else 'Schedule & Notify' }}
+      </button>
     </form>
+
+    <!-- WhatsApp Share Preview & Action -->
+    {% if whatsapp_share %}
+    <div class="mt-5 pt-4 border-t border-hairline flex items-center justify-between flex-wrap gap-3">
+      <div>
+        <div class="text-xs font-semibold text-ink uppercase tracking-wider">Client WhatsApp Notification</div>
+        <p class="text-xs text-ink-subtle mt-0.5">Pre-filled with site, technician name, and scheduled date for <strong>{{ client_phone }}</strong>.</p>
+      </div>
+      <a href="{{ whatsapp_share }}" target="_blank"
+         class="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white shadow-sm transition hover:opacity-90"
+         style="background:#25D366;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+        Send WhatsApp to Client
+      </a>
+    </div>
+    {% endif %}
   </div>
   {% endif %}
 
@@ -56,10 +194,47 @@
   </div>
   {% elif fshcr %}
   <div class="card p-6 mb-6">
-    <h2 class="font-bold text-ink mb-2">Inspection report</h2>
-    <div class="flex items-center justify-between text-sm">
-      <div>{{ fshcr.reference }} · {{ fshcr.status|title }}{% if fshcr.score is not none %} · Score {{ fshcr.score }}/100{% endif %}{% if fshcr.outcome %} · {{ fshcr.outcome|replace('_',' ')|title }}{% endif %}</div>
-      <a href="{{ url_for('admin.health_report', report_id=fshcr.id) }}" class="text-primary hover:underline">Open →</a>
+    <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
+      <div>
+        <h2 class="font-bold text-ink text-base">Fire Safety Health Checkup Report</h2>
+        <div class="text-xs text-ink-subtle mt-0.5">{{ fshcr.reference }} · {{ fshcr.report_date|datefmt if fshcr.report_date }} · Inspected by {{ fshcr.inspector_name or 'Technician' }}</div>
+      </div>
+      <div class="flex items-center gap-2">
+        {% if fshcr.score is not none %}
+        <span class="text-sm font-extrabold px-3 py-1 rounded-full {% if fshcr.score >= 85 %}bg-green-100 text-green-800 border border-green-200{% elif fshcr.score >= 60 %}bg-amber-100 text-amber-800 border border-amber-200{% else %}bg-red-100 text-red-800 border border-red-200{% endif %}">
+          Score: {{ fshcr.score }}/100
+        </span>
+        {% endif %}
+        <span class="text-xs font-bold uppercase px-2.5 py-1 rounded-full {% if fshcr.outcome == 'ok' %}bg-green-50 text-green-700 border border-green-200{% elif fshcr.outcome == 'needs_rework' %}bg-red-50 text-red-700 border border-red-200{% else %}bg-amber-50 text-amber-700 border border-amber-200{% endif %}">
+          {{ 'OK (Satisfactory)' if fshcr.outcome == 'ok' else ('Issues Found' if fshcr.outcome == 'issues' else (fshcr.outcome|replace('_',' ')|title)) }}
+        </span>
+      </div>
+    </div>
+
+    {% if fshcr.scan_path %}
+    <div class="mb-3 p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs flex items-center justify-between">
+      <span class="text-slate-700">📄 Scanned paper inspection report uploaded</span>
+      <a href="{{ fshcr.scan_path|upload_url }}" target="_blank" class="text-primary font-semibold hover:underline">View Scan ↗</a>
+    </div>
+    {% endif %}
+
+    <!-- Report Share Actions -->
+    <div class="pt-3 border-t border-hairline flex items-center justify-between flex-wrap gap-3">
+      <div class="flex items-center gap-2">
+        <a href="{{ url_for('admin.health_report_whatsapp', report_id=fshcr.id) }}" target="_blank"
+           class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white shadow-sm hover:opacity-90"
+           style="background:#25D366;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+          Share on WhatsApp
+        </a>
+        <a href="{{ url_for('admin.health_report_email', report_id=fshcr.id) }}"
+           class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-navy-800 text-white hover:bg-navy-700">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+          Email PDF
+        </a>
+        <a href="{{ url_for('admin.health_report_pdf', report_id=fshcr.id) }}" class="text-xs text-ink-subtle hover:text-ink font-medium">Download PDF ↓</a>
+      </div>
+      <a href="{{ url_for('admin.health_report', report_id=fshcr.id) }}" class="text-xs text-primary font-semibold hover:underline">Edit Full Report →</a>
     </div>
   </div>
   {% endif %}
@@ -100,5 +275,92 @@
     <a href="{{ url_for('admin.contract', contract_id=c.id) }}" class="btn btn-navy">Open contract →</a>
   </div>
   {% endif %}
+
+  <!-- Full Timeline -->
+  <div class="card p-6 mb-6">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="font-bold text-ink">Full Lead Timeline</h2>
+      <span class="text-xs text-ink-subtle">{{ c.reference }} history</span>
+    </div>
+
+    <div class="relative pl-6 space-y-6 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
+      
+      <!-- Event 1: Enquiry Submitted -->
+      <div class="relative">
+        <div class="absolute -left-6 top-1 w-4 h-4 rounded-full bg-blue-500 border-2 border-white ring-2 ring-blue-100"></div>
+        <div class="text-sm font-semibold text-ink">New Enquiry Received</div>
+        <div class="text-xs text-ink-subtle mt-0.5">
+          {{ c.created_at|datefmt }} · Via website enquiry form
+        </div>
+        <p class="text-xs text-ink-muted mt-1">
+          Client: {{ c.applicant_name or (c.customer.name if c.customer) }} ({{ c.applicant_phone or (c.customer.phone if c.customer) }})
+          {% if c.property_type %} · Property: {{ c.property_type }}{% endif %}
+          {% if c.area %} · Area: {{ c.area }}{% endif %}
+        </p>
+        {% if c.problem_description %}
+        <div class="text-xs bg-slate-50 border border-hairline p-2.5 rounded-lg text-ink mt-2">
+          <strong>Requirement:</strong> {{ c.problem_description }}
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- Event 2: Scheduled / Rescheduled Events -->
+      {% if c.inspection_scheduled_date %}
+      <div class="relative">
+        <div class="absolute -left-6 top-1 w-4 h-4 rounded-full bg-purple-500 border-2 border-white ring-2 ring-purple-100"></div>
+        <div class="text-sm font-semibold text-ink">Site Inspection Scheduled</div>
+        <div class="text-xs text-ink-subtle mt-0.5">
+          Visit Date: <strong class="text-primary">{{ c.inspection_scheduled_date|datefmt }}</strong>
+        </div>
+        <p class="text-xs text-ink-muted mt-1">
+          Assigned Inspector: <strong>{{ c.inspection_technician.name if c.inspection_technician else 'Unassigned' }}</strong>
+          {% if c.inspection_technician and c.inspection_technician.phone %} ({{ c.inspection_technician.phone }}){% endif %}
+        </p>
+      </div>
+      {% endif %}
+
+      <!-- Event 3: Inspection Report / FSHCR -->
+      {% if fshcr %}
+      <div class="relative">
+        <div class="absolute -left-6 top-1 w-4 h-4 rounded-full bg-amber-500 border-2 border-white ring-2 ring-amber-100"></div>
+        <div class="text-sm font-semibold text-ink">Inspection Health Report Completed</div>
+        <div class="text-xs text-ink-subtle mt-0.5">
+          Report Ref: {{ fshcr.reference }} · Status: {{ fshcr.status|title }}
+        </div>
+        <p class="text-xs text-ink-muted mt-1">
+          Safety Score: <strong>{{ fshcr.score }}/100</strong> · Outcome: <strong>{{ fshcr.outcome|replace('_',' ')|title }}</strong>
+        </p>
+      </div>
+      {% endif %}
+
+      <!-- Event 4: Quotation -->
+      {% if quote %}
+      <div class="relative">
+        <div class="absolute -left-6 top-1 w-4 h-4 rounded-full bg-emerald-500 border-2 border-white ring-2 ring-emerald-100"></div>
+        <div class="text-sm font-semibold text-ink">Sales Quotation Generated</div>
+        <div class="text-xs text-ink-subtle mt-0.5">
+          Quote Ref: {{ quote.reference }} · Value: {{ quote.grand_total|rupees }}
+        </div>
+        <p class="text-xs text-ink-muted mt-1">
+          Status: <strong>{{ quote.status_label }}</strong>
+        </p>
+      </div>
+      {% endif %}
+
+      <!-- Logged Journey Events -->
+      {% for ev in journey %}
+      {% if ev.event_type not in ('enquiry_submitted', 'inspection_scheduled') %}
+      <div class="relative">
+        <div class="absolute -left-6 top-1 w-4 h-4 rounded-full bg-slate-400 border-2 border-white ring-2 ring-slate-100"></div>
+        <div class="text-sm font-semibold text-ink">{{ ev.event_type|replace('_',' ')|title }}</div>
+        <div class="text-xs text-ink-subtle mt-0.5">{{ ev.created_at|datefmt }}</div>
+        <p class="text-xs text-ink-muted mt-0.5">{{ ev.description }}</p>
+      </div>
+      {% endif %}
+      {% endfor %}
+
+    </div>
+  </div>
+
 </section>
 {% endblock %}

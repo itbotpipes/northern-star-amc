@@ -7,26 +7,30 @@ from flask_login import current_user, login_user
 from ..extensions import db
 from ..models import (AMCPlan, Contract, ServiceRequest, Enquiry, User,
                       RefillOrder, RefillItem, FormAttachment, VisitFeedback,
-                      CustomerJourneyEvent, ServiceQuotation, ServiceQuotationItem,
-                      InquiryHistory)
-from ..utils import notify, notify_staff, notify_managers, notify_team_leaders, save_upload, upi_qr_data_uri
+                      CustomerJourneyEvent, ServiceQuotation, InquiryHistory)
+from ..utils import notify_staff, notify_managers, notify_team_leaders, save_upload, upi_qr_data_uri
 
 public_bp = Blueprint("public", __name__)
 
 
 def _save_attachments(files, ref_type, ref_id, att_type="photo"):
     """Save a list of FileStorage objects as FormAttachment rows. Accepts both
-    images and short video clips (#8g) — the attachment_type is set to 'video'
-    for video files so templates can render them with a <video> tag."""
+    images, short video clips, and audio notes — setting appropriate attachment_type."""
     image_ext = {"png", "jpg", "jpeg", "gif", "webp"}
     video_ext = {"mp4", "mov", "webm", "m4v", "avi"}
+    audio_ext = {"wav", "mp3", "ogg", "m4a", "aac"}
     for f in files:
         if not f or not f.filename:
             continue
         ext = f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else ""
-        kind = "video" if ext in video_ext else att_type
+        if ext in audio_ext or (f.mimetype and f.mimetype.startswith("audio/")):
+            kind = "audio"
+        elif ext in video_ext:
+            kind = "video"
+        else:
+            kind = att_type
         path = save_upload(f, f"form/{ref_type}/{ref_id}",
-                           image_ext | video_ext | {"pdf"})
+                           image_ext | video_ext | audio_ext | {"pdf"})
         if path:
             db.session.add(FormAttachment(
                 ref_type=ref_type, ref_id=ref_id,
@@ -111,7 +115,7 @@ def apply():
     always Flow 1 (customer-initiated) — no plan is picked here; a technician
     inspects the site first and a quotation follows only after that. Project
     handovers (Flow 2) are staff-only and created from admin.leads instead."""
-    cu = current_user if current_user.is_authenticated and current_user.role == "customer" else None
+    cu = db.session.get(User, current_user.id) if (current_user.is_authenticated and getattr(current_user, "role", None) == "customer") else None
     my_sites = (Contract.query.filter_by(customer_id=cu.id)
                 .order_by(Contract.created_at.desc()).all()) if cu else []
 
@@ -121,21 +125,38 @@ def apply():
         lat = (f.get("latitude") or "").strip()
         lng = (f.get("longitude") or "").strip()
 
-        related_id = f.get("existing_site_id", type=int)
+        raw_site_id = f.get("existing_site_id")
+        try:
+            related_id = int(raw_site_id) if raw_site_id else None
+        except (ValueError, TypeError):
+            related_id = None
         related = db.session.get(Contract, related_id) if related_id else None
         if related and cu and related.customer_id == cu.id:
-            site_name = related.site_name
-            site_address = related.site_address
-            area = related.area
+            site_name = (f.get("site_name") or "").strip() or related.site_name
+            site_address = (f.get("site_address") or "").strip() or related.site_address
+            area = (f.get("area") or "").strip() or related.area
         else:
             related = None
-            site_name = f.get("site_name")
-            site_address = f.get("site_address")
-            area = f.get("area")
+            site_name = (f.get("site_name") or "").strip()
+            site_address = (f.get("site_address") or "").strip()
+            area = (f.get("area") or "").strip()
 
-        name = f.get("name") or (cu.name if cu else "")
-        phone = f.get("phone") or (cu.phone if cu else "")
-        email = f.get("email") or (cu.email if cu else "")
+        name = (f.get("name") or "").strip() or (cu.name if cu else "")
+        phone = (f.get("phone") or "").strip() or (cu.phone if cu else "")
+        email = (f.get("email") or "").strip() or (cu.email if cu else "")
+
+        # Save / persist contact details for logged-in customer
+        if cu:
+            if name and cu.name != name:
+                cu.name = name
+            if email and cu.email != email:
+                dup = User.query.filter(User.email == email, User.id != cu.id).first()
+                if not dup:
+                    cu.email = email
+            if site_address and not cu.address:
+                cu.address = site_address
+            if area and not cu.area:
+                cu.area = area
 
         contract = Contract(
             status="pending", lead_stage="new", project_type="new",
@@ -156,8 +177,33 @@ def apply():
         db.session.add(contract)
         db.session.commit()
 
-        # Save uploaded site photos/videos + voice note
+        # Save actual recorded voice note audio (if recorded by client)
+        voice_file = request.files.get("voice_audio")
+        if voice_file and voice_file.filename:
+            audio_path = save_upload(voice_file, f"form/contract/{contract.id}",
+                                     {"webm", "wav", "mp3", "ogg", "m4a", "aac", "mp4"})
+            if audio_path:
+                contract.voice_note = audio_path
+                db.session.add(FormAttachment(
+                    ref_type="contract", ref_id=contract.id,
+                    file_path=audio_path, attachment_type="audio",
+                    caption="Customer Recorded Voice Note"
+                ))
+                db.session.commit()
+
+        # Save uploaded site photos/videos
         _save_attachments(request.files.getlist("site_photos"), "contract", contract.id, "photo")
+        db.session.commit()
+
+        if contract.customer_id:
+            db.session.add(CustomerJourneyEvent(
+                customer_id=contract.customer_id,
+                event_type="enquiry_submitted",
+                description=f"Enquiry submitted for {contract.site_name or contract.area or 'new site'} via website.",
+                ref_type="contract",
+                ref_id=contract.id
+            ))
+            db.session.commit()
 
         notify_managers(
             f"New enquiry — {contract.reference}",
@@ -165,9 +211,8 @@ def apply():
             + (f" — \"{contract.problem_description[:80]}\"" if contract.problem_description else ""),
             link=url_for("admin.lead_detail", lead_id=contract.id))
 
-        msg = ("Thank you — your enquiry has been sent. Our maintenance manager will "
-               "review it and schedule a site inspection. We'll let you know the "
-               "inspection date, and share a full report and quotation afterwards.")
+        msg = ("Thank you — your enquiry has been sent. Our technician will visit, "
+               "inspect your site, and share a quotation — no payment now.")
         return render_template("site/submitted.html",
                                kind="Enquiry", reference=contract.reference,
                                sq_ref=None, message=msg)
@@ -230,6 +275,19 @@ def noc():
         )
         db.session.add(sr)
         db.session.commit()
+        # Save actual recorded voice note audio (if recorded by client)
+        voice_file = request.files.get("voice_audio")
+        if voice_file and voice_file.filename:
+            audio_path = save_upload(voice_file, f"form/service_request/{sr.id}",
+                                     {"webm", "wav", "mp3", "ogg", "m4a", "aac", "mp4"})
+            if audio_path:
+                sr.voice_note = audio_path
+                db.session.add(FormAttachment(
+                    ref_type="service_request", ref_id=sr.id,
+                    file_path=audio_path, attachment_type="audio",
+                    caption="Customer Recorded Voice Note"
+                ))
+
         # Old NOC document upload
         noc_doc = request.files.get("noc_document")
         if noc_doc and noc_doc.filename:
@@ -552,7 +610,7 @@ def public_quote_pay(token):
     _ensure_customer_account(sq)
 
     # Choosing to pay = accepting the quotation.
-    if sq.status in ("sent", "viewed", "negotiation_requested"):
+    if sq.status in ("draft", "sent", "viewed", "negotiation_requested"):
         sq.status = "accepted"
         sq.responded_at = datetime.utcnow()
         if sq.customer_id:
@@ -595,12 +653,16 @@ def public_quote_paid_claim(token):
     """Client taps 'I have paid'. We don't auto-confirm (no gateway yet) — we
     flag it for staff to verify and thank the client."""
     sq = _get_sq_by_token(token)
-    if not sq.payment_reference:
+    utr = (request.form.get("utr_number") or request.form.get("payment_reference") or "").strip()
+    if utr:
+        sq.payment_reference = f"Customer reported UPI reference / UTR: {utr}"
+    elif not sq.payment_reference:
         sq.payment_reference = "Customer marked as paid via UPI — awaiting staff verification"
     db.session.commit()
+    ref_label = f" (Ref: {utr})" if utr else ""
     notify_staff(
         f"UPI payment to verify — {sq.reference}",
-        f"{sq.customer_name} says they paid ₹{sq.grand_total:,.0f} by UPI. Please verify and confirm.",
+        f"{sq.customer_name} says they paid ₹{sq.grand_total:,.0f} by UPI{ref_label}. Please verify and confirm.",
         link=url_for("sq.detail_quotation", sq_id=sq.id))
     return redirect(url_for("public.public_quote_thanks", token=token, m="upi"))
 
@@ -619,22 +681,28 @@ def public_quote_thanks(token):
 @public_bp.route("/q/<token>/pay-online")
 def public_quote_pay_online(token):
     """Open Razorpay Checkout for a public quotation (no login). Falls back to
-    the UPI page when the gateway is not configured."""
+    the UPI page when the gateway is not configured or in case of technical glitches (Note B)."""
     from .. import payments
     sq = _get_sq_by_token(token)
     if not payments.enabled():
         return redirect(url_for("public.public_quote_upi", token=token))
-    order = payments.create_order(sq.grand_total, receipt=sq.reference,
-                                  notes={"quotation": sq.reference})
-    if not order:
-        flash("Online payment is temporarily unavailable — please use UPI or cash.",
+    try:
+        order = payments.create_order(sq.grand_total, receipt=sq.reference,
+                                      notes={"quotation": sq.reference})
+        if not order:
+            flash("Online payment gateway is temporarily unavailable — please use UPI QR code, cash or cheque.",
+                  "warning")
+            return redirect(url_for("public.public_quote_upi", token=token))
+        sq.gateway_order_id = order["id"]
+        _ensure_customer_account(sq)
+        db.session.commit()
+        return render_template("site/quote_checkout.html", sq=sq, order=order,
+                               key_id=payments.key_id())
+    except Exception as exc:
+        current_app.logger.warning(f"Payment gateway glitch on quote {sq.reference}: {exc}")
+        flash("Technical glitch initiating online payment. You can easily complete payment via UPI QR code, cash or cheque.",
               "warning")
-        return redirect(url_for("public.public_quote", token=token))
-    sq.gateway_order_id = order["id"]
-    _ensure_customer_account(sq)
-    db.session.commit()
-    return render_template("site/quote_checkout.html", sq=sq, order=order,
-                           key_id=payments.key_id())
+        return redirect(url_for("public.public_quote_upi", token=token))
 
 
 @public_bp.route("/q/<token>/pay-online/verify", methods=["POST"])
@@ -676,3 +744,35 @@ def razorpay_webhook():
         if sq:
             payments.mark_quote_paid(sq, payment_id=payment_id, method="online")
     return ("ok", 200)
+
+
+
+@public_bp.route("/health-report/<int:report_id>")
+def public_health_report(report_id):
+    """Client public view and download for their Fire System Health Checkup Report."""
+    import io as _io
+    from flask import send_file, abort
+    from ..models import HealthCheckReport
+    from ..pdf_generator import generate_health_report_pdf
+
+    r = db.session.get(HealthCheckReport, report_id) or abort(404)
+    token = request.args.get("token", "")
+    is_authorized = False
+
+    if token and r.verify_token(token):
+        is_authorized = True
+    elif current_user.is_authenticated:
+        if getattr(current_user, "role", None) in ("admin", "technician"):
+            is_authorized = True
+        elif r.contract and r.contract.customer_id == current_user.id:
+            is_authorized = True
+
+    if not is_authorized:
+        abort(403)
+
+    pdf = generate_health_report_pdf(r)
+    if not pdf:
+        abort(500)
+    as_att = request.args.get("download") == "1"
+    return send_file(_io.BytesIO(pdf), mimetype="application/pdf",
+                     as_attachment=as_att, download_name=f"{r.reference}.pdf")

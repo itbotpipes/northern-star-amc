@@ -62,20 +62,29 @@
     <!-- Nav -->
     <nav style="flex:1;padding:6px 10px;display:flex;flex-direction:column;gap:1px;overflow-y:auto;">
       {% set _ep = request.endpoint %}
+      {% if not current_user.is_technician %}
       <a href="{{ url_for('admin.dashboard') }}" class="snav {{ 'active' if _ep == 'admin.dashboard' }}">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="3" width="7" height="8" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="11" width="7" height="10" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/></svg>
         Dashboard
+      </a>
+      {% endif %}
+      <a href="{{ url_for('admin.day_plan') }}" class="snav {{ 'active' if _ep == 'admin.day_plan' }}">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M9 16l2 2 4-4"/></svg>
+        Day Plan
       </a>
       <a href="{{ url_for('admin.calendar') }}" class="snav {{ 'active' if _ep == 'admin.calendar' }}">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
         Calendar
       </a>
+
+      {% if current_user.is_manager %}
       <a href="{{ url_for('admin.analytics') }}" class="snav {{ 'active' if _ep == 'admin.analytics' }}">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg>
         Analytics
       </a>
+      {% endif %}
 
-      <div class="snav-section">AMC</div>
+      <div class="snav-section">AMC Management</div>
       <a href="{{ url_for('admin.contracts') }}" class="snav {{ 'active' if _ep in ('admin.contracts','admin.contract','admin.amc_module','admin.activate_contract') }}">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h4"/></svg>
         Contracts
@@ -85,31 +94,40 @@
         <span style="flex:1;">Leads</span>
         {% if open_lead_count %}<span style="background:#f59e0b;color:#18181b;font-size:10px;font-weight:700;padding:1px 6px;border-radius:999px;">{{ open_lead_count }}</span>{% endif %}
       </a>
-      <a href="{{ url_for('admin.rework_list') }}" class="snav {{ 'active' if _ep in ('admin.rework_list',) }}">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>
-        <span style="flex:1;">Rework</span>
-        {% if open_rework_count %}<span style="background:#d23f3f;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:999px;">{{ open_rework_count }}</span>{% endif %}
-      </a>
       <a href="{{ url_for('sq.list_quotations') }}" class="snav {{ 'active' if _ep in ('sq.list_quotations','sq.detail_quotation','sq.new_quotation','sq.edit_quotation') }}">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 3h16v18l-4-3-4 3-4-3-4 3z"/><path d="M8 8h8M8 12h5"/></svg>
         <span style="flex:1;">Quotations</span>
         {% if sq_action_count %}<span style="background:#f59e0b;color:#18181b;font-size:10px;font-weight:700;padding:1px 6px;border-radius:999px;">{{ sq_action_count }}</span>{% endif %}
       </a>
-      <a href="{{ url_for('admin.surveys') }}" class="snav {{ 'active' if _ep in ('admin.surveys','admin.survey','admin.survey_to_quote') }}">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
-        Site Surveys
-      </a>
+      {% if current_user.is_manager %}
       <a href="{{ url_for('admin.renewals') }}" class="snav {{ 'active' if _ep in ('admin.renewals','admin.renew_contract') }}">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.5 9a9 9 0 0114.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0020.5 15"/></svg>
         <span style="flex:1;">Renewals</span>
         {% if renewal_reminder_count %}<span style="background:#d23f3f;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:999px;">{{ renewal_reminder_count }}</span>{% endif %}
       </a>
+      {% endif %}
+
+      <div class="snav-section">Field & Site</div>
+      <a href="{{ url_for('admin.surveys') }}" class="snav {{ 'active' if _ep in ('admin.surveys','admin.survey','admin.survey_to_quote') }}">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+        Site Surveys
+      </a>
       <a href="{{ url_for('admin.health_reports') }}" class="snav {{ 'active' if _ep in ('admin.health_reports','admin.health_report') }}">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
         Health Reports
       </a>
+      <a href="{{ url_for('admin.rework_list') }}" class="snav {{ 'active' if _ep in ('admin.rework_list',) }}">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>
+        <span style="flex:1;">Rework</span>
+        {% if open_rework_count %}<span style="background:#d23f3f;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:999px;">{{ open_rework_count }}</span>{% endif %}
+      </a>
 
       <div class="snav-section">Operations</div>
+      <a href="{{ url_for('admin.enquiries') }}" class="snav {{ 'active' if _ep in ('admin.enquiries', 'admin.enquiry_detail', 'admin.enquiry_new', 'admin.enquiry_checklist') }}">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+        <span style="flex:1;">Inquiries</span>
+        {% if open_enquiry_count %}<span style="background:#f59e0b;color:#18181b;font-size:10px;font-weight:700;padding:1px 6px;border-radius:999px;">{{ open_enquiry_count }}</span>{% endif %}
+      </a>
       <a href="{{ url_for('admin.refills_list') }}" class="snav {{ 'active' if _ep in ('admin.refills_list','admin.refill_order') }}">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M14 4c-3 0-5 3-5 8 0 1-1 2-2 3-1 1-2 3 0 4h14c2-1 1-3 0-4-1-1-2-2-2-3 0-5-2-8-5-8z"/></svg>
         Refill Orders
@@ -118,30 +136,22 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 2a7 7 0 00-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 00-7-7z"/><path d="M12 9v3M12 15h.01"/></svg>
         Service Requests
       </a>
-      <a href="{{ url_for('admin.enquiries') }}" class="snav {{ 'active' if _ep in ('admin.enquiries', 'admin.enquiry_detail', 'admin.enquiry_new', 'admin.enquiry_checklist') }}">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-        <span style="flex:1;">Inquiries</span>
-        {% if open_enquiry_count %}<span style="background:#f59e0b;color:#18181b;font-size:10px;font-weight:700;padding:1px 6px;border-radius:999px;">{{ open_enquiry_count }}</span>{% endif %}
-      </a>
       <a href="{{ url_for('admin.tickets') }}" class="snav {{ 'active' if _ep in ('admin.tickets','admin.ticket_detail') }}">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
         <span style="flex:1;">Complaints</span>
         {% if open_ticket_count %}<span style="background:#d23f3f;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:999px;">{{ open_ticket_count }}</span>{% endif %}
       </a>
+      {% if current_user.is_manager %}
       <a href="{{ url_for('admin.reminders') }}" class="snav {{ 'active' if _ep == 'admin.reminders' }}">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 01-3.4 0"/></svg>
         <span style="flex:1;">Reminders</span>
         {% if payment_reminder_count %}<span style="background:#d23f3f;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:999px;">{{ payment_reminder_count }}</span>{% endif %}
       </a>
 
-      <div class="snav-section">Insights</div>
+      <div class="snav-section">Reports & Finance</div>
       <a href="{{ url_for('admin.insights') }}" class="snav {{ 'active' if _ep == 'admin.insights' }}">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 20v-6M6 20v-4M18 20v-9"/><circle cx="12" cy="8" r="1.5"/><circle cx="6" cy="12" r="1.5"/><circle cx="18" cy="6" r="1.5"/></svg>
         Insights
-      </a>
-      <a href="{{ url_for('admin.broadcasts') }}" class="snav {{ 'active' if _ep in ('admin.broadcasts','admin.broadcast_send','admin.broadcast_new') }}">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 11l18-8-8 18-2-8z"/></svg>
-        Broadcast
       </a>
       <a href="{{ url_for('admin.financials') }}" class="snav {{ 'active' if _ep == 'admin.financials' }}">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
@@ -151,10 +161,17 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="9" cy="7" r="3.5"/><path d="M2 21a7 7 0 0114 0M17 11l2 2 4-4"/></svg>
         Performance
       </a>
-      <a href="{{ url_for('admin.day_plan') }}" class="snav {{ 'active' if _ep == 'admin.day_plan' }}">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M9 16l2 2 4-4"/></svg>
-        Day Plan
+      {% endif %}
+
+      {% if current_user.is_admin %}
+      <div class="snav-section">Administration</div>
+      <a href="{{ url_for('admin.broadcasts') }}" class="snav {{ 'active' if _ep in ('admin.broadcasts','admin.broadcast_send','admin.broadcast_new') }}">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 11l18-8-8 18-2-8z"/></svg>
+        Broadcast
       </a>
+      {% endif %}
+
+      <div class="snav-section">Personal</div>
       <a href="{{ url_for('admin.my_portfolio') }}" class="snav {{ 'active' if _ep == 'admin.my_portfolio' }}">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0116 0"/></svg>
         My Portfolio

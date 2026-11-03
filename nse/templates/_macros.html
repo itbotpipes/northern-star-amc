@@ -100,33 +100,62 @@
 
 
 {# ── voice_note_widget ──────────────────────────────────────────────────────
-   Renders a voice recording button + live transcript box.
-   transcript_field: the name of the hidden input that holds the final text.
+   Renders an audio voice recorder that captures the actual voice note audio.
+   Allows customer to record, preview/listen, re-record, and attaches the
+   audio file directly to the form submission for technician and manager review.
+   transcript_field: fallback text/status field name
    label:            displayed above the widget.
-   Usage: {{ voice_note_widget('voice_note', 'Describe your requirement') }}
+   Usage: {{ voice_note_widget('voice_note', 'Record a voice note for our technician (optional)') }}
 #}
-{% macro voice_note_widget(transcript_field='voice_note', label='Describe by voice (optional)') %}
+{% macro voice_note_widget(transcript_field='voice_note', label='Record a voice note for our technician (optional)') %}
 <div class="voice-widget" data-field="{{ transcript_field }}">
-  <span class="text-sm font-medium text-ink-muted">{{ label }}</span>
-  <div class="mt-1.5 card p-4 space-y-3">
-    <div class="flex items-center gap-3">
-      <button type="button" class="voice-btn btn btn-ghost flex items-center gap-2 text-sm"
-              aria-label="Start recording">
-        <svg class="w-4 h-4 voice-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <div class="flex items-center justify-between">
+    <span class="text-sm font-semibold text-ink flex items-center gap-1.5">
+      <svg class="w-4 h-4 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/>
+        <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3M8 22h8"/>
+      </svg>
+      {{ label }}
+    </span>
+    <span class="voice-timer text-xs font-mono font-bold text-red-600 hidden">0:00</span>
+  </div>
+
+  <div class="mt-1.5 card p-4 space-y-3 bg-surface-1 border border-hairline rounded-xl">
+    <!-- Recording Trigger Button & Live State -->
+    <div class="flex items-center gap-3 flex-wrap">
+      <button type="button" class="voice-btn btn btn-ghost border border-hairline-strong flex items-center gap-2 text-sm py-2 px-3.5 transition-all"
+              aria-label="Record voice note">
+        <svg class="w-4 h-4 voice-mic text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/>
           <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3M8 22h8"/>
         </svg>
-        <span class="voice-label">Tap to speak</span>
+        <span class="voice-label font-medium">Record voice note</span>
       </button>
-      <span class="voice-status text-xs text-ink-subtle hidden"></span>
+
+      <span class="voice-status text-xs text-ink-subtle"></span>
     </div>
-    <div class="voice-transcript bg-surface-2 rounded-lg px-3 py-2 text-sm text-ink-muted min-h-[3rem] italic hidden">
-      Listening…
+
+    <!-- Audio Player Preview (shown after recording) -->
+    <div class="voice-player-box hidden space-y-2 bg-surface-2 p-3 rounded-lg border border-hairline">
+      <div class="flex items-center justify-between">
+        <span class="text-xs font-semibold text-ink-muted flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+          Voice Note Preview (Recorded)
+        </span>
+        <button type="button" class="voice-rerecord-btn text-xs text-red-600 hover:text-red-800 font-medium flex items-center gap-1 transition">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          Re-record
+        </button>
+      </div>
+      <audio controls class="voice-audio-player w-full h-9 rounded"></audio>
     </div>
+
     <p class="voice-unsupported text-xs text-amber-700 hidden">
-      Voice typing isn't available in this browser. On iPhone/iPad, tap the microphone icon on your
-      keyboard when typing below — it works the same way. On Android, try Chrome.
+      Microphone recording not supported or permitted in this browser. You can select an audio file to upload below.
     </p>
+
+    <!-- Hidden / File Inputs for Form Submission -->
+    <input type="file" name="voice_audio" class="voice-audio-file hidden" accept="audio/*">
     <input type="hidden" name="{{ transcript_field }}" class="voice-hidden-input">
   </div>
 </div>

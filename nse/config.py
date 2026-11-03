@@ -38,16 +38,23 @@ class Config:
     # a short site video alongside photos, which is much larger than photos alone.
     MAX_CONTENT_LENGTH = 60 * 1024 * 1024  # 60 MB per request (photos + one short video)
     ALLOWED_IMAGE_EXT = {"png", "jpg", "jpeg", "gif", "webp"}
-    ALLOWED_DOC_EXT = {"pdf", "png", "jpg", "jpeg"}
+    ALLOWED_DOC_EXT = {"pdf", "png", "jpg", "jpeg", "doc", "docx"}
+    ALLOWED_AUDIO_EXT = {"webm", "wav", "mp3", "ogg", "m4a", "aac", "mp4"}
+    ALLOWED_VIDEO_EXT = {"mp4", "mov", "webm", "m4v", "avi"}
+    ALLOWED_ALL_UPLOADS = ALLOWED_IMAGE_EXT | ALLOWED_DOC_EXT | ALLOWED_AUDIO_EXT | ALLOWED_VIDEO_EXT
 
     # OpenRouter
     OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
     OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "anthropic/claude-haiku-4.5")
     OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-    # Vercel Blob — when set (production on Vercel), uploads go to Blob storage
-    # instead of the local, ephemeral filesystem. Unset locally => disk uploads.
+    # Cloud Storage for Deployed Environments:
+    # 1. Vercel Blob (when BLOB_READ_WRITE_TOKEN is set)
     BLOB_READ_WRITE_TOKEN = os.getenv("BLOB_READ_WRITE_TOKEN", "")
+    # 2. Supabase Storage (when configured)
+    SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+    SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY", "")
+    SUPABASE_STORAGE_BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET", "")
 
     # ── Email (Flask-Mail via Microsoft Outlook / Office 365) ──────────────────
     # Add MAIL_PASSWORD=<your-password> to .env to enable sending.
