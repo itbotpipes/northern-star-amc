@@ -130,6 +130,8 @@ def generate_material_quotation_pdf(quotation) -> tuple[Optional[bytes], str]:
     """Render a visit-linked material quotation as a PDF using the same NSE
     QUO format as ServiceQuotation PDFs.  Returns (bytes, filename)."""
     ctx = _company_ctx()
+    from .utils import get_quotation_terms
+    terms = get_quotation_terms(quotation)
     html = render_template(
         "pdf/quotation.html",
         q=quotation,
@@ -139,6 +141,7 @@ def generate_material_quotation_pdf(quotation) -> tuple[Optional[bytes], str]:
         company_email=ctx["company_email"],
         company_gst=ctx["company_gst"],
         logo_url=ctx["logo_url"],
+        amc_terms=terms,
     )
     pdf = _html_to_pdf(html)
     filename = f"{quotation.reference}.pdf"
@@ -159,6 +162,8 @@ def generate_amc_certificate_pdf(contract) -> Optional[bytes]:
     """Render the AMC Fire Safety Compliance Certificate as a landscape PDF."""
     from datetime import datetime as _dt
     ctx = _company_ctx()
+    from .utils import get_quotation_terms
+    terms = get_quotation_terms(quotation)
     issued_date = (
         contract.certificate_issued_at.strftime("%d %b %Y")
         if contract.certificate_issued_at

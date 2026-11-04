@@ -827,6 +827,10 @@ class Quotation(db.Model):
         """Group items under a single 'Materials' category for the PDF template."""
         return {"Materials / Spare Parts": self.items}
 
+    def get_terms(self):
+        from .utils import get_quotation_terms
+        return get_quotation_terms(self)
+
 
 class QuotationItem(db.Model):
     __tablename__ = "quotation_items"

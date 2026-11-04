@@ -139,6 +139,67 @@ def test_customer_equipment_in_navbar_and_list():
     assert b"Equipment &amp; Safety Devices" in res_eq.data or b"Equipment & Safety Devices" in res_eq.data
     print("PASS: test_customer_equipment_in_navbar_and_list")
 
+def test_maintenance_terms_and_conditions():
+    from nse.utils import AMC_AGREEMENT_CLAUSES, AMC_QUOTATION_TERMS, get_quotation_terms
+    from types import SimpleNamespace
+
+    # 1. Verify AMC Agreement Clauses count & titles
+    assert len(AMC_AGREEMENT_CLAUSES) == 20, f"Expected 20 clauses, got {len(AMC_AGREEMENT_CLAUSES)}"
+    titles = [t for t, _ in AMC_AGREEMENT_CLAUSES]
+    assert "What the contract covers" in titles[0]
+    assert "Number of visits" in titles[1]
+    assert "Emergency visits" in titles[2]
+    assert "What's included" in titles[3]
+    assert "What's not included" in titles[4]
+    assert "Spare parts" in titles[5]
+    assert "Site access" in titles[6]
+    assert "Changing the date" in titles[7]
+    assert "Old equipment" in titles[8]
+    assert "Warranties" in titles[9]
+    assert "Standards" in titles[10]
+    assert "Your responsibilities" in titles[11]
+    assert "Reports" in titles[12]
+    assert "Payment" in titles[13]
+    assert "Price validity" in titles[14]
+    assert "Our liability limit" in titles[15]
+    assert "Renewal & ending" in titles[16]
+    assert "Legal" in titles[17]
+    assert "For taken-over sites" in titles[18]
+    assert "Free first year" in titles[19]
+
+    # 2. Verify AMC quotation terms
+    assert len(AMC_QUOTATION_TERMS) == 18, f"Expected 18 quotation terms, got {len(AMC_QUOTATION_TERMS)}"
+
+    # 3. Verify get_quotation_terms logic
+    standard_q = SimpleNamespace(service_type="amc", contract=None, notes="", project_name="")
+    std_terms = get_quotation_terms(standard_q)
+    assert len(std_terms) == 18
+
+    handover_q = SimpleNamespace(service_type="amc", contract=None, notes="Handover from project team", project_name="")
+    ho_terms = get_quotation_terms(handover_q)
+    assert len(ho_terms) == 19
+    assert any("For taken-over sites" in t for t in ho_terms)
+
+    free_q = SimpleNamespace(service_type="amc", contract=None, notes="Complimentary first year", project_name="")
+    fr_terms = get_quotation_terms(free_q)
+    assert len(fr_terms) == 19
+    assert any("Free first year" in t for t in fr_terms)
+
+    # 4. Verify customer agreement page loads with all clauses
+    with app.app_context():
+        contract = Contract.query.first()
+    if contract:
+        with client.session_transaction() as sess:
+            sess["_user_id"] = str(contract.customer_id)
+            sess["_fresh"] = True
+        res_agr = client.get(f"/portal/contract/{contract.id}/agreement")
+        assert res_agr.status_code == 200, f"Expected 200, got {res_agr.status_code}"
+        assert b"AMC Maintenance Agreement" in res_agr.data
+        assert b"What the contract covers" in res_agr.data
+        assert b"Our liability limit" in res_agr.data
+
+    print("PASS: test_maintenance_terms_and_conditions")
+
 if __name__ == "__main__":
     test_unauthenticated_ops_access()
     test_customer_ops_access_redirect()
@@ -147,4 +208,5 @@ if __name__ == "__main__":
     test_customer_can_download_quotation_pdf()
     test_customer_requests_list_shows_refills()
     test_customer_equipment_in_navbar_and_list()
+    test_maintenance_terms_and_conditions()
     print("\nALL CUSTOMER PORTAL & ACCESS CONTROL TESTS PASSED SUCCESSFULLY!")

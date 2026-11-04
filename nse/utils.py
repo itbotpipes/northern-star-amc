@@ -41,24 +41,24 @@ WAIVER_TEXT = (
 # These are maintenance-specific and replace the installation/project clauses for
 # AMC quotes. See MAINTENANCE_TERMS_AND_CONDITIONS.md for the full rationale.
 AMC_QUOTATION_TERMS = [
-    "This Annual Maintenance Contract covers periodic inspection, testing and routine servicing of the fire-safety equipment listed above, at the registered site only, for 12 months from activation.",
-    "The contract includes the number of scheduled maintenance visits stated above, spaced evenly across the year. Additional visits requested outside this schedule are chargeable.",
-    "Reactive breakdown visits between scheduled visits are provided on a priority basis; travel and labour are covered, but any spare parts or materials are chargeable separately.",
-    "Routine maintenance consumables and standard servicing labour for the covered equipment are included in the AMC fee.",
-    "Not included: replacement of expired/damaged/non-functional parts; extinguisher refilling; hydro-testing; replacement of cylinders, hoses, glass or heads; civil/electrical/plumbing infrastructure; and equipment added after activation without prior written intimation.",
-    "Where replacement is required, a separate material quotation is raised for your approval. You may decline, but Northern Star Engineering bears no liability for any fire incident attributable to equipment you have declined to repair or replace; a waiver is recorded on decline.",
-    "You must ensure safe, unobstructed access to all equipment on the scheduled visit date along with power and water. If access is denied or the site is not ready, that visit is treated as completed and is not carried forward.",
-    "Rescheduling requests must be made at least 48 hours before the scheduled visit; we will accommodate a mutually convenient date within the contract period.",
-    "For equipment already installed (by NSE or a third party), the AMC covers upkeep only. Any pre-existing defect found at the first inspection will be reported; its rectification is chargeable and outside routine maintenance.",
-    "Warranties on any parts or equipment supplied are limited to the respective manufacturer's warranty.",
-    "Maintenance is carried out in line with applicable Indian standards (NBC, BIS/IS and relevant NFPA guidance). NOC assistance, if required, is a separate service subject to fire-officer inspection.",
-    "You shall keep equipment clean and accessible between visits, report faults promptly, not permit any third party to service the covered equipment during the contract period, and use all equipment as per standard procedure.",
-    "A service report is issued after each completed visit; please verify and acknowledge it. Digital reports shared via the portal/email are valid records.",
-    "The AMC fee is due within 7 days of contract activation (or as stated above). Services may be suspended for non-payment until cleared. All amounts are subject to GST as applicable (GST No. 24ALQPD0899P1ZD).",
-    "This quotation is valid for the number of days stated above. Spare-part and consumable rates are subject to prevailing market prices at the time of actual replacement.",
-    "Northern Star Engineering's total liability under this contract shall not exceed the annual AMC fee paid, and excludes consequential loss, property damage or injury where a notified fault was not authorised for repair/replacement.",
-    "The contract does not auto-renew. Either party may terminate with 30 days' written notice; a pro-rata refund is payable only for scheduled visits not yet performed.",
-    "This contract is governed by the laws of India; any dispute is subject to the exclusive jurisdiction of the courts at Surat, Gujarat.",
+    "What the contract covers: Regular inspection, testing and servicing of the listed fire equipment, at your site, for 12 months from activation.",
+    "Number of visits: As many visits as written in the quotation, spread across the year. Extra visits on request are charged.",
+    "Emergency visits: If something breaks between visits, we come on priority. Travel and labour are covered; spare parts are charged extra.",
+    "What's included: Routine servicing labour, cleaning and small fittings for the covered equipment.",
+    "What's not included: Replacing dead or damaged parts, refilling extinguishers, cylinder / hose / glass replacement, building electrical or plumbing work, or equipment added later without telling us.",
+    "Spare parts: If parts are needed, we send a separate quotation for your approval. You may say no — but then we are not responsible if a fire incident happens because of the declined repair. A waiver is recorded.",
+    "Site access: You must give us safe access to all equipment on the visit date (power, water, keys). If the site isn't ready, that visit counts as done.",
+    "Changing the date: Tell us at least 48 hours before; we will fix another date within the contract period.",
+    "Old equipment: For already-installed equipment, we only maintain it. Defects found at the first inspection are reported to you; fixing them is charged extra.",
+    "Warranties: Only the manufacturer's warranty applies; the AMC does not extend it.",
+    "Standards: Work follows Indian fire standards. NOC help is a separate service.",
+    "Your responsibilities: Keep equipment clean and reachable, report faults quickly, don't let anyone else service it during the contract, and use it properly.",
+    "Reports: You get a service report after every visit — please check and acknowledge it. Digital reports count as valid records.",
+    "Payment: The AMC fee is due within 7 days of activation. Service can pause for non-payment. GST is extra.",
+    "Price validity: The quotation is valid for the days written on it; spare-part prices follow market rates at the time of replacement.",
+    "Our liability limit: Maximum liability is the annual AMC fee. No liability for fire incidents if you declined recommended repairs.",
+    "Renewal & ending: Does not auto-renew. 30 days notice to cancel; refund only for visits not done yet.",
+    "Legal: Indian law applies. Any dispute goes to Surat, Gujarat courts only.",
 ]
 
 # Short terms printed on a stand-alone Fire Safety Audit Fee slip (service_type
@@ -75,49 +75,56 @@ AUDIT_TERMS = [
 # must read and accept (in-app, app-store style) once their contract is activated.
 # Bump AMC_AGREEMENT_VERSION whenever the clauses change so prior acceptances are
 # distinguishable. The agreement is view-only — clients cannot download it.
-AMC_AGREEMENT_VERSION = "1.0"
+AMC_AGREEMENT_VERSION = "2.0"
 AMC_AGREEMENT_CLAUSES = [
-    ("Scope of Service",
-     "The Annual Maintenance Contract covers inspection, testing, and routine servicing "
-     "of fire safety equipment at the registered site as per the agreed visit schedule. "
-     "Only equipment listed at the time of contract activation is covered under this agreement."),
-    ("Visit Schedule & Rescheduling",
-     "Northern Star Engineering will conduct the agreed number of visits across the contract "
-     "year, evenly spaced. The client must ensure site access on the scheduled date. If access "
-     "is denied, that visit is forfeited. Rescheduling requests must be made at least 48 hours "
-     "in advance."),
-    ("Spare Parts & Materials",
-     "Routine maintenance consumables are included. Replacement of damaged, expired, or "
-     "non-functional parts is quoted separately. The client is not obligated to accept a "
-     "material quotation, but Northern Star Engineering bears no liability for fire incidents "
-     "attributable to equipment for which the client has declined recommended replacement "
-     "(a waiver must be signed at the time of decline)."),
-    ("Equipment Not Covered",
-     "This contract does not cover equipment damaged due to misuse, vandalism, or acts of God; "
-     "third-party-installed equipment; civil or electrical infrastructure (piping, wiring, boards); "
-     "or equipment added to the site after activation without prior written intimation."),
-    ("Client Obligations",
-     "The client agrees to maintain the equipment in a clean and accessible state between visits; "
-     "report any fault or damage immediately; not engage a third party to service the same "
-     "equipment during the contract period; and ensure electrical supply and site access on "
-     "visit days."),
-    ("Liability Cap",
-     "Northern Star Engineering's total liability under this agreement, for any reason, shall not "
-     "exceed the annual contract fee paid. NSE is not liable for consequential losses, property "
-     "damage, or bodily injury arising from equipment failure where the client has been notified "
-     "of a fault and has not authorised repair or replacement."),
-    ("Payment Terms",
-     "The annual contract fee is due within 7 days of contract activation. Non-payment entitles "
-     "Northern Star Engineering to suspend service until full payment is received. All amounts are "
-     "inclusive of applicable GST (GST No. 24ALQPD0899P1ZD)."),
-    ("Contract Renewal & Termination",
-     "The contract is valid for 12 months from the activation date and does not auto-renew. "
-     "Either party may terminate with 30 days' written notice; NSE will refund a pro-rated amount "
-     "for unserved visits. No refund is payable if the client terminates after all visits are "
-     "consumed."),
-    ("Governing Law",
-     "This agreement is subject to the laws of India. Any dispute arising under this agreement "
-     "shall be subject to the exclusive jurisdiction of courts in Surat, Gujarat."),
+    ("What the contract covers",
+     "Regular inspection, testing and servicing of the listed fire equipment, at your site, for 12 months from activation. "
+     "This Annual Maintenance Contract covers periodic inspection, testing, and routine servicing of the fire-safety equipment "
+     "listed in this agreement, at the registered site only, for a period of twelve (12) months from activation."),
+    ("Number of visits",
+     "As many visits as written in the quotation, spread across the year. Extra visits on request are charged. "
+     "Northern Star Engineering will conduct the agreed number of scheduled visits spaced evenly across the contract year."),
+    ("Emergency visits",
+     "If something breaks between visits, we come on priority. Travel and labour are covered; spare parts are charged extra. "
+     "Reactive breakdown calls between scheduled visits are prioritized; replacement materials are quoted separately."),
+    ("What's included",
+     "Routine servicing labour, cleaning and small fittings for the covered equipment are included in the AMC fee."),
+    ("What's not included",
+     "Replacing dead or damaged parts, refilling extinguishers, cylinder / hose / glass replacement, "
+     "building electrical or plumbing work, or equipment added later without telling us."),
+    ("Spare parts",
+     "If parts are needed, we send a separate quotation for your approval. You may say no — but then we are not responsible "
+     "if a fire incident happens because of the declined repair. A formal liability waiver is recorded upon decline."),
+    ("Site access",
+     "You must give us safe access to all equipment on the visit date (power, water, keys). If the site isn't ready, "
+     "that visit counts as done and will not be carried forward."),
+    ("Changing the date",
+     "Tell us at least 48 hours before; we will fix another date within the contract period."),
+    ("Old equipment",
+     "For already-installed equipment, we only maintain it. Defects found at the first inspection are reported to you; "
+     "fixing them is charged extra outside the routine AMC scope."),
+    ("Warranties",
+     "Only the manufacturer's warranty applies; the AMC does not extend or substitute manufacturer warranties."),
+    ("Standards",
+     "Work follows Indian fire standards (NBC, BIS/IS). Statutory Fire NOC help is a separate service subject to fire officer inspection."),
+    ("Your responsibilities",
+     "Keep equipment clean and reachable, report faults quickly, don't let anyone else service it during the contract, and use it properly."),
+    ("Reports",
+     "You get a service report after every visit — please check and acknowledge it. Digital reports accessed via customer portal or email count as valid records."),
+    ("Payment",
+     "The AMC fee is due within 7 days of activation. Service can pause for non-payment. GST is extra (GST No. 24ALQPD0899P1ZD)."),
+    ("Price validity",
+     "The quotation is valid for the days written on it; spare-part prices follow market rates at the time of replacement."),
+    ("Our liability limit",
+     "Maximum liability is the annual AMC fee. No liability for fire incidents if you declined recommended repairs."),
+    ("Renewal & ending",
+     "Does not auto-renew. 30 days notice to cancel; refund only for visits not done yet."),
+    ("Legal",
+     "Indian law applies. Any dispute goes to Surat, Gujarat courts only."),
+    ("For taken-over sites",
+     "Entered 'as-is' after joint inspection. Working equipment maintained; pre-existing defects quoted separately."),
+    ("Free first year",
+     "If 1st year AMC is free as agreed, all terms apply; renewal in year 2 is chargeable at prevailing rates."),
 ]
 
 
@@ -547,13 +554,13 @@ def get_quotation_terms(q):
 
     # For handovers, one extra condition is added to the terms (the site is taken “as-is” after the joint inspection)
     if is_handover:
-        handover_clause = "The site and its fire protection systems are taken over on an 'as-is' basis following the joint inspection by the engineering and maintenance teams."
+        handover_clause = "For taken-over sites: Entered 'as-is' after joint inspection. Working equipment maintained; pre-existing defects quoted separately."
         if handover_clause not in terms:
             terms.append(handover_clause)
 
     # Free AMC adds a “first year free” line
     if is_free:
-        free_line = "First year AMC is provided complimentary (₹0 fee) by Northern Star Engineering as part of the project handover."
+        free_line = "Free first year: If 1st year AMC is free as agreed, all terms apply; renewal in year 2 is chargeable at prevailing rates."
         if free_line not in terms:
             terms.insert(0, free_line)
 
