@@ -1,5 +1,5 @@
 // Profile: view + edit the customer's details, plus sign out.
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { View, Text, ScrollView, StyleSheet, Alert } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "../api/client";
@@ -15,6 +15,20 @@ export default function ProfileScreen({ navigation }) {
     company_name: user?.company_name || "", gst_number: user?.gst_number || "",
   });
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      setForm({
+        name: user.name || "",
+        email: user.email || "",
+        area: user.area || "",
+        city: user.city || "",
+        address: user.address || "",
+        company_name: user.company_name || "",
+        gst_number: user.gst_number || "",
+      });
+    }
+  }, [user]);
 
   const set = (k) => (v) => setForm((f) => ({ ...f, [k]: v }));
 

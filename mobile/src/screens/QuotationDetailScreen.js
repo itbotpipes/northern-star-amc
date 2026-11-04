@@ -71,6 +71,16 @@ export default function QuotationDetailScreen({ route }) {
         <Text style={styles.valid}>Valid for {q.valid_days} days · {fmtDate(q.created_at)}</Text>
       </Card>
 
+      {(q.company_name || q.gst_number || q.customer_name || q.customer_address) ? (
+        <Card>
+          <SectionTitle>Client details</SectionTitle>
+          {q.company_name ? <Row label="Company" value={q.company_name} /> : null}
+          {q.customer_name ? <Row label="Contact" value={q.customer_name} /> : null}
+          {q.gst_number ? <Row label="GSTIN" value={q.gst_number} /> : null}
+          {q.customer_address ? <Row label="Address" value={q.customer_address} /> : null}
+        </Card>
+      ) : null}
+
       {/* Items */}
       <Card>
         <SectionTitle>Line items</SectionTitle>

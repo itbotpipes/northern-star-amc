@@ -13,16 +13,21 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     (async () => {
-      const token = await getToken();
-      if (token) {
-        try {
-          const { user } = await api.me();
-          setUser(user);
-        } catch {
-          await clearToken(); // token expired / invalid — force fresh login
+      try {
+        const token = await getToken();
+        if (token) {
+          try {
+            const { user } = await api.me();
+            setUser(user);
+          } catch {
+            await clearToken(); // token expired / invalid — force fresh login
+          }
         }
+      } catch (e) {
+        // ignore errors on startup token check
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     })();
   }, []);
 

@@ -5,6 +5,13 @@ import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
 
 // ---------------------------------------------------------------------------
+// Where the backend lives. Change this to your deployment.
+//   - Android emulator reaches your Mac's localhost at 10.0.2.2
+//   - iOS simulator can use 127.0.0.1
+//   - A physical phone must use your Mac's LAN IP (e.g. http://192.168.1.5:5055)
+//   - Production: the Vercel URL, e.g. https://app-amc-three.vercel.app
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 // Where the backend lives:
 //   - Web Browser preview: http://127.0.0.1:5055/api/v1
 //   - Physical Phone / Expo Go: http://192.168.1.10:5055/api/v1
