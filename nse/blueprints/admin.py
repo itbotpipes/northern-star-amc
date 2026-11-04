@@ -50,8 +50,6 @@ def _apply_reschedule(v, new_date):
 @login_required
 @staff_required
 def dashboard():
-    if current_user.is_technician:
-        return redirect(url_for("admin.day_plan"))
     pending_apps = Contract.query.filter_by(status="pending")\
         .order_by(Contract.created_at.desc()).all()
     active = Contract.query.filter_by(status="active").count()
@@ -210,8 +208,6 @@ def _generate_visits(c, start, n_visits, tech_id=None):
 @staff_required
 def leads():
     if request.method == "POST":
-        if not current_user.is_manager:
-            abort(403)
         f = request.form
         project_type = f.get("project_type", "new")   # new / existing
         phone = (f.get("phone") or "").strip()
@@ -237,13 +233,8 @@ def leads():
         flash(f"Lead created ({c.reference}). Schedule the inspection next.", "success")
         return redirect(url_for("admin.lead_detail", lead_id=c.id))
 
-    if not current_user.is_manager:
-        open_leads = (Contract.query.filter(Contract.lead_stage.isnot(None),
-                                            Contract.inspection_technician_id == current_user.id)
-                      .order_by(Contract.created_at.desc()).all())
-    else:
-        open_leads = (Contract.query.filter(Contract.lead_stage.isnot(None))
-                      .order_by(Contract.created_at.desc()).all())
+    open_leads = (Contract.query.filter(Contract.lead_stage.isnot(None))
+                  .order_by(Contract.created_at.desc()).all())
     return render_template("admin/leads.html", leads=open_leads)
 
 
@@ -305,7 +296,7 @@ def lead_detail(lead_id):
 
 @admin_bp.route("/lead/<int:lead_id>/schedule-inspection", methods=["POST"])
 @login_required
-@manager_required
+@staff_required
 def schedule_inspection(lead_id):
     c = db.session.get(Contract, lead_id) or abort(404)
     f = request.form
@@ -1611,11 +1602,11 @@ def refill_order(order_id):
         if o.customer_id:
             notify(o.customer_id, f"{o.reference} update",
                    f"Status: {o.status}. ETA: {o.team_eta or 'TBD'}.",
-                   link=url_for("portal.dashboard"))
+                   link=url_for("portal.requests_list"))
         if o.assigned_technician_id and o.assigned_technician_id != prev_tech_id:
             notify(o.assigned_technician_id, "Refill pickup assigned to you",
                    f"{o.reference} · {o.summary} — {o.area or o.address or 'site TBD'}.",
-                   link=f"/admin/refill/{o.id}")
+                   link=url_for("admin.refill_order", order_id=o.id))
         flash("Refill order updated.", "success")
         return redirect(url_for("admin.refill_order", order_id=o.id))
     return render_template("admin/refill.html", o=o, techs=techs)
@@ -2467,7 +2458,7 @@ def _maybe_issue_certificate(visit: Visit) -> None:
                "Your AMC Fire Safety Certificate is ready!",
                f"Congratulations! {c.reference} has completed its 4th service visit. "
                "Your framed fire safety compliance certificate is now available. View or download it from your portal.",
-               link=url_for("portal.amc_certificate", contract_id=c.id) + "?chime=1&celebrate=1")
+               link=url_for("portal.contract", contract_id=c.id) + "?chime=1&celebrate=1")
     # Also notify staff
     notify_staff("AMC certificate issued",
                  f"{c.reference} completed 4 visits — framed certificate issued.",
@@ -2599,7 +2590,7 @@ def calendar():
 
 @admin_bp.route("/analytics")
 @login_required
-@manager_required
+@staff_required
 def analytics():
     """KPI analytics: contract revenue, visit completion, equipment health."""
     from sqlalchemy import func
@@ -2809,6 +2800,11 @@ def ticket_detail(ticket_id):
         elif action == "close":
             t.status = "closed"
             db.session.commit()
+            if t.customer_id:
+                notify(t.customer_id,
+                       f"Complaint {t.reference} closed",
+                       f"Complaint '{t.title}' has been closed. Tap to view details.",
+                       link=url_for("portal.ticket_detail", ticket_id=t.id))
             flash(f"{t.reference} closed.", "info")
 
         return redirect(url_for("admin.ticket_detail", ticket_id=t.id))
@@ -3302,7 +3298,7 @@ def installment_pay(inst_id):
 # =========================================================================== #
 @admin_bp.route("/insights")
 @login_required
-@manager_required
+@staff_required
 def insights():
     from sqlalchemy import func
     active = Contract.query.filter_by(status="active").all()
@@ -3501,6 +3497,14 @@ def quotation_confirm_cash_received(quote_id):
             ref_id=q.contract_id,
             created_by_id=current_user.id
         ))
+        notify(q.contract.customer_id, "Payment confirmed — thank you!",
+               f"Cash payment of ₹{amount:,.0f} for material quotation {q.reference} has been confirmed.",
+               link=url_for("portal.dashboard"))
+        try:
+            from ..email_service import send_payment_confirmation
+            send_payment_confirmation(q.contract, int(amount), "cash")
+        except Exception:
+            pass
     db.session.commit()
     flash(f"Cash payment of ₹{amount:,.0f} confirmed as CASH RECEIVED for quotation {q.reference}.", "success")
     return redirect(request.referrer or url_for("admin.visit", visit_id=q.visit_id))

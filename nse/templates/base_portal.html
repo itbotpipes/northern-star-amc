@@ -60,7 +60,7 @@
           </div>
           <div style="max-height:300px;overflow-y:auto;">
             {% for n in recent_notifications %}
-            <a href="{{ n.link or url_for('portal.notifications') }}" style="display:block;padding:10px 14px;font-size:12.5px;border-bottom:1px solid var(--hair3);text-decoration:none;color:var(--ink);{% if not n.read %}font-weight:600;{% endif %}">
+            <a href="{{ url_for('portal.open_notification', notif_id=n.id) if n.id else (n.link or url_for('portal.notifications')) }}" style="display:block;padding:10px 14px;font-size:12.5px;border-bottom:1px solid var(--hair3);text-decoration:none;color:var(--ink);{% if not n.read %}font-weight:600;{% endif %}">
               <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ n.title }}</div>
               {% if n.body %}<div style="color:var(--ink3);font-size:11.5px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ n.body[:80] }}</div>{% endif %}
               <div style="color:var(--ink4);font-size:11px;margin-top:2px;">{{ n.created_at|datefmt }}</div>
@@ -114,5 +114,9 @@
 
 {% include "_chat_widget.html" %}
 
+<script>
+  function nseChime(){try{var C=window.AudioContext||window.webkitAudioContext;if(!C)return;var c=new C(),notes=[[880,0],[1318.5,.12]];notes.forEach(function(n){var o=c.createOscillator(),g=c.createGain();o.type='sine';o.frequency.value=n[0];o.connect(g);g.connect(c.destination);var t=c.currentTime+n[1];g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.3,t+.02);g.gain.exponentialRampToValueAtTime(.0001,t+.5);o.start(t);o.stop(t+.55);});}catch(e){}}
+  document.addEventListener('DOMContentLoaded',function(){if(!!document.querySelector('[data-nse-chime]')||new URLSearchParams(window.location.search).get('chime')==='1')nseChime();});
+</script>
 {% block scripts %}{% endblock %}
 {% endblock body %}

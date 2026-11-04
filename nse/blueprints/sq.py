@@ -439,6 +439,18 @@ def detail_quotation(sq_id):
             flash("Quotation updated.", "success")
 
         elif action == "send":
+            # Auto-link customer account if missing
+            if not sq.customer_id:
+                phone = (sq.customer_phone or "").strip()
+                email = (sq.customer_email or "").strip()
+                u = None
+                if phone:
+                    u = User.query.filter_by(phone=phone).first()
+                if not u and email:
+                    u = User.query.filter_by(email=email).first()
+                if u:
+                    sq.customer_id = u.id
+
             # Generate PDF and email to customer
             pdf = generate_quotation_pdf(sq)
             if pdf and sq.customer_email:
@@ -457,6 +469,13 @@ def detail_quotation(sq_id):
             elif pdf:
                 sq.status = "sent"
                 sq.sent_at = datetime.utcnow()
+                if sq.customer_id:
+                    notify(sq.customer_id, f"Quotation {sq.reference} sent",
+                           f"Your quotation for {sq.project_name or sq.service_type.upper()} is ready.",
+                           link=url_for("portal.service_quotation", sq_id=sq.id))
+                _log_event(sq.customer_id, "quote_sent",
+                           f"Quotation {sq.reference} marked as sent",
+                           "service_quotation", sq.id)
                 db.session.commit()
                 flash("Quotation marked as sent (no email — no customer email on file).", "warning")
             else:
@@ -706,6 +725,12 @@ def mark_paid(sq_id):
                    f"Customer portal access issued for {sq.customer_name} ({sq.customer_phone}). Login via Mobile OTP.",
                    "service_quotation", sq.id)
     db.session.commit()
+
+    try:
+        from ..email_service import send_payment_confirmation
+        send_payment_confirmation(sq, int(sq.grand_total), sq.payment_method_label)
+    except Exception:
+        pass
 
     if sq.customer_id:
         if sq.contract_id:

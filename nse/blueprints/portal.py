@@ -219,7 +219,7 @@ def agreement_accept(contract_id):
     db.session.commit()
     notify_staff(f"AMC agreement signed — {c.reference}",
                  f"{current_user.name} signed the maintenance agreement for {c.reference}.",
-                 link=url_for("admin.contract", contract_id=c.id))
+                 link=url_for("admin.contract", contract_id=c.id) + "?chime=1")
     flash("Thank you — your AMC agreement is confirmed.", "success_chime")
     return redirect(url_for("portal.contract", contract_id=c.id))
 
@@ -498,6 +498,21 @@ def notifications():
     return render_template("portal/notifications.html", notes=notes)
 
 
+@portal_bp.route("/notification/<int:notif_id>/open")
+@login_required
+def open_notification(notif_id):
+    """Mark a notification read and immediately follow its link to the destination."""
+    n = db.session.get(Notification, notif_id)
+    if n and n.user_id == current_user.id:
+        n.read = True
+        db.session.commit()
+        if n.link:
+            return redirect(n.link)
+    if getattr(current_user, "is_customer", False):
+        return redirect(url_for("portal.notifications"))
+    return redirect(url_for("admin.notifications"))
+
+
 # ─────────────────────────────────────────────────────────────────
 # Service Quotations (sales proposals)
 # ─────────────────────────────────────────────────────────────────
@@ -648,8 +663,7 @@ def service_quotation_accept(sq_id):
         f"Quotation {sq.reference} ACCEPTED",
         f"{sq.customer_name} accepted ₹{sq.grand_total:,.0f}. "
         f"{'Contract ' + sq.contract.reference + ' can now be activated.' if sq.contract else ''}".strip(),
-        link=url_for("admin.contract", contract_id=sq.contract_id) if sq.contract_id
-             else url_for("sq.detail_quotation", sq_id=sq.id))
+        link=url_for("sq.detail_quotation", sq_id=sq.id) + "?chime=1")
     flash("Quotation accepted! Our team will contact you shortly to proceed.", "success_chime")
     return redirect(url_for("portal.service_quotation", sq_id=sq_id))
 
@@ -934,6 +948,8 @@ def amc_certificate(contract_id):
     c = db.session.get(Contract, contract_id)
     if not c or c.customer_id != current_user.id:
         abort(404)
+    if request.args.get("celebrate") == "1":
+        return redirect(url_for("portal.contract", contract_id=c.id, celebrate="1", chime="1"))
     if not c.certificate_issued:
         flash("Your certificate will be available after your 4th completed visit.", "info")
         return redirect(url_for("portal.contract", contract_id=c.id))

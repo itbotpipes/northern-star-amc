@@ -18,14 +18,24 @@
   {% if notes %}
   <div class="card divide-y" style="--tw-divide-opacity:1">
     {% for n in notes %}
-    <div class="flex items-start gap-3 px-5 py-4 {% if not n.read %}bg-amber-50/40{% endif %}" style="border-bottom:1px solid var(--hair)">
+    <a href="{{ url_for('portal.open_notification', notif_id=n.id) if n.id else (n.link or '#') }}"
+       class="flex items-start gap-3 px-5 py-4 transition hover:bg-slate-50 {% if not n.read %}bg-amber-50/40{% endif %}"
+       style="border-bottom:1px solid var(--hair);text-decoration:none;display:flex;">
       <span class="mt-1.5 w-2 h-2 rounded-full flex-shrink-0 {% if not n.read %}bg-amber{% else %}bg-slate-300{% endif %}"></span>
       <div class="min-w-0 flex-1">
-        <div class="font-semibold text-ink {% if not n.read %}{% else %}text-ink-subtle{% endif %}">{{ n.title }}</div>
+        <div class="flex items-center justify-between gap-2">
+          <div class="font-semibold text-ink {% if not n.read %}{% else %}text-ink-subtle{% endif %}">{{ n.title }}</div>
+          <div class="text-xs text-ink-tertiary whitespace-nowrap">{{ n.created_at|datefmt }}</div>
+        </div>
         {% if n.body %}<div class="text-sm text-ink-subtle mt-0.5">{{ n.body }}</div>{% endif %}
-        <div class="text-xs text-ink-tertiary mt-1">{{ n.created_at|datefmt }}</div>
+        {% if n.link %}
+        <div class="text-xs font-semibold mt-1.5 flex items-center gap-1" style="color:var(--pri, #072076);">
+          <span>Open page</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </div>
+        {% endif %}
       </div>
-    </div>
+    </a>
     {% endfor %}
   </div>
   {% else %}

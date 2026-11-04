@@ -171,11 +171,11 @@ def create_app(config_class=Config, root=None):
             "open_enquiry_count": open_enquiry_count if current_user and current_user.is_authenticated and current_user.is_staff else 0,
             "RAZORPAY_ENABLED": Config.razorpay_enabled(),
             "can_see_customer_contact": (
-                current_user.is_authenticated and (
+                bool(current_user and getattr(current_user, "is_authenticated", False) and (
                     getattr(current_user, "is_manager", False) or
                     getattr(current_user, "is_admin", False) or
                     getattr(current_user, "role", None) in ("owner", "customer")
-                )
+                ))
             ),
             "now": datetime.utcnow(),
             "today": date.today(),

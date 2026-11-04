@@ -18,7 +18,7 @@
   {% if notes %}
   <div class="space-y-2">
     {% for n in notes %}
-    <a href="{{ n.link or '#' }}"
+    <a href="{{ url_for('portal.open_notification', notif_id=n.id) if n.id else (n.link or '#') }}"
        class="block rounded-xl border px-5 py-4 transition hover:border-primary {% if not n.read %}border-primary bg-amber-50/40{% else %}border-slate-200 bg-white{% endif %}">
       <div class="flex items-start gap-3">
         <span class="mt-1.5 w-2 h-2 rounded-full flex-shrink-0 {% if not n.read %}bg-amber{% else %}bg-slate-300{% endif %}"></span>

@@ -128,7 +128,7 @@ def process_visit_reminders():
                     sent_to="customer").first()
                 if not already:
                     try:
-                        link = url_for("portal.contract", contract_id=c.id)
+                        link = url_for("portal.visit", visit_id=v.id)
                     except Exception:
                         link = None
                     notify(c.customer_id,

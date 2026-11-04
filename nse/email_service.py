@@ -174,10 +174,11 @@ def send_feedback_request(visit, feedback_token: str) -> bool:
 
 def send_payment_confirmation(contract_or_order, amount: int, mode: str) -> bool:
     """Email payment confirmation to customer and staff."""
-    # Works for both Contract and RefillOrder (duck typing — both have applicant_email / email)
-    to = getattr(contract_or_order, "applicant_email", None) \
-        or getattr(contract_or_order, "email", None)
-    ref = getattr(contract_or_order, "reference", str(contract_or_order.id))
+    # Works for Contract, RefillOrder, Quotation, and ServiceQuotation
+    to = (getattr(contract_or_order, "applicant_email", None)
+          or getattr(contract_or_order, "customer_email", None)
+          or getattr(contract_or_order, "email", None))
+    ref = getattr(contract_or_order, "reference", str(getattr(contract_or_order, "id", "")))
 
     if not to:
         return False

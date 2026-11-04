@@ -8,7 +8,7 @@ from ..extensions import db
 from ..models import (AMCPlan, Contract, ServiceRequest, Enquiry, User,
                       RefillOrder, RefillItem, FormAttachment, VisitFeedback,
                       CustomerJourneyEvent, ServiceQuotation, InquiryHistory)
-from ..utils import notify_staff, notify_managers, notify_team_leaders, save_upload, upi_qr_data_uri
+from ..utils import notify, notify_staff, notify_managers, notify_team_leaders, save_upload, upi_qr_data_uri
 
 public_bp = Blueprint("public", __name__)
 
@@ -490,6 +490,16 @@ def visit_feedback(token):
             ))
 
         db.session.commit()
+
+        # Notify technician and staff
+        if fb.technician_id:
+            notify(fb.technician_id, f"{fb.rating_overall}/5 — {fb.visit.label} rated",
+                   f"Customer rated {fb.visit.label} of {fb.visit.contract.reference} {fb.rating_overall}/5.",
+                   link=url_for("admin.visit", visit_id=fb.visit_id))
+        notify_staff(f"Feedback received — {fb.visit.contract.reference} {fb.visit.label}",
+                     f"Customer rated {fb.rating_overall}/5"
+                     + (f": {fb.comment[:80]}" if fb.comment else "."),
+                     link=url_for("admin.visit", visit_id=fb.visit_id))
         return render_template("site/feedback_done.html", fb=fb)
 
     return render_template("site/feedback_form.html", fb=fb)
@@ -524,7 +534,14 @@ def custom_plan():
                     subject="Custom AMC Plan Enquiry",
                     message=message, status="new")
         db.session.add(e)
+        db.session.flush()
+        e.reference = f"INQ-{e.id:04d}"
         db.session.commit()
+        notify_managers(
+            title=f"New Custom Plan Enquiry — {e.reference}",
+            body=f"{name} submitted custom AMC inquiry. Tap to review lead.",
+            link=url_for("admin.enquiry_detail", enq_id=e.id)
+        )
         flash("Thank you! Our team will contact you within 24 hours with a tailored plan.", "success")
         return redirect(url_for("public.custom_plan"))
     return render_template("site/custom_plan.html")
@@ -627,7 +644,7 @@ def public_quote_pay(token):
         f"Quotation {sq.reference} accepted (pay by {sq.payment_method_label})",
         f"{sq.customer_name} chose to pay ₹{sq.grand_total:,.0f} by {sq.payment_method_label}. "
         f"{'Confirm payment once received.' if method != 'upi' else 'Verify the UPI payment.'}",
-        link=url_for("sq.detail_quotation", sq_id=sq.id))
+        link=url_for("sq.detail_quotation", sq_id=sq.id) + "?chime=1")
 
     if method == "upi":
         return redirect(url_for("public.public_quote_upi", token=token))
