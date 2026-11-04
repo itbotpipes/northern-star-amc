@@ -116,21 +116,12 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
         Health Reports
       </a>
-      <a href="{{ url_for('admin.rework_list') }}" class="snav {{ 'active' if _ep in ('admin.rework_list',) }}">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>
-        <span style="flex:1;">Rework</span>
-        {% if open_rework_count %}<span style="background:#d23f3f;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:999px;">{{ open_rework_count }}</span>{% endif %}
-      </a>
 
       <div class="snav-section">Operations</div>
       <a href="{{ url_for('admin.enquiries') }}" class="snav {{ 'active' if _ep in ('admin.enquiries', 'admin.enquiry_detail', 'admin.enquiry_new', 'admin.enquiry_checklist') }}">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
         <span style="flex:1;">Inquiries</span>
         {% if open_enquiry_count %}<span style="background:#f59e0b;color:#18181b;font-size:10px;font-weight:700;padding:1px 6px;border-radius:999px;">{{ open_enquiry_count }}</span>{% endif %}
-      </a>
-      <a href="{{ url_for('admin.refills_list') }}" class="snav {{ 'active' if _ep in ('admin.refills_list','admin.refill_order') }}">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M14 4c-3 0-5 3-5 8 0 1-1 2-2 3-1 1-2 3 0 4h14c2-1 1-3 0-4-1-1-2-2-2-3 0-5-2-8-5-8z"/></svg>
-        Refill Orders
       </a>
       <a href="{{ url_for('admin.requests_list') }}" class="snav {{ 'active' if _ep in ('admin.requests_list','admin.service_request') }}">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 2a7 7 0 00-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 00-7-7z"/><path d="M12 9v3M12 15h.01"/></svg>

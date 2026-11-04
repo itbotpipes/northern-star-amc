@@ -766,6 +766,68 @@ def activate_contract(contract_id):
     return redirect(url_for("admin.contract", contract_id=c.id))
 
 
+@admin_bp.route("/contract/<int:contract_id>/add-visit", methods=["POST"])
+@login_required
+@manager_required
+def add_extra_visit(contract_id):
+    c = db.session.get(Contract, contract_id) or abort(404)
+    f = request.form
+    label = (f.get("custom_label") or "").strip()
+    v_type = (f.get("visit_type") or "complimentary").strip()
+    date_str = f.get("scheduled_date")
+    sched_date = datetime.strptime(date_str, "%Y-%m-%d").date() if date_str else date.today()
+    sched_time = (f.get("scheduled_time") or "").strip() or None
+    tech_id = f.get("technician_id", type=int) or None
+    notes = (f.get("notes") or "").strip() or None
+
+    existing_nums = [v.visit_number for v in c.visits]
+    next_num = (max(existing_nums) if existing_nums else 0) + 1
+
+    if not label:
+        if v_type == "complimentary":
+            label = "Diwali Complimentary Visit"
+        elif v_type == "emergency":
+            label = f"Emergency Site Visit #{next_num}"
+        else:
+            label = f"Extra Visit #{next_num}"
+
+    v = Visit(
+        contract_id=c.id,
+        visit_number=next_num,
+        custom_label=label,
+        visit_type=v_type,
+        scheduled_date=sched_date,
+        scheduled_time=sched_time,
+        technician_id=tech_id,
+        notes=notes,
+        status="scheduled",
+    )
+    db.session.add(v)
+    if c.total_visits and next_num > c.total_visits:
+        c.total_visits = next_num
+
+    db.session.add(CustomerJourneyEvent(
+        customer_id=c.customer_id,
+        event_type="visit_scheduled",
+        description=f"Special visit scheduled: {label} on {sched_date.strftime('%d %b %Y')}",
+        ref_type="visit", ref_id=v.id,
+        created_by_id=current_user.id
+    ))
+    db.session.commit()
+
+    if c.customer_id:
+        notify(c.customer_id, f"Special Visit Scheduled: {label}",
+               f"{label} has been scheduled for {sched_date.strftime('%d %b %Y')} at {c.site_name or c.reference}.",
+               link=url_for("portal.contract", contract_id=c.id))
+    if tech_id:
+        notify(tech_id, f"Assigned to {label}",
+               f"You have been assigned to {label} at {c.site_name or c.reference} on {sched_date.strftime('%d %b %Y')}.",
+               link=url_for("admin.visit", visit_id=v.id))
+
+    flash(f"{label} successfully scheduled.", "success")
+    return redirect(url_for("admin.contract", contract_id=c.id))
+
+
 @admin_bp.route("/contract/<int:contract_id>/payment", methods=["POST"])
 @login_required
 @manager_required
@@ -2499,11 +2561,20 @@ def calendar():
               .order_by(Visit.scheduled_date)
               .all())
 
-    # Group by day number
+    # Group visits by day number
     by_day = {}
     for v in visits:
         day = v.scheduled_date.day
         by_day.setdefault(day, []).append(v)
+
+    # Group scheduled maintenance tasks / complaints by day number
+    scheduled_tickets = (SupportTicket.query
+                         .filter(SupportTicket.scheduled_date >= first_day,
+                                 SupportTicket.scheduled_date <= last_day)
+                         .all())
+    by_day_tickets = {}
+    for t in scheduled_tickets:
+        by_day_tickets.setdefault(t.scheduled_date.day, []).append(t)
 
     # Build calendar grid (list of weeks, each week = 7 day numbers / 0=blank)
     cal_grid = _cal.monthcalendar(year, month)
@@ -2515,6 +2586,8 @@ def calendar():
 
     return render_template("admin/calendar.html",
                            cal_grid=cal_grid, by_day=by_day,
+                           by_day_tickets=by_day_tickets,
+                           scheduled_tickets=scheduled_tickets,
                            month_name=month_name, year=year, month=month,
                            prev_month=prev_month, prev_year=prev_year,
                            next_month=next_month, next_year=next_year)
@@ -2584,17 +2657,97 @@ def analytics():
 @login_required
 @staff_required
 def tickets():
-    """List all support tickets for staff — all statuses, most recent first."""
-    status_filter = request.args.get("status", "")
+    """List all support tickets & site backlog tasks for staff."""
+    status_filter = request.args.get("status", "").strip().lower()
     q = SupportTicket.query
-    if status_filter:
+
+    today = date.today()
+    if status_filter == "today":
+        q = q.filter(SupportTicket.created_at >= datetime.combine(today, datetime.min.time()))
+    elif status_filter == "backlog":
+        q = q.filter(SupportTicket.status.in_(["open", "acknowledged"]), SupportTicket.scheduled_date == None)
+    elif status_filter == "scheduled":
+        q = q.filter(SupportTicket.status.in_(["open", "acknowledged"]), SupportTicket.scheduled_date != None)
+    elif status_filter in ("open", "acknowledged", "resolved", "closed"):
         q = q.filter(SupportTicket.status == status_filter)
+
     all_tickets = q.order_by(SupportTicket.created_at.desc()).all()
     open_count = SupportTicket.query.filter(
         SupportTicket.status.in_(["open", "acknowledged"])).count()
+    today_count = SupportTicket.query.filter(
+        SupportTicket.created_at >= datetime.combine(today, datetime.min.time())).count()
+    backlog_count = SupportTicket.query.filter(
+        SupportTicket.status.in_(["open", "acknowledged"]), SupportTicket.scheduled_date == None).count()
+    scheduled_count = SupportTicket.query.filter(
+        SupportTicket.status.in_(["open", "acknowledged"]), SupportTicket.scheduled_date != None).count()
+
+    active_contracts = Contract.query.filter(Contract.status.in_(["active", "pending"])).order_by(Contract.site_name).all()
+    techs = User.query.filter(User.role.in_(["technician", "admin", "manager"])).all()
+
     return render_template("admin/tickets.html",
                            tickets=all_tickets, open_count=open_count,
-                           status_filter=status_filter)
+                           today_count=today_count, backlog_count=backlog_count,
+                           scheduled_count=scheduled_count,
+                           status_filter=status_filter,
+                           active_contracts=active_contracts, techs=techs)
+
+
+@admin_bp.route("/ticket/new", methods=["POST"])
+@login_required
+@staff_required
+def ticket_create():
+    """Manual complaint / maintenance work backlog entry by manager or staff."""
+    f = request.form
+    title = (f.get("title") or "").strip()
+    description = (f.get("description") or "").strip()
+    if not title:
+        flash("Please provide a title or work summary.", "warning")
+        return redirect(url_for("admin.tickets"))
+
+    contract_id = f.get("contract_id", type=int) or None
+    c = db.session.get(Contract, contract_id) if contract_id else None
+    customer_id = c.customer_id if c else None
+    if not customer_id:
+        customer_id = current_user.id
+
+    category = (f.get("category") or "complaint").strip()
+    source = (f.get("source") or "diary").strip()
+    site_name = (f.get("site_name") or (c.site_name if c else "")).strip() or None
+    caller_name = (f.get("caller_name") or (c.applicant_name if c else "")).strip() or None
+    caller_phone = (f.get("caller_phone") or (c.applicant_phone if c else "")).strip() or None
+    priority = (f.get("priority") or "normal").strip()
+
+    tech_id = f.get("assigned_to_id", type=int) or None
+    date_str = (f.get("scheduled_date") or "").strip()
+    sched_date = datetime.strptime(date_str, "%Y-%m-%d").date() if date_str else None
+
+    t = SupportTicket(
+        customer_id=customer_id,
+        contract_id=contract_id,
+        title=title,
+        description=description or f"Logged from {source}: {title}",
+        category=category,
+        source=source,
+        site_name=site_name,
+        caller_name=caller_name,
+        caller_phone=caller_phone,
+        priority=priority,
+        assigned_to_id=tech_id,
+        scheduled_date=sched_date,
+        status="open"
+    )
+    db.session.add(t)
+    db.session.commit()
+
+    if tech_id and sched_date:
+        notify(tech_id, f"Work Task Assigned: {t.reference}",
+               f"Assigned task: '{title}' scheduled for {sched_date.strftime('%d %b %Y')}.",
+               link=url_for("admin.ticket_detail", ticket_id=t.id))
+        flash(f"{t.reference} logged and scheduled for {sched_date.strftime('%d %b %Y')}.", "success")
+    else:
+        flash(f"{t.reference} saved to Maintenance Backlog. You can assign and take into calendar when team is free.", "success")
+
+    return redirect(url_for("admin.tickets"))
 
 
 @admin_bp.route("/ticket/<int:ticket_id>", methods=["GET", "POST"])
@@ -2638,6 +2791,21 @@ def ticket_detail(ticket_id):
                        link=url_for("portal.ticket_detail", ticket_id=t.id))
             flash(f"{t.reference} marked resolved.", "success_chime")
 
+        elif action == "assign_schedule":
+            tech_id = request.form.get("assigned_to_id", type=int) or None
+            date_str = (request.form.get("scheduled_date") or "").strip()
+            sched_date = datetime.strptime(date_str, "%Y-%m-%d").date() if date_str else None
+            t.assigned_to_id = tech_id
+            t.scheduled_date = sched_date
+            if tech_id and sched_date and t.status == "open":
+                t.status = "acknowledged"
+            db.session.commit()
+            if tech_id:
+                notify(tech_id, f"Work Task Scheduled: {t.reference}",
+                       f"Task '{t.title}' scheduled for {sched_date.strftime('%d %b %Y') if sched_date else 'TBD'}.",
+                       link=url_for("admin.ticket_detail", ticket_id=t.id))
+            flash(f"{t.reference} updated in schedule.", "success")
+
         elif action == "close":
             t.status = "closed"
             db.session.commit()
@@ -2645,7 +2813,8 @@ def ticket_detail(ticket_id):
 
         return redirect(url_for("admin.ticket_detail", ticket_id=t.id))
 
-    return render_template("admin/ticket_detail.html", ticket=t)
+    users = User.query.filter(User.role.in_(["technician", "admin", "manager"])).all()
+    return render_template("admin/ticket_detail.html", ticket=t, users=users)
 
 
 # --------------------------------------------------------------------------- #

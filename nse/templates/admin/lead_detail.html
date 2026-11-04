@@ -13,7 +13,7 @@
       <div>
         <h3 class="font-bold text-emerald-950 text-base">Inspection Scheduled! Send WhatsApp Update</h3>
         <p class="text-sm text-emerald-800 mt-0.5">
-          Notification dispatched to client and technician. You can now send the scheduled visit details directly to <strong>{{ client_phone }}</strong> via WhatsApp.
+          {% if can_see_customer_contact %}Notification dispatched to client and technician. You can now send the scheduled visit details directly to <strong>{{ client_phone }}</strong> via WhatsApp.{% else %}Inspection scheduled and dispatched. Site coordinates and assignment logged.{% endif %}
         </p>
       </div>
     </div>
@@ -42,7 +42,7 @@
       <div>
         <span class="text-ink-subtle">Phone</span>
         <div class="font-semibold flex items-center gap-2">
-          {{ c.applicant_phone or (c.customer.phone if c.customer) or '—' }}
+          {{ (c.applicant_phone or (c.customer.phone if c.customer) or '')|privacy_phone }}
           {% if whatsapp_share %}
           <a href="{{ whatsapp_share }}" target="_blank" title="Send WhatsApp Message"
              class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full text-emerald-800 bg-emerald-100 hover:bg-emerald-200">
@@ -70,7 +70,7 @@
       </div>
       {% endif %}
       {% if c.project_type in ('existing', 'handover') or c.is_handover %}
-      <div><span class="text-ink-subtle">SPOC</span><div class="font-semibold">{{ c.spoc_name or '—' }}{% if c.spoc_role %} ({{ c.spoc_role }}){% endif %}{% if c.spoc_phone %} · {{ c.spoc_phone }}{% endif %}</div></div>
+      <div><span class="text-ink-subtle">SPOC</span><div class="font-semibold">{{ c.spoc_name or '—' }}{% if c.spoc_role %} ({{ c.spoc_role }}){% endif %}{% if c.spoc_phone and can_see_customer_contact %} · {{ c.spoc_phone }}{% endif %}</div></div>
       {% endif %}
     </div>
     {% if c.problem_description %}
@@ -293,7 +293,7 @@
           {{ c.created_at|datefmt }} · Via website enquiry form
         </div>
         <p class="text-xs text-ink-muted mt-1">
-          Client: {{ c.applicant_name or (c.customer.name if c.customer) }} ({{ c.applicant_phone or (c.customer.phone if c.customer) }})
+          Client: {{ c.applicant_name or (c.customer.name if c.customer) }}{% if can_see_customer_contact %} ({{ c.applicant_phone or (c.customer.phone if c.customer) }}){% endif %}
           {% if c.property_type %} · Property: {{ c.property_type }}{% endif %}
           {% if c.area %} · Area: {{ c.area }}{% endif %}
         </p>

@@ -27,8 +27,10 @@
 
       <p class="text-xs text-ink-subtle mt-1 flex items-center gap-2 flex-wrap">
         <span>📍 {{ e.address or e.area or 'Site address pending' }}{% if e.area and e.address %}, {{ e.area }}{% endif %}</span>
-        {% if e.phone %}
+        {% if can_see_customer_contact and e.phone %}
         <span>• 📞 <a href="tel:{{ e.phone }}" class="text-primary font-semibold hover:underline">{{ e.phone }}</a></span>
+        {% elif not can_see_customer_contact %}
+        <span class="text-ink-subtle">• 🔒 Client Contact: <span class="italic">[Protected]</span></span>
         {% endif %}
       </p>
 

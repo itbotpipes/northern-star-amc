@@ -1,21 +1,59 @@
 {% extends "base_ops.html" %}
-{% block title %}Complaints & Tickets — Ops Console{% endblock %}
+{% block title %}Complaints & Maintenance Backlog — Ops Console{% endblock %}
 {% block content %}
-<section class="max-w-5xl mx-auto px-4 py-10">
-  <div class="flex items-center justify-between flex-wrap gap-3 mb-6">
+<section class="max-w-6xl mx-auto px-4 py-8">
+  <div class="flex items-center justify-between flex-wrap gap-4 mb-6">
     <div>
-      <h1 class="text-2xl font-extrabold text-ink">Complaints &amp; Tickets</h1>
-      <p class="text-ink-subtle text-sm mt-1">
-        {{ open_count }} open {{ 'ticket' if open_count == 1 else 'tickets' }} requiring attention.
+      <h1 class="text-2xl font-extrabold text-ink">Complaints &amp; Maintenance Backlog</h1>
+      <p class="text-ink-subtle text-sm mt-0.5">
+        Track daily site complaints, management directives, and maintenance team backlog tasks.
       </p>
+    </div>
+    {% if current_user.is_manager or current_user.is_staff %}
+    <button type="button" onclick="document.getElementById('logComplaintModal').classList.remove('hidden')"
+            class="inline-flex items-center gap-2 bg-navy-800 text-white font-bold text-xs px-4 py-2.5 rounded-xl hover:bg-navy-700 shadow-sm transition">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
+      + Log Complaint / Work Task
+    </button>
+    {% endif %}
+  </div>
+
+  <!-- KPI strip for daily tracking & backlog -->
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+    <div class="card p-4 border-l-4 border-l-red-500">
+      <div class="text-2xl font-extrabold text-ink">{{ today_count }}</div>
+      <div class="text-xs text-ink-subtle font-medium mt-0.5">Received Today</div>
+    </div>
+    <div class="card p-4 border-l-4 border-l-amber-500">
+      <div class="text-2xl font-extrabold text-ink">{{ backlog_count }}</div>
+      <div class="text-xs text-ink-subtle font-medium mt-0.5">Backlog (Unscheduled)</div>
+    </div>
+    <div class="card p-4 border-l-4 border-l-blue-500">
+      <div class="text-2xl font-extrabold text-ink">{{ scheduled_count }}</div>
+      <div class="text-xs text-ink-subtle font-medium mt-0.5">Scheduled in Calendar</div>
+    </div>
+    <div class="card p-4 border-l-4 border-l-navy-800">
+      <div class="text-2xl font-extrabold text-ink">{{ open_count }}</div>
+      <div class="text-xs text-ink-subtle font-medium mt-0.5">Total Open &amp; Active</div>
     </div>
   </div>
 
-  <!-- Status filter chips -->
-  <div class="flex flex-wrap gap-2 mb-5">
-    {% for label, val in [('All', ''), ('Open', 'open'), ('Acknowledged', 'acknowledged'), ('Resolved', 'resolved'), ('Closed', 'closed')] %}
+  <!-- Filter chips -->
+  <div class="flex flex-wrap items-center gap-2 mb-5">
+    {% for label, val, cnt in [
+      ('All', '', tickets|length),
+      ('Today', 'today', today_count),
+      ('Backlog (Unscheduled)', 'backlog', backlog_count),
+      ('Scheduled', 'scheduled', scheduled_count),
+      ('Open', 'open', None),
+      ('Acknowledged', 'acknowledged', None),
+      ('Resolved', 'resolved', None),
+      ('Closed', 'closed', None)
+    ] %}
     <a href="{{ url_for('admin.tickets', status=val) }}"
-       class="filter-chip {{ 'active' if status_filter == val }}">{{ label }}</a>
+       class="filter-chip {{ 'active' if status_filter == val }}">
+      {{ label }}{% if cnt is not none %} ({{ cnt }}){% endif %}
+    </a>
     {% endfor %}
   </div>
 
@@ -24,55 +62,95 @@
     <table class="w-full text-sm">
       <thead class="bg-slate-50 text-xs uppercase text-ink-subtle border-b border-hairline">
         <tr>
-          <th class="px-4 py-2.5 text-left">Ref</th>
-          <th class="px-4 py-2.5 text-left">Customer</th>
-          <th class="px-4 py-2.5 text-left">Subject</th>
+          <th class="px-4 py-2.5 text-left">Ref &amp; Category</th>
+          <th class="px-4 py-2.5 text-left">Site / Client</th>
+          <th class="px-4 py-2.5 text-left">Summary &amp; Source</th>
           <th class="px-4 py-2.5 text-center">Priority</th>
+          <th class="px-4 py-2.5 text-left">Assigned / Schedule</th>
           <th class="px-4 py-2.5 text-center">Status</th>
-          <th class="px-4 py-2.5 text-center">Raised</th>
           <th class="px-4 py-2.5 text-right">Action</th>
         </tr>
       </thead>
       <tbody>
         {% for t in tickets %}
-        <tr class="border-t border-hairline hover:bg-slate-50 {{ 'bg-red-50' if t.is_overdue }}">
-          <td class="px-4 py-3">
+        <tr class="border-t border-hairline hover:bg-slate-50 {{ 'bg-red-50/50' if t.is_overdue }}">
+          <td class="px-4 py-3 align-top">
             <a href="{{ url_for('admin.ticket_detail', ticket_id=t.id) }}"
-               class="font-semibold text-primary">{{ t.reference }}</a>
+               class="font-extrabold text-primary">{{ t.reference }}</a>
             {% if t.is_overdue %}
-            <span class="ml-1 text-xs text-red-600 font-medium">24h+</span>
+            <span class="ml-1 text-[10px] text-red-600 font-bold bg-red-100 px-1.5 py-0.5 rounded">24h+</span>
+            {% endif %}
+            <div class="mt-1">
+              <span class="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded {{ 'bg-red-100 text-red-800' if t.category == 'complaint' else ('bg-purple-100 text-purple-800' if t.category in ('small_rework','project_work') else 'bg-slate-100 text-slate-700') }}">
+                {{ t.category|replace('_',' ')|title }}
+              </span>
+            </div>
+          </td>
+
+          <td class="px-4 py-3 align-top text-ink">
+            <div class="font-semibold text-navy-800">
+              {{ t.site_name or (t.contract.site_name if t.contract) or (t.customer.name if t.customer) or 'General Site' }}
+            </div>
+            <div class="text-xs text-ink-subtle mt-0.5">
+              {% if t.caller_name %}{{ t.caller_name }} · {% endif %}
+              {% if can_see_customer_contact %}
+                {{ t.caller_phone or (t.customer.phone if t.customer else '') or '' }}
+              {% else %}
+                <span class="text-ink-subtle italic">[Protected]</span>
+              {% endif %}
+            </div>
+          </td>
+
+          <td class="px-4 py-3 align-top text-ink max-w-sm">
+            <div class="font-medium text-ink">{{ t.title }}</div>
+            {% if t.source %}
+            <div class="text-xs text-ink-subtle mt-0.5 flex items-center gap-1">
+              <span class="font-medium text-slate-600">Source:</span>
+              <span class="italic">{{ t.source|replace('_',' ')|title }}</span>
+            </div>
             {% endif %}
           </td>
-          <td class="px-4 py-3 text-ink">
-            {{ t.customer.name if t.customer else '—' }}
-            <span class="block text-xs text-ink-subtle">
-              {{ (t.customer.phone if t.customer else '') or '' }}
-            </span>
-          </td>
-          <td class="px-4 py-3 text-ink max-w-xs truncate">{{ t.title }}</td>
-          <td class="px-4 py-3 text-center">
-            {% if t.priority == 'high' %}
-            <span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-50 text-red-700">High</span>
+
+          <td class="px-4 py-3 align-top text-center">
+            {% if t.priority == 'high' or t.priority == 'urgent' %}
+            <span class="px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700">High</span>
             {% elif t.priority == 'low' %}
             <span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">Low</span>
             {% else %}
             <span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">Normal</span>
             {% endif %}
           </td>
-          <td class="px-4 py-3 text-center">
+
+          <td class="px-4 py-3 align-top">
+            {% if t.scheduled_date %}
+            <div class="text-xs font-bold text-navy-900 flex items-center gap-1">
+              📅 {{ t.scheduled_date|datefmt }}
+            </div>
+            <div class="text-xs text-ink-subtle mt-0.5">
+              {{ t.assigned_to.name if t.assigned_to else 'Technician Assigned' }}
+            </div>
+            {% else %}
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-800">
+              📌 In Backlog
+            </span>
+            {% if t.assigned_to %}
+            <div class="text-xs text-ink-subtle mt-0.5">{{ t.assigned_to.name }}</div>
+            {% endif %}
+            {% endif %}
+          </td>
+
+          <td class="px-4 py-3 align-top text-center">
             <span class="px-2.5 py-1 rounded-full text-xs font-semibold {{ t.status_color }}">
               {{ t.status_label }}
             </span>
+            <div class="text-[10px] text-ink-subtle mt-1">{{ t.created_at.strftime('%d %b %Y') }}</div>
           </td>
-          <td class="px-4 py-3 text-center text-ink-subtle text-xs">
-            {{ t.created_at.strftime('%d %b %Y') }}<br>
-            {% if t.retrigger_count %}
-            <span class="text-amber-600">Re-triggered {{ t.retrigger_count }}x</span>
-            {% endif %}
-          </td>
-          <td class="px-4 py-3 text-right">
+
+          <td class="px-4 py-3 align-top text-right">
             <a href="{{ url_for('admin.ticket_detail', ticket_id=t.id) }}"
-               class="btn btn-ghost text-xs px-2 py-1">View</a>
+               class="btn btn-ghost text-xs px-2.5 py-1 border border-hairline-strong hover:border-navy-700">
+              {% if not t.scheduled_date and current_user.is_manager %}Schedule →{% else %}View →{% endif %}
+            </a>
           </td>
         </tr>
         {% endfor %}
@@ -85,8 +163,133 @@
          stroke="currentColor" stroke-width="1.5">
       <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
     </svg>
-    <p class="font-medium text-ink">No tickets {{ 'with this status' if status_filter else 'yet' }}.</p>
+    <p class="font-medium text-ink">No tickets or backlog tasks found in this view.</p>
+    <p class="text-xs text-ink-subtle mt-1">Use the "+ Log Complaint / Work Task" button above to record daily issues or site work.</p>
   </div>
   {% endif %}
+
+  <!-- Modal: Log Daily Complaint / Maintenance Backlog Work -->
+  <div id="logComplaintModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+      <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+        <div>
+          <h3 class="font-extrabold text-navy-900 text-base">Log Site Complaint / Work Task</h3>
+          <p class="text-xs text-slate-500">Record daily phone calls, diary entries, Sir directives, or site rework.</p>
+        </div>
+        <button type="button" onclick="document.getElementById('logComplaintModal').classList.add('hidden')"
+                class="text-slate-400 hover:text-slate-600 text-xl font-bold leading-none">&times;</button>
+      </div>
+
+      <form method="post" action="{{ url_for('admin.ticket_create') }}" class="p-6 space-y-3.5">
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Title / Issue Summary *</label>
+          <input type="text" name="title" placeholder="e.g. Pressure drop in 3rd floor riser / Hose reel valve replacement"
+                 class="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:border-navy-800 outline-hidden" required>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Category</label>
+            <select name="category" class="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:border-navy-800 outline-hidden">
+              <option value="complaint">Site Complaint</option>
+              <option value="small_rework">Small Re-work</option>
+              <option value="project_work">Maintenance Project Work</option>
+              <option value="directive">Sir / Management Directive</option>
+              <option value="routine_maintenance">Routine Check</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Source</label>
+            <select name="source" class="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:border-navy-800 outline-hidden">
+              <option value="diary">Diary Entry / Note</option>
+              <option value="sir_management">Sir / Management</option>
+              <option value="client_phone">Client Phone Call</option>
+              <option value="whatsapp">WhatsApp Message</option>
+              <option value="site_visit">Site Visit Finding</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Site / Contract (optional)</label>
+            <select name="contract_id" class="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:border-navy-800 outline-hidden"
+                    onchange="if(this.selectedIndex>0){document.getElementById('manualSiteName').value=this.options[this.selectedIndex].text}">
+              <option value="">-- Manual Site / Other --</option>
+              {% for c in active_contracts %}
+              <option value="{{ c.id }}">{{ c.site_name or c.reference }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Site Name / Location</label>
+            <input type="text" name="site_name" id="manualSiteName" placeholder="e.g. Shivalik Business Centre"
+                   class="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:border-navy-800 outline-hidden">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Caller / Reporter Name</label>
+            <input type="text" name="caller_name" placeholder="e.g. Ramesh Patel / Sir"
+                   class="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:border-navy-800 outline-hidden">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Caller Contact</label>
+            <input type="text" name="caller_phone" placeholder="Mobile / Ext"
+                   class="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:border-navy-800 outline-hidden">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Detailed Description / Notes</label>
+          <textarea name="description" rows="2.5" placeholder="Enter problem specifics, instructions, or diary notes..."
+                    class="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:border-navy-800 outline-hidden"></textarea>
+        </div>
+
+        <!-- Backlog vs Schedule -->
+        <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
+          <div class="text-xs font-bold text-navy-900 flex items-center justify-between">
+            <span>Assignment &amp; Scheduling</span>
+            <span class="text-[11px] font-normal text-slate-500">Leave date empty to keep in Backlog</span>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-600 mb-1">Assign Technician</label>
+              <select name="assigned_to_id" class="w-full text-xs px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white outline-hidden">
+                <option value="">-- Keep in Backlog --</option>
+                {% for t in techs %}
+                <option value="{{ t.id }}">{{ t.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-600 mb-1">Schedule Date</label>
+              <input type="date" name="scheduled_date"
+                     class="w-full text-xs px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white outline-hidden">
+            </div>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between pt-2 border-t border-slate-100">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-semibold text-slate-600">Priority:</span>
+            <select name="priority" class="text-xs px-2 py-1 border border-slate-300 rounded-md outline-hidden">
+              <option value="normal">Normal</option>
+              <option value="high">High</option>
+              <option value="urgent">Urgent</option>
+              <option value="low">Low</option>
+            </select>
+          </div>
+          <div class="flex items-center gap-2">
+            <button type="button" onclick="document.getElementById('logComplaintModal').classList.add('hidden')"
+                    class="px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-600 hover:bg-slate-50">Cancel</button>
+            <button type="submit"
+                    class="px-4 py-1.5 rounded-lg bg-navy-800 text-white text-xs font-bold hover:bg-navy-700 shadow-sm">Save &amp; Log Task</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
 </section>
 {% endblock %}

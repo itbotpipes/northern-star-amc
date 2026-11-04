@@ -74,6 +74,14 @@ class User(UserMixin, db.Model):
         return self.role in ("manager", "admin", "owner")
 
     @property
+    def can_view_customer_contact(self):
+        if not self.is_authenticated:
+            return False
+        if self.role == "customer":
+            return True
+        return self.is_manager or self.is_admin or self.role == "owner" 
+
+    @property
     def is_team_leader(self):
         return self.role in ("team_leader", "manager", "admin", "owner")
 
@@ -555,6 +563,8 @@ class Visit(db.Model):
     checkin_at   = db.Column(db.DateTime, nullable=True)
     checkout_at  = db.Column(db.DateTime, nullable=True)
     checkin_note = db.Column(db.String(255))   # optional geo string / free note
+    custom_label = db.Column(db.String(120), nullable=True)
+    visit_type   = db.Column(db.String(50), default="regular")  # regular/complimentary/emergency/extra
 
     technician = db.relationship("User", foreign_keys=[technician_id])
     photos = db.relationship("VisitPhoto", backref="visit", lazy=True,
@@ -565,7 +575,7 @@ class Visit(db.Model):
 
     @property
     def label(self):
-        return f"Visit {self.visit_number}"
+        return self.custom_label or f"Visit {self.visit_number}"
 
     @property
     def scheduled_time_label(self):
@@ -1901,13 +1911,22 @@ class SupportTicket(db.Model):
     __tablename__ = "support_tickets"
 
     id               = db.Column(db.Integer, primary_key=True)
-    customer_id      = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    customer_id      = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     contract_id      = db.Column(db.Integer, db.ForeignKey("contracts.id"), nullable=True)
     visit_id         = db.Column(db.Integer, db.ForeignKey("visits.id"), nullable=True)
 
     title            = db.Column(db.String(200), nullable=False)
     description      = db.Column(db.Text, nullable=False)
     voice_note       = db.Column(db.Text)   # speech-to-text transcript
+
+    # Source & Categorization (supports manual diary & sir directives)
+    source           = db.Column(db.String(50), default="portal")  # portal/diary/sir_management/client_phone/site_visit
+    category         = db.Column(db.String(50), default="complaint")  # complaint/small_rework/maintenance_project/directive
+    site_name        = db.Column(db.String(150), nullable=True)
+    caller_name      = db.Column(db.String(120), nullable=True)
+    caller_phone     = db.Column(db.String(30), nullable=True)
+    assigned_to_id   = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    scheduled_date   = db.Column(db.Date, nullable=True)
 
     status           = db.Column(db.String(20), default="open")
     # open → acknowledged (staff replied within 24h) → resolved → closed
@@ -1930,6 +1949,7 @@ class SupportTicket(db.Model):
 
     customer     = db.relationship("User", foreign_keys=[customer_id],
                                    backref="support_tickets")
+    assigned_to  = db.relationship("User", foreign_keys=[assigned_to_id])
     replied_by   = db.relationship("User", foreign_keys=[replied_by_id])
     resolved_by  = db.relationship("User", foreign_keys=[resolved_by_id])
     contract     = db.relationship("Contract", foreign_keys=[contract_id],

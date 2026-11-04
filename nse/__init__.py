@@ -170,9 +170,38 @@ def create_app(config_class=Config, root=None):
             "open_rework_count": open_rework_count,
             "open_enquiry_count": open_enquiry_count if current_user and current_user.is_authenticated and current_user.is_staff else 0,
             "RAZORPAY_ENABLED": Config.razorpay_enabled(),
+            "can_see_customer_contact": (
+                current_user.is_authenticated and (
+                    getattr(current_user, "is_manager", False) or
+                    getattr(current_user, "is_admin", False) or
+                    getattr(current_user, "role", None) in ("owner", "customer")
+                )
+            ),
             "now": datetime.utcnow(),
             "today": date.today(),
         }
+
+    @app.template_filter("privacy_phone")
+    def privacy_phone(phone):
+        if not phone:
+            return "—"
+        if current_user and current_user.is_authenticated and getattr(current_user, "is_staff", False) and not getattr(current_user, "is_manager", False):
+            digits = "".join(filter(str.isdigit, str(phone)))
+            if len(digits) >= 10:
+                return f"+91 ••••• ••{digits[-2:]} [Office Only]"
+            return "•••••••••• [Protected]"
+        return phone
+
+    @app.template_filter("privacy_email")
+    def privacy_email(email):
+        if not email:
+            return "—"
+        if current_user and current_user.is_authenticated and getattr(current_user, "is_staff", False) and not getattr(current_user, "is_manager", False):
+            parts = str(email).split("@")
+            if len(parts) == 2:
+                return f"{parts[0][:2]}••••@{parts[1]} [Protected]"
+            return "••••@••••.com [Protected]"
+        return email
 
     @app.template_filter("datefmt")
     def datefmt(value, fmt="%d %b %Y"):
@@ -239,6 +268,19 @@ def create_app(config_class=Config, root=None):
                         ("cash_collected_notes", "TEXT"),
                         ("cash_collection_status", "VARCHAR(30) DEFAULT 'none'"),
                         ("staff_response", "TEXT")
+                    ]),
+                    ("visits", [
+                        ("custom_label", "VARCHAR(120)"),
+                        ("visit_type", "VARCHAR(50) DEFAULT 'regular'")
+                    ]),
+                    ("support_tickets", [
+                        ("source", "VARCHAR(50) DEFAULT 'portal'"),
+                        ("category", "VARCHAR(50) DEFAULT 'complaint'"),
+                        ("site_name", "VARCHAR(150)"),
+                        ("caller_name", "VARCHAR(120)"),
+                        ("caller_phone", "VARCHAR(30)"),
+                        ("assigned_to_id", "INTEGER REFERENCES users(id)"),
+                        ("scheduled_date", "DATE")
                     ])
                 ]:
                     for col_name, col_type in cols:
@@ -246,6 +288,10 @@ def create_app(config_class=Config, root=None):
                             conn.execute(text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col_name} {col_type}"))
                         except Exception:
                             pass
+                try:
+                    conn.execute(text("ALTER TABLE support_tickets ALTER COLUMN customer_id DROP NOT NULL"))
+                except Exception:
+                    pass
         except Exception:
             pass
 

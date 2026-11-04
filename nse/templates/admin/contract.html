@@ -10,7 +10,7 @@
     <div class="flex items-start justify-between flex-wrap gap-3">
       <div>
         <h1 class="text-2xl font-extrabold text-navy-800">{{ c.reference }} {{ status_badge(c.status) }}</h1>
-        <p class="text-slate-600 mt-1">{{ c.applicant_name or (c.customer.name if c.customer) }} · {{ c.applicant_phone }}{% if c.applicant_email %} · {{ c.applicant_email }}{% endif %}</p>
+        <p class="text-slate-600 mt-1">{{ c.applicant_name or (c.customer.name if c.customer) }} · {{ c.applicant_phone|privacy_phone }}{% if c.applicant_email and can_see_customer_contact %} · {{ c.applicant_email|privacy_email }}{% endif %}</p>
         <p class="text-sm text-slate-500">{{ c.plan.name if c.plan else 'Custom plan' }} · {{ c.property_type or '' }}</p>
         {% if c.site_address %}<p class="text-sm text-slate-500">{{ c.site_address }}{% if c.area %}, {{ c.area }}{% endif %}</p>{% endif %}
         {% if c.application_notes %}<p class="text-sm text-slate-600 mt-2 bg-slate-50 rounded-lg p-3">{{ c.application_notes }}</p>{% endif %}
@@ -236,9 +236,17 @@
   {% endif %}
 
   <!-- Visits -->
-  <div class="flex items-center justify-between mt-8 mb-3">
-    <h2 class="text-lg font-bold text-navy-800">Visits</h2>
-    <span class="text-xs text-slate-500">Pick a date to reschedule — the client is notified &amp; it's logged in their journey.</span>
+  <div class="flex items-center justify-between mt-8 mb-3 flex-wrap gap-2">
+    <div>
+      <h2 class="text-lg font-bold text-navy-800">Visits ({{ c.visits|length }})</h2>
+      <span class="text-xs text-slate-500">Routine schedule, plus any complimentary (e.g. Diwali) or emergency visits.</span>
+    </div>
+    {% if current_user.is_manager %}
+    <button type="button" onclick="document.getElementById('addVisitModal').classList.remove('hidden')"
+            class="inline-flex items-center gap-1.5 bg-navy-800 text-white font-semibold text-xs px-3.5 py-2 rounded-xl hover:bg-navy-700 shadow-sm transition">
+      + Add Extra / Complementary Visit
+    </button>
+    {% endif %}
   </div>
   <div class="space-y-2">
     {% for v in c.visits %}
@@ -246,7 +254,19 @@
       <div class="flex items-center justify-between gap-3 flex-wrap">
         <a href="{{ url_for('admin.visit', visit_id=v.id) }}" class="flex items-center gap-3 flex-1 min-w-0">
           <div class="w-9 h-9 rounded-full grid place-items-center font-bold text-sm {{ 'bg-green-100 text-green-700' if v.status=='completed' else 'bg-slate-100 text-slate-500' }}">{{ v.visit_number }}</div>
-          <div class="min-w-0"><div class="font-medium text-navy-800">{{ v.label }}</div><div class="text-xs text-slate-500">{{ v.scheduled_date|datefmt }}{% if v.technician %} · {{ v.technician.name }}{% endif %}</div></div>
+          <div class="min-w-0">
+            <div class="font-medium text-navy-800 flex items-center gap-2">
+              {{ v.label }}
+              {% if v.visit_type == 'complimentary' %}
+              <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">Complimentary</span>
+              {% elif v.visit_type == 'emergency' %}
+              <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-100 text-red-800">Emergency</span>
+              {% elif v.visit_type == 'extra' %}
+              <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-800">Extra Visit</span>
+              {% endif %}
+            </div>
+            <div class="text-xs text-slate-500">{{ v.scheduled_date|datefmt }}{% if v.technician %} · {{ v.technician.name }}{% endif %}</div>
+          </div>
         </a>
         <div class="flex items-center gap-3">{% if v.photos %}<span class="text-xs text-slate-400">{{ v.photos|length }} photos</span>{% endif %}{% if v.service_report_path %}<span class="text-xs text-green-700 font-medium">Report</span>{% endif %}{{ status_badge(v.status) }}</div>
       </div>
@@ -328,4 +348,72 @@
   </div>
   {% endif %}
 </section>
+
+  <!-- Modal: Add Extra / Complementary Visit Window -->
+  <div id="addVisitModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+      <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+        <div>
+          <h3 class="font-bold text-navy-900 text-base">Schedule Additional Visit Window</h3>
+          <p class="text-xs text-slate-500">Add a complementary festive visit or extra emergency visit.</p>
+        </div>
+        <button type="button" onclick="document.getElementById('addVisitModal').classList.add('hidden')"
+                class="text-slate-400 hover:text-slate-600 text-lg leading-none font-bold">&times;</button>
+      </div>
+
+      <form method="post" action="{{ url_for('admin.add_extra_visit', contract_id=c.id) }}" class="p-6 space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Visit Type</label>
+          <select name="visit_type" id="extraVisitType" class="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:border-navy-800 outline-hidden"
+                  onchange="if(this.value=='complimentary'){document.getElementById('extraVisitLabel').value='Diwali Complimentary Visit'}else if(this.value=='emergency'){document.getElementById('extraVisitLabel').value='Emergency Breakdown Inspection'}">
+            <option value="complimentary">Complementary (e.g. Diwali Visit / Free Inspection)</option>
+            <option value="emergency">Emergency / Breakdown Visit</option>
+            <option value="extra">Additional Paid / Routine Visit</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Visit Title / Label</label>
+          <input type="text" name="custom_label" id="extraVisitLabel" value="Diwali Complimentary Visit"
+                 class="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:border-navy-800 outline-hidden" required>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Scheduled Date</label>
+            <input type="date" name="scheduled_date" value="{{ today.isoformat() }}"
+                   class="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:border-navy-800 outline-hidden" required>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Time Slot (optional)</label>
+            <input type="time" name="scheduled_time"
+                   class="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:border-navy-800 outline-hidden">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Assign Technician</label>
+          <select name="technician_id" class="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:border-navy-800 outline-hidden">
+            <option value="">-- Assign Later (from Day Plan) --</option>
+            {% for t in techs %}
+            <option value="{{ t.id }}">{{ t.name }} ({{ t.role|title }})</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Notes / Instructions</label>
+          <textarea name="notes" rows="2" placeholder="e.g. Complimentary festival fire checkup from company..."
+                    class="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:border-navy-800 outline-hidden"></textarea>
+        </div>
+
+        <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+          <button type="button" onclick="document.getElementById('addVisitModal').classList.add('hidden')"
+                  class="px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-600 hover:bg-slate-50">Cancel</button>
+          <button type="submit"
+                  class="px-4 py-1.5 rounded-lg bg-navy-800 text-white text-xs font-bold hover:bg-navy-700 shadow-sm">Schedule Visit Window</button>
+        </div>
+      </form>
+    </div>
+  </div>
 {% endblock %}

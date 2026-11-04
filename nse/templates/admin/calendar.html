@@ -60,6 +60,17 @@
           {% endfor %}
         </div>
         {% endif %}
+        {% if by_day_tickets and by_day_tickets[day_num] is defined %}
+        <div class="space-y-1 mt-1">
+          {% for t in by_day_tickets[day_num] %}
+          <a href="{{ url_for('admin.ticket_detail', ticket_id=t.id) }}"
+             class="block text-[9px] leading-tight px-1.5 py-0.5 rounded font-semibold bg-purple-100 text-purple-900 border border-purple-200 truncate hover:opacity-85"
+             title="{{ t.reference }}: {{ t.title }} ({% if t.assigned_to %}{{ t.assigned_to.name }}{% else %}Unassigned{% endif %})">
+            🔧 {{ t.reference }}
+          </a>
+          {% endfor %}
+        </div>
+        {% endif %}
         {% endif %}
       </div>
       {% endfor %}

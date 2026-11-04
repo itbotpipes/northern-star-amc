@@ -40,8 +40,10 @@
       </p>
       <p class="text-xs text-ink-subtle mt-0.5 flex items-center gap-2 flex-wrap">
         <span>📍 {{ v.contract.site_address or 'Site address on file' }}</span>
-        {% if v.contract.customer and v.contract.customer.phone %}
+        {% if can_see_customer_contact and v.contract.customer and v.contract.customer.phone %}
         <span>• 📞 <a href="tel:{{ v.contract.customer.phone }}" class="text-primary font-semibold hover:underline">{{ v.contract.customer.phone }}</a></span>
+        {% elif not can_see_customer_contact %}
+        <span class="text-ink-subtle">• 🔒 Client Contact: <span class="italic">[Protected]</span></span>
         {% endif %}
       </p>
       {% if v.technician_note %}

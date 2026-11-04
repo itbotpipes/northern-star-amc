@@ -28,7 +28,7 @@
         <h1 class="text-xl font-bold text-ink mt-1.5">{{ inquiry.name }}</h1>
         <p class="text-xs text-ink-muted mt-0.5 flex items-center gap-2 flex-wrap">
           {% if inquiry.area %}<span>📍 {{ inquiry.area }}, {{ inquiry.city }}</span>{% endif %}
-          {% if inquiry.phone %}<span>📞 <a href="tel:{{ inquiry.phone }}" class="hover:underline">{{ inquiry.phone }}</a></span>{% endif %}
+          {% if inquiry.phone and can_see_customer_contact %}<span>📞 <a href="tel:{{ inquiry.phone }}" class="hover:underline">{{ inquiry.phone }}</a></span>{% elif inquiry.phone %}<span class="italic text-ink-subtle text-xs">🔒 Contact: [Protected]</span>{% endif %}
           {% if inquiry.email %}<span>✉️ {{ inquiry.email }}</span>{% endif %}
         </p>
       </div>
@@ -133,9 +133,11 @@
           <div>
             <span class="text-ink-subtle">Primary Phone</span>
             <div class="font-semibold text-ink mt-0.5 flex items-center gap-2">
-              {% if inquiry.phone %}
+              {% if inquiry.phone and can_see_customer_contact %}
               <a href="tel:{{ inquiry.phone }}" class="text-primary hover:underline font-mono">{{ inquiry.phone }}</a>
               <a href="https://wa.me/91{{ inquiry.phone.replace('+91','').replace(' ','') }}" target="_blank" class="text-green-600 hover:underline">WhatsApp →</a>
+              {% elif inquiry.phone %}
+              <span class="text-xs text-ink-subtle italic">[Protected — Manager Only]</span>
               {% else %}
               <span class="text-slate-400">—</span>
               {% endif %}

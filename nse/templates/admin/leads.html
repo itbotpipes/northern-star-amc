@@ -93,7 +93,7 @@
             <div class="font-semibold text-ink">{{ c.applicant_name or (c.customer.name if c.customer) }}</div>
             <div class="text-xs text-ink-subtle">{{ c.site_name or c.site_address or '' }}</div>
             {% if (c.project_type in ('existing', 'handover') or c.is_handover) and c.spoc_name %}
-            <div class="text-[11px] text-blue-700 font-medium mt-0.5">SPOC: {{ c.spoc_name }}{% if c.spoc_role %} ({{ c.spoc_role }}){% endif %} · {{ c.spoc_phone }}</div>
+            <div class="text-[11px] text-blue-700 font-medium mt-0.5">SPOC: {{ c.spoc_name }}{% if c.spoc_role %} ({{ c.spoc_role }}){% endif %}{% if c.spoc_phone and can_see_customer_contact %} · {{ c.spoc_phone }}{% endif %}</div>
             {% endif %}
           </td>
           <td class="px-4 py-2">

@@ -24,16 +24,16 @@
       <h1 class="text-xl font-extrabold text-ink">{{ client.name }}</h1>
       {% if client.company_name %}<p class="text-sm font-semibold text-ink-muted mt-0.5">{{ client.company_name }}{% if client.gst_number %} · GST: {{ client.gst_number }}{% endif %}</p>{% endif %}
       <div class="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-sm text-ink-muted">
-        {% if client.phone %}<span>{{ client.phone }}</span>{% endif %}
-        {% if client.email %}<span>{{ client.email }}</span>{% endif %}
+        {% if client.phone %}<span>{{ client.phone|privacy_phone }}</span>{% endif %}
+        {% if client.email %}<span>{{ client.email|privacy_email }}</span>{% endif %}
         {% if client.city or client.area %}<span>{{ client.area }}{% if client.area and client.city %}, {% endif %}{{ client.city }}</span>{% endif %}
         <span class="text-ink-subtle text-xs">Member since {{ client.created_at.strftime('%b %Y') }}</span>
       </div>
       {% if client.address %}<p class="mt-1.5 text-sm text-ink-subtle">{{ client.address }}</p>{% endif %}
     </div>
     <div class="flex gap-2 flex-shrink-0">
-      {% if client.phone %}<a href="tel:{{ client.phone }}" class="text-sm px-3 py-2 rounded-lg border border-hairline-strong hover:border-primary text-ink-muted hover:text-ink transition">Call</a>{% endif %}
-      {% if client.email %}<a href="mailto:{{ client.email }}" class="text-sm px-3 py-2 rounded-lg border border-hairline-strong hover:border-primary text-ink-muted hover:text-ink transition">Email</a>{% endif %}
+      {% if can_see_customer_contact and client.phone %}<a href="tel:{{ client.phone }}" class="text-sm px-3 py-2 rounded-lg border border-hairline-strong hover:border-primary text-ink-muted hover:text-ink transition">Call</a>{% endif %}
+      {% if can_see_customer_contact and client.email %}<a href="mailto:{{ client.email }}" class="text-sm px-3 py-2 rounded-lg border border-hairline-strong hover:border-primary text-ink-muted hover:text-ink transition">Email</a>{% endif %}
     </div>
   </div>
 
