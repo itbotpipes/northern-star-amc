@@ -118,6 +118,27 @@ def test_customer_requests_list_shows_refills():
     assert b"Refill Orders" in res.data
     print("PASS: test_customer_requests_list_shows_refills")
 
+def test_customer_equipment_in_navbar_and_list():
+    with app.app_context():
+        customer = User.query.filter_by(role="customer").first()
+        customer_id = customer.id
+
+    with client.session_transaction() as sess:
+        sess["_user_id"] = str(customer_id)
+        sess["_fresh"] = True
+
+    # 1. Navbar contains Equipment link
+    res_dash = client.get("/portal/")
+    assert res_dash.status_code == 200
+    assert b"/portal/equipment" in res_dash.data
+    assert b"Equipment" in res_dash.data
+
+    # 2. Equipment list page loads with 200
+    res_eq = client.get("/portal/equipment")
+    assert res_eq.status_code == 200
+    assert b"Equipment &amp; Safety Devices" in res_eq.data or b"Equipment & Safety Devices" in res_eq.data
+    print("PASS: test_customer_equipment_in_navbar_and_list")
+
 if __name__ == "__main__":
     test_unauthenticated_ops_access()
     test_customer_ops_access_redirect()
@@ -125,4 +146,5 @@ if __name__ == "__main__":
     test_customer_quotations_list_and_segregation()
     test_customer_can_download_quotation_pdf()
     test_customer_requests_list_shows_refills()
+    test_customer_equipment_in_navbar_and_list()
     print("\nALL CUSTOMER PORTAL & ACCESS CONTROL TESTS PASSED SUCCESSFULLY!")

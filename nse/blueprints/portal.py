@@ -911,8 +911,30 @@ def amc_requests():
 
 
 # ─────────────────────────────────────────────────────────────────
-# Wave 2 — Equipment detail page
+# Wave 2 — Equipment list & detail pages
 # ─────────────────────────────────────────────────────────────────
+
+@portal_bp.route("/equipment")
+@login_required
+@customer_required
+def equipment_list():
+    """All fire safety equipment and devices across customer's contracts."""
+    contracts = Contract.query.filter_by(customer_id=current_user.id).all()
+    contract_ids = [c.id for c in contracts]
+    equipments = (Equipment.query.filter(Equipment.contract_id.in_(contract_ids))
+                  .order_by(Equipment.next_refill_date.asc().nullslast(), Equipment.name.asc())
+                  .all()) if contract_ids else []
+    
+    overdue_count = sum(1 for eq in equipments if eq.refill_status == "overdue")
+    due_soon_count = sum(1 for eq in equipments if eq.refill_status == "due_soon")
+    ok_count = sum(1 for eq in equipments if eq.refill_status == "ok")
+
+    return render_template("portal/equipment_list.html",
+                           contracts=contracts, equipments=equipments,
+                           overdue_count=overdue_count,
+                           due_soon_count=due_soon_count,
+                           ok_count=ok_count)
+
 
 @portal_bp.route("/equipment/<int:equipment_id>")
 @login_required
