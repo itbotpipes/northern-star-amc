@@ -6,6 +6,7 @@ from flask import (Blueprint, render_template, request, redirect, url_for,
                    flash, abort, send_from_directory, send_file, current_app)
 from flask_login import login_required, current_user
 from sqlalchemy import or_
+from sqlalchemy.orm import joinedload, selectinload
 from sqlalchemy.exc import SQLAlchemyError
 
 from ..extensions import db
@@ -48,7 +49,9 @@ def dashboard():
         contract_filters.append(Contract.applicant_phone == current_user.phone)
         if phone_last10:
             contract_filters.append(Contract.applicant_phone.ilike(f"%{phone_last10}%"))
-    contracts = Contract.query.filter(or_(*contract_filters)).order_by(Contract.created_at.desc()).all()
+    contracts = Contract.query.options(
+        joinedload(Contract.customer), selectinload(Contract.visits)
+    ).filter(or_(*contract_filters)).order_by(Contract.created_at.desc()).all()
 
     requests_ = ServiceRequest.query.filter_by(customer_id=current_user.id)\
         .order_by(ServiceRequest.created_at.desc()).all()
@@ -60,7 +63,9 @@ def dashboard():
         quote_filters.append(ServiceQuotation.customer_phone == current_user.phone)
         if phone_last10:
             quote_filters.append(ServiceQuotation.customer_phone.ilike(f"%{phone_last10}%"))
-    all_quotes = ServiceQuotation.query.filter(
+    all_quotes = ServiceQuotation.query.options(
+        joinedload(ServiceQuotation.items)
+    ).filter(
         or_(*quote_filters),
         ServiceQuotation.status.in_(["sent", "viewed", "negotiation_requested"]),
     ).order_by(ServiceQuotation.created_at.desc()).all()

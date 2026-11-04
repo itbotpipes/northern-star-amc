@@ -22,14 +22,17 @@ class Config:
     SQLALCHEMY_DATABASE_URI = _db_url
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
-    # On serverless (Vercel) every request may hit a fresh, short-lived worker,
-    # so a long-lived connection pool is a liability — connections go stale and
-    # the provider's connection cap fills up. For Postgres we disable pooling
-    # (NullPool: open/close per checkout) and pre-ping to drop dead sockets.
+    # Connection pooling: use QueuePool with a modest pool size and pre-ping.
+    # On serverless (Vercel warm workers), reusing open connections avoids the
+    # 400-600ms TCP+TLS handshake on every database query to Supabase.
     if SQLALCHEMY_DATABASE_URI.startswith("postgresql"):
-        from sqlalchemy.pool import NullPool
+        from sqlalchemy.pool import QueuePool
         SQLALCHEMY_ENGINE_OPTIONS = {
-            "poolclass": NullPool,
+            "poolclass": QueuePool,
+            "pool_size": 5,
+            "max_overflow": 2,
+            "pool_recycle": 300,
+            "pool_timeout": 10,
             "pool_pre_ping": True,
         }
 

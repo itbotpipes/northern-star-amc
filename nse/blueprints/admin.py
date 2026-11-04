@@ -4,6 +4,7 @@ from flask import (Blueprint, render_template, request, redirect, url_for,
                    flash, abort, session)
 from flask_login import login_required, current_user
 from sqlalchemy import or_
+from sqlalchemy.orm import joinedload, selectinload
 
 from ..extensions import db
 from ..models import (User, AMCPlan, Contract, Visit, VisitPhoto, Equipment,
@@ -50,7 +51,8 @@ def _apply_reschedule(v, new_date):
 @login_required
 @staff_required
 def dashboard():
-    pending_apps = Contract.query.filter_by(status="pending")\
+    pending_apps = Contract.query.options(joinedload(Contract.customer))\
+        .filter_by(status="pending")\
         .order_by(Contract.created_at.desc()).all()
     active = Contract.query.filter_by(status="active").count()
     open_emergencies = ServiceRequest.query.filter(
@@ -60,21 +62,28 @@ def dashboard():
         ServiceRequest.request_type == "noc",
         ServiceRequest.status.notin_(["completed", "cancelled"])).all()
     new_enquiries = Enquiry.query.filter_by(status="new").count()
-    upcoming = Visit.query.filter(
+    upcoming = Visit.query.options(
+        joinedload(Visit.contract), joinedload(Visit.technician)
+    ).filter(
         Visit.status.in_(["scheduled", "in_progress"]),
         Visit.scheduled_date != None)\
         .order_by(Visit.scheduled_date).limit(8).all()
-    # Equipment due soon / overdue
-    equip = Equipment.query.filter(Equipment.next_refill_date != None).all()
-    due_refills = [e for e in equip if e.refill_status in ("due_soon", "overdue")]
-    due_refills.sort(key=lambda e: e.next_refill_date)
-    open_refills = RefillOrder.query.filter(
+    # Equipment due soon / overdue (only top 10 due items instead of full table scan)
+    today = date.today()
+    due_limit = today + timedelta(days=30)
+    due_refills = Equipment.query.filter(
+        Equipment.next_refill_date != None,
+        Equipment.next_refill_date <= due_limit
+    ).order_by(Equipment.next_refill_date.asc()).limit(10).all()
+    open_refills = RefillOrder.query.options(
+        joinedload(RefillOrder.items)
+    ).filter(
         RefillOrder.status.notin_(["completed", "cancelled"]))\
         .order_by(RefillOrder.created_at.desc()).all()
-    # Quotations needing staff action: a client requested negotiation (reply
-    # needed) or accepted-but-not-yet-activated (ready to activate). An accepted
-    # quote whose contract is already active needs nothing further, so drop it.
-    sq_attention = [q for q in ServiceQuotation.query.filter(
+    # Quotations needing staff action (eager load items and contract)
+    sq_attention = [q for q in ServiceQuotation.query.options(
+        joinedload(ServiceQuotation.items), joinedload(ServiceQuotation.contract)
+    ).filter(
         ServiceQuotation.status.in_(["negotiation_requested", "accepted"]))
         .order_by(ServiceQuotation.created_at.desc()).all()
         if q.status == "negotiation_requested"
@@ -83,7 +92,7 @@ def dashboard():
                            pending_apps=pending_apps, active=active,
                            open_emergencies=open_emergencies, open_noc=open_noc,
                            new_enquiries=new_enquiries, upcoming=upcoming,
-                           due_refills=due_refills[:10], open_refills=open_refills,
+                           due_refills=due_refills, open_refills=open_refills,
                            sq_attention=sq_attention)
 
 
@@ -172,7 +181,9 @@ def reminders():
 @staff_required
 def contracts():
     status = request.args.get("status")
-    q = Contract.query
+    q = Contract.query.options(
+        joinedload(Contract.customer), selectinload(Contract.visits)
+    )
     if status:
         q = q.filter_by(status=status)
     items = q.order_by(Contract.created_at.desc()).all()

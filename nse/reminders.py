@@ -82,8 +82,20 @@ def payment_reminders(customer_id=None):
     return reminders
 
 
+import time as _time
+
+_PAYMENT_REMINDER_CACHE = {}  # (customer_id) -> (expiry_time, count)
+_RENEWAL_REMINDER_CACHE = {}  # (customer_id) -> (expiry_time, count)
+
+
 def payment_reminder_count(customer_id=None):
-    return len(payment_reminders(customer_id=customer_id))
+    now = _time.time()
+    cached = _PAYMENT_REMINDER_CACHE.get(customer_id)
+    if cached and cached[0] > now:
+        return cached[1]
+    count = len(payment_reminders(customer_id=customer_id))
+    _PAYMENT_REMINDER_CACHE[customer_id] = (now + 60, count)
+    return count
 
 
 # --------------------------------------------------------------------------- #
@@ -206,7 +218,13 @@ def renewal_reminders(customer_id=None):
 
 
 def renewal_reminder_count(customer_id=None):
-    return len(renewal_reminders(customer_id=customer_id))
+    now = _time.time()
+    cached = _RENEWAL_REMINDER_CACHE.get(customer_id)
+    if cached and cached[0] > now:
+        return cached[1]
+    count = len(renewal_reminders(customer_id=customer_id))
+    _RENEWAL_REMINDER_CACHE[customer_id] = (now + 60, count)
+    return count
 
 
 def process_milestones():

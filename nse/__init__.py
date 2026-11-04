@@ -78,8 +78,13 @@ def create_app(config_class=Config, root=None):
         all=all,
     )
 
+    _last_reminders_run = 0
+
     @app.context_processor
     def inject_globals():
+        nonlocal _last_reminders_run
+        import time as _t
+        from sqlalchemy.orm import joinedload
         from .models import Notification, ServiceQuotation, SupportTicket
         unread = 0
         recent_notifications = []
@@ -98,7 +103,9 @@ def create_app(config_class=Config, root=None):
                 .limit(8).all())
             # Staff-only: quotations awaiting action + open tickets + payment reminders
             if current_user.is_staff:
-                pending_sq = ServiceQuotation.query.filter(
+                pending_sq = ServiceQuotation.query.options(
+                    joinedload(ServiceQuotation.contract)
+                ).filter(
                     ServiceQuotation.status.in_(
                         ["negotiation_requested", "accepted"])).all()
                 sq_action_count = sum(
@@ -141,14 +148,17 @@ def create_app(config_class=Config, root=None):
                     open_lead_count = 0
                     open_rework_count = 0
                     open_enquiry_count = 0
-                # Process visit reminders + renewal/anniversary milestones
-                # idempotently (fires notifications not yet sent).
-                try:
-                    from .reminders import process_visit_reminders, process_milestones
-                    process_visit_reminders()
-                    process_milestones()
-                except Exception:
-                    pass
+                # Process visit reminders + renewal/anniversary milestones in background
+                # throttled to at most once per 30 minutes, not on every page render.
+                now = _t.time()
+                if now - _last_reminders_run > 1800:
+                    _last_reminders_run = now
+                    try:
+                        from .reminders import process_visit_reminders, process_milestones
+                        process_visit_reminders()
+                        process_milestones()
+                    except Exception:
+                        pass
         return {
             "COMPANY_NAME": app.config["COMPANY_NAME"],
             "COMPANY_CITY": app.config["COMPANY_CITY"],
@@ -220,80 +230,85 @@ def create_app(config_class=Config, root=None):
         if not request.path.startswith("/static/"):
             response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
             response.headers["Pragma"] = "no-cache"
+        else:
+            response.headers["Cache-Control"] = "public, max-age=2592000, stale-while-revalidate=86400"
         return response
 
-    with app.app_context():
-        try:
-            db.create_all()
-        except Exception as e:
-            app.logger.warning(f"db.create_all deferred: {e}")
-        # Safe idempotent schema auto-sync for newly added columns (PostgreSQL & SQLite)
-        try:
-            from sqlalchemy import text
-            with db.engine.begin() as conn:
-                for table, cols in [
-                    ("contracts", [
-                        ("cash_collected_amount", "DOUBLE PRECISION"),
-                        ("cash_collected_by_id", "INTEGER REFERENCES users(id)"),
-                        ("cash_collected_at", "TIMESTAMP"),
-                        ("cash_collected_notes", "TEXT"),
-                        ("cash_collection_status", "VARCHAR(30) DEFAULT 'none'"),
-                        ("voice_note", "VARCHAR(255)"),
-                        ("free_amc", "BOOLEAN DEFAULT FALSE"),
-                        ("project_type", "VARCHAR(50) DEFAULT 'amc'"),
-                        ("spoc_name", "VARCHAR(120)"),
-                        ("spoc_phone", "VARCHAR(20)"),
-                        ("spoc_role", "VARCHAR(60)"),
-                        ("handover_engineer", "VARCHAR(120)"),
-                        ("handover_technician", "VARCHAR(120)"),
-                        ("handover_signed_at", "TIMESTAMP"),
-                        ("handover_doc_path", "VARCHAR(255)"),
-                        ("handover_report_id", "INTEGER REFERENCES health_check_reports(id)")
-                    ]),
-                    ("quotations", [
-                        ("cash_collected_amount", "DOUBLE PRECISION"),
-                        ("cash_collected_by_id", "INTEGER REFERENCES users(id)"),
-                        ("cash_collected_at", "TIMESTAMP"),
-                        ("cash_collected_notes", "TEXT"),
-                        ("cash_collection_status", "VARCHAR(30) DEFAULT 'none'"),
-                        ("waiver_text", "TEXT"),
-                        ("rejection_acknowledged", "BOOLEAN DEFAULT FALSE"),
-                        ("negotiation_note", "TEXT"),
-                        ("staff_response", "TEXT")
-                    ]),
-                    ("service_quotations", [
-                        ("cash_collected_amount", "DOUBLE PRECISION"),
-                        ("cash_collected_by_id", "INTEGER REFERENCES users(id)"),
-                        ("cash_collected_at", "TIMESTAMP"),
-                        ("cash_collected_notes", "TEXT"),
-                        ("cash_collection_status", "VARCHAR(30) DEFAULT 'none'"),
-                        ("staff_response", "TEXT")
-                    ]),
-                    ("visits", [
-                        ("custom_label", "VARCHAR(120)"),
-                        ("visit_type", "VARCHAR(50) DEFAULT 'regular'")
-                    ]),
-                    ("support_tickets", [
-                        ("source", "VARCHAR(50) DEFAULT 'portal'"),
-                        ("category", "VARCHAR(50) DEFAULT 'complaint'"),
-                        ("site_name", "VARCHAR(150)"),
-                        ("caller_name", "VARCHAR(120)"),
-                        ("caller_phone", "VARCHAR(30)"),
-                        ("assigned_to_id", "INTEGER REFERENCES users(id)"),
-                        ("scheduled_date", "DATE")
-                    ])
-                ]:
-                    for col_name, col_type in cols:
-                        try:
-                            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col_name} {col_type}"))
-                        except Exception:
-                            pass
-                try:
-                    conn.execute(text("ALTER TABLE support_tickets ALTER COLUMN customer_id DROP NOT NULL"))
-                except Exception:
-                    pass
-        except Exception:
-            pass
+    # Safe idempotent schema auto-sync: skip during serverless runtime (Vercel)
+    # where all migrations are already present. Only runs locally when explicitly
+    # triggered with RUN_DB_MIGRATIONS=true to eliminate 60-70s cold start delay.
+    if os.getenv("RUN_DB_MIGRATIONS") == "true":
+        with app.app_context():
+            try:
+                db.create_all()
+            except Exception as e:
+                app.logger.warning(f"db.create_all deferred: {e}")
+            try:
+                from sqlalchemy import text
+                with db.engine.begin() as conn:
+                    for table, cols in [
+                        ("contracts", [
+                            ("cash_collected_amount", "DOUBLE PRECISION"),
+                            ("cash_collected_by_id", "INTEGER REFERENCES users(id)"),
+                            ("cash_collected_at", "TIMESTAMP"),
+                            ("cash_collected_notes", "TEXT"),
+                            ("cash_collection_status", "VARCHAR(30) DEFAULT 'none'"),
+                            ("voice_note", "VARCHAR(255)"),
+                            ("free_amc", "BOOLEAN DEFAULT FALSE"),
+                            ("project_type", "VARCHAR(50) DEFAULT 'amc'"),
+                            ("spoc_name", "VARCHAR(120)"),
+                            ("spoc_phone", "VARCHAR(20)"),
+                            ("spoc_role", "VARCHAR(60)"),
+                            ("handover_engineer", "VARCHAR(120)"),
+                            ("handover_technician", "VARCHAR(120)"),
+                            ("handover_signed_at", "TIMESTAMP"),
+                            ("handover_doc_path", "VARCHAR(255)"),
+                            ("handover_report_id", "INTEGER REFERENCES health_check_reports(id)")
+                        ]),
+                        ("quotations", [
+                            ("cash_collected_amount", "DOUBLE PRECISION"),
+                            ("cash_collected_by_id", "INTEGER REFERENCES users(id)"),
+                            ("cash_collected_at", "TIMESTAMP"),
+                            ("cash_collected_notes", "TEXT"),
+                            ("cash_collection_status", "VARCHAR(30) DEFAULT 'none'"),
+                            ("waiver_text", "TEXT"),
+                            ("rejection_acknowledged", "BOOLEAN DEFAULT FALSE"),
+                            ("negotiation_note", "TEXT"),
+                            ("staff_response", "TEXT")
+                        ]),
+                        ("service_quotations", [
+                            ("cash_collected_amount", "DOUBLE PRECISION"),
+                            ("cash_collected_by_id", "INTEGER REFERENCES users(id)"),
+                            ("cash_collected_at", "TIMESTAMP"),
+                            ("cash_collected_notes", "TEXT"),
+                            ("cash_collection_status", "VARCHAR(30) DEFAULT 'none'"),
+                            ("staff_response", "TEXT")
+                        ]),
+                        ("visits", [
+                            ("custom_label", "VARCHAR(120)"),
+                            ("visit_type", "VARCHAR(50) DEFAULT 'regular'")
+                        ]),
+                        ("support_tickets", [
+                            ("source", "VARCHAR(50) DEFAULT 'portal'"),
+                            ("category", "VARCHAR(50) DEFAULT 'complaint'"),
+                            ("site_name", "VARCHAR(150)"),
+                            ("caller_name", "VARCHAR(120)"),
+                            ("caller_phone", "VARCHAR(30)"),
+                            ("assigned_to_id", "INTEGER REFERENCES users(id)"),
+                            ("scheduled_date", "DATE")
+                        ])
+                    ]:
+                        for col_name, col_type in cols:
+                            try:
+                                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col_name} {col_type}"))
+                            except Exception:
+                                pass
+                    try:
+                        conn.execute(text("ALTER TABLE support_tickets ALTER COLUMN customer_id DROP NOT NULL"))
+                    except Exception:
+                        pass
+            except Exception:
+                pass
 
     @app.errorhandler(403)
     def forbidden_error(e):
