@@ -249,4 +249,21 @@ def create_app(config_class=Config, root=None):
         except Exception:
             pass
 
+    @app.errorhandler(403)
+    def forbidden_error(e):
+        from flask import redirect, url_for, flash
+        from flask_login import current_user
+        if current_user and current_user.is_authenticated:
+            if getattr(current_user, "is_technician", False):
+                flash("Access restricted to authorized personnel.", "warning")
+                return redirect(url_for("admin.day_plan"))
+            elif getattr(current_user, "is_staff", False):
+                flash("Access restricted to authorized personnel.", "warning")
+                return redirect(url_for("admin.dashboard"))
+            else:
+                flash("Staff console is for authorized staff only. Redirected to your portal.", "info")
+                return redirect(url_for("portal.dashboard"))
+        flash("Please log in to continue.", "info")
+        return redirect(url_for("auth.login"))
+
     return app

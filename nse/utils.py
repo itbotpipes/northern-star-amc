@@ -124,7 +124,12 @@ AMC_AGREEMENT_CLAUSES = [
 def staff_required(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):
-        if not current_user.is_authenticated or not current_user.is_staff:
+        if not current_user.is_authenticated:
+            return redirect(url_for("auth.login"))
+        if not current_user.is_staff:
+            if current_user.role == "customer":
+                flash("Staff console is for staff only. You have been redirected to your customer portal.", "info")
+                return redirect(url_for("portal.dashboard"))
             abort(403)
         return fn(*args, **kwargs)
     return wrapper
@@ -133,7 +138,14 @@ def staff_required(fn):
 def admin_required(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):
-        if not current_user.is_authenticated or not current_user.is_admin:
+        if not current_user.is_authenticated:
+            return redirect(url_for("auth.login"))
+        if not current_user.is_admin:
+            if current_user.is_technician:
+                flash("This section requires administrator privileges.", "warning")
+                return redirect(url_for("admin.day_plan"))
+            if current_user.role == "customer":
+                return redirect(url_for("portal.dashboard"))
             abort(403)
         return fn(*args, **kwargs)
     return wrapper
@@ -142,7 +154,14 @@ def admin_required(fn):
 def manager_required(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):
-        if not current_user.is_authenticated or not current_user.is_manager:
+        if not current_user.is_authenticated:
+            return redirect(url_for("auth.login"))
+        if not current_user.is_manager:
+            if current_user.is_technician:
+                flash("This section requires manager privileges.", "warning")
+                return redirect(url_for("admin.day_plan"))
+            if current_user.role == "customer":
+                return redirect(url_for("portal.dashboard"))
             abort(403)
         return fn(*args, **kwargs)
     return wrapper
@@ -151,7 +170,14 @@ def manager_required(fn):
 def team_leader_required(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):
-        if not current_user.is_authenticated or not (current_user.is_team_leader or current_user.is_admin):
+        if not current_user.is_authenticated:
+            return redirect(url_for("auth.login"))
+        if not (current_user.is_team_leader or current_user.is_admin):
+            if current_user.is_technician:
+                flash("This section is restricted to team leaders and managers.", "warning")
+                return redirect(url_for("admin.day_plan"))
+            if current_user.role == "customer":
+                return redirect(url_for("portal.dashboard"))
             abort(403)
         return fn(*args, **kwargs)
     return wrapper

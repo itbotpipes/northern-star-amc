@@ -475,7 +475,9 @@ def health_report_pdf(report_id):
 def requests_list():
     rs = ServiceRequest.query.filter_by(customer_id=current_user.id)\
         .order_by(ServiceRequest.created_at.desc()).all()
-    return render_template("portal/requests.html", requests=rs)
+    refills = RefillOrder.query.filter_by(customer_id=current_user.id)\
+        .order_by(RefillOrder.created_at.desc()).all()
+    return render_template("portal/requests.html", requests=rs, refills=refills)
 
 
 @portal_bp.route("/notifications/read")
@@ -504,9 +506,58 @@ def notifications():
 @login_required
 @customer_required
 def service_quotations():
-    sqs = ServiceQuotation.query.filter_by(customer_id=current_user.id)\
+    phone_digits = "".join(filter(str.isdigit, current_user.phone or ""))
+    phone_last10 = phone_digits[-10:] if len(phone_digits) >= 10 else phone_digits
+    
+    # Match ServiceQuotation by customer_id or phone
+    filter_cond = (ServiceQuotation.customer_id == current_user.id)
+    if phone_last10:
+        filter_cond = or_(filter_cond, ServiceQuotation.customer_phone.ilike(f"%{phone_last10}%"))
+    
+    sq_query = ServiceQuotation.query.filter(filter_cond)\
         .order_by(ServiceQuotation.created_at.desc()).all()
-    return render_template("portal/sq_list.html", quotations=sqs)
+    
+    # Also fetch visit-linked material quotations across customer contracts
+    my_contracts = Contract.query.filter_by(customer_id=current_user.id).all()
+    contract_ids = [c.id for c in my_contracts]
+    mat_quotes = []
+    if contract_ids:
+        mat_quotes = Quotation.query.filter(Quotation.contract_id.in_(contract_ids))\
+            .order_by(Quotation.created_at.desc()).all()
+            
+    # Segregation:
+    # 1. New Enquiries & AMC:
+    enquiry_quotes = [q for q in sq_query if q.service_type in ("amc", "audit") or q.inquiry_id]
+    
+    # 2. Material & Spares:
+    material_quotes = [q for q in sq_query if q.service_type == "material"] + mat_quotes
+    material_quotes.sort(key=lambda x: x.created_at, reverse=True)
+    
+    # 3. Visits & Service quotes:
+    visit_quotes = [q for q in sq_query if q.service_type in ("repair", "emergency", "refilling") or (q.contract_id and q.service_type != "amc")]
+    
+    tab = request.args.get("tab", "all").strip().lower()
+    if tab == "enquiries":
+        display_items = [("sq", q) for q in enquiry_quotes]
+    elif tab == "material":
+        display_items = [("mat" if isinstance(q, Quotation) else "sq", q) for q in material_quotes]
+    elif tab == "visits":
+        display_items = [("sq", q) for q in visit_quotes]
+    else:
+        all_items = [("sq", q) for q in sq_query] + [("mat", q) for q in mat_quotes]
+        all_items.sort(key=lambda x: x[1].created_at, reverse=True)
+        display_items = all_items
+
+    return render_template(
+        "portal/sq_list.html",
+        display_items=display_items,
+        active_tab=tab,
+        total_count=len(sq_query) + len(mat_quotes),
+        enquiry_count=len(enquiry_quotes),
+        material_count=len(material_quotes),
+        visit_count=len(visit_quotes),
+        quotations=sq_query,
+    )
 
 
 @portal_bp.route("/service-quotation/<int:sq_id>")
@@ -514,8 +565,19 @@ def service_quotations():
 @customer_required
 def service_quotation(sq_id):
     sq = db.session.get(ServiceQuotation, sq_id)
-    if not sq or sq.customer_id != current_user.id:
+    if not sq:
         abort(404)
+    phone_digits = "".join(filter(str.isdigit, current_user.phone or ""))
+    phone_last10 = phone_digits[-10:] if len(phone_digits) >= 10 else phone_digits
+    sq_phone_digits = "".join(filter(str.isdigit, sq.customer_phone or ""))
+    sq_phone_last10 = sq_phone_digits[-10:] if len(sq_phone_digits) >= 10 else sq_phone_digits
+    is_owner = (sq.customer_id == current_user.id) or (phone_last10 and sq_phone_last10 and phone_last10 == sq_phone_last10)
+    if not is_owner:
+        abort(404)
+    # Automatically associate customer_id if missing
+    if not sq.customer_id:
+        sq.customer_id = current_user.id
+        db.session.commit()
     # Mark as viewed
     if sq.status == "sent":
         sq.status = "viewed"
@@ -534,12 +596,14 @@ def service_quotation(sq_id):
 @portal_bp.route("/service-quotation/<int:sq_id>/pdf")
 @login_required
 def service_quotation_pdf(sq_id):
-    """Formal PDF downloads are staff-only (Step 18).
-    Clients review their quotations online within the portal."""
-    if not current_user.is_staff:
-        flash("Formal PDF downloads are restricted to authorized staff. You can view all quotation details and terms directly in your portal.", "info")
-        return redirect(url_for("portal.service_quotation", sq_id=sq_id))
     sq = db.session.get(ServiceQuotation, sq_id) or abort(404)
+    phone_digits = "".join(filter(str.isdigit, current_user.phone or ""))
+    phone_last10 = phone_digits[-10:] if len(phone_digits) >= 10 else phone_digits
+    sq_phone_digits = "".join(filter(str.isdigit, sq.customer_phone or ""))
+    sq_phone_last10 = sq_phone_digits[-10:] if len(sq_phone_digits) >= 10 else sq_phone_digits
+    is_owner = (sq.customer_id == current_user.id) or (phone_last10 and sq_phone_last10 and phone_last10 == sq_phone_last10)
+    if not (current_user.is_staff or is_owner):
+        abort(403)
     pdf = generate_quotation_pdf(sq)
     if not pdf:
         abort(500)

@@ -173,7 +173,17 @@
         </div>
         <div class="flex items-center gap-3">
           {% if v.photos %}<span class="text-xs text-slate-500">{{ v.photos|length }} photos</span>{% endif %}
-          {% if v.service_report_path %}<span class="text-xs text-green-700 font-medium">Report ✓</span>{% endif %}
+          {% if v.status == 'completed' %}
+          <a href="{{ url_for('portal.service_report_pdf', visit_id=v.id) }}"
+             onclick="event.stopPropagation();"
+             class="inline-flex items-center gap-1 text-[11px] font-bold text-navy-800 bg-navy-50 hover:bg-navy-100 border border-navy-200 px-2.5 py-1 rounded-md transition shadow-2xs"
+             title="Download Service Report PDF for offline review">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Report PDF
+          </a>
+          {% elif v.service_report_path %}
+          <span class="text-xs text-green-700 font-medium">Report ✓</span>
+          {% endif %}
           {{ status_badge(v.status) }}
         </div>
       </div>
