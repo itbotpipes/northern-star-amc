@@ -27,9 +27,8 @@
       <a href="{{ url_for('portal.profile') }}" class="btn btn-ghost text-sm px-3 py-2">My Profile</a>
       <a href="{{ url_for('portal.service_quotations') }}" class="btn btn-ghost text-sm px-3 py-2">My Quotes</a>
       <a href="{{ url_for('portal.amc_requests') }}" class="btn btn-ghost text-sm px-3 py-2">My AMC Requests</a>
-      {% if has_finalised_contract %}
+      <a href="{{ url_for('portal.inspections') }}" class="btn btn-ghost text-sm px-3 py-2">Site Inspections</a>
       <a href="{{ url_for('public.enquiry') }}" class="bg-surface-2 text-ink px-4 py-2 rounded-lg text-sm font-medium border border-hairline hover:border-primary transition">+ Request Site Inspection</a>
-      {% endif %}
       <a href="{{ url_for('public.apply') }}" class="bg-primary text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-hover transition">+ New AMC</a>
       {% if has_refills %}<a href="{{ url_for('public.refill') }}" class="bg-surface-2 text-ink px-4 py-2 rounded-lg text-sm font-medium border border-hairline hover:border-primary transition">Book refill</a>{% endif %}
       {% if has_emergencies %}<a href="{{ url_for('public.emergency') }}" class="bg-danger text-white px-4 py-2 rounded-lg text-sm font-medium hover:opacity-90 transition">Emergency</a>{% endif %}

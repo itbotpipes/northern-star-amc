@@ -39,6 +39,7 @@
         {% set _pe = request.endpoint %}
         <a href="{{ url_for('portal.dashboard') }}" class="pnav {{ 'active' if _pe == 'portal.dashboard' }}">Dashboard</a>
         <a href="{{ url_for('portal.dashboard') }}" class="pnav {{ 'active' if _pe in ('portal.contract','portal.visit') }}">My Contracts</a>
+        <a href="{{ url_for('portal.inspections') }}" class="pnav {{ 'active' if _pe == 'portal.inspections' }}">Inspections</a>
         <a href="{{ url_for('portal.equipment_list') }}" class="pnav {{ 'active' if _pe in ('portal.equipment_list','portal.equipment_detail') }}">Equipment</a>
         <a href="{{ url_for('portal.service_quotations') }}" class="pnav {{ 'active' if _pe in ('portal.service_quotations','portal.service_quotation','portal.quotation') }}">Quotations</a>
         <a href="{{ url_for('portal.requests_list') }}" class="pnav {{ 'active' if _pe == 'portal.requests_list' }}">My Requests</a>
