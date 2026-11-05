@@ -879,8 +879,19 @@ def submit_referral(contract_id):
 # Customer journey timeline
 # ─────────────────────────────────────────────────────────────────
 
-@portal_bp.route("/amc-requests", endpoint="amc_requests")
 @portal_bp.route("/journey", endpoint="journey")
+@login_required
+@customer_required
+def journey():
+    """Customer journey timeline — all milestones, quotes, visits, payments."""
+    events = (CustomerJourneyEvent.query
+              .filter_by(customer_id=current_user.id)
+              .order_by(CustomerJourneyEvent.created_at.desc())
+              .all())
+    return render_template("portal/journey.html", events=events)
+
+
+@portal_bp.route("/amc-requests", endpoint="amc_requests")
 @login_required
 @customer_required
 def amc_requests():
