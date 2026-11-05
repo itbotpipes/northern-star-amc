@@ -123,6 +123,25 @@ export default function ContractScreen({ route, navigation }) {
         ) : null}
       </Card>
 
+      {/* Equipment & Safety Devices */}
+      <Card>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: theme.navy + "12", justifyContent: "center", alignItems: "center" }}>
+            <Ionicons name="shield-checkmark" size={22} color={theme.navy} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: "700", color: theme.ink }}>Equipment & Safety Devices</Text>
+            <Text style={{ fontSize: 12, color: theme.inkSubtle, marginTop: 2 }}>Extinguishers, refill alerts & past service visit records.</Text>
+          </View>
+        </View>
+        <Btn
+          title="View Equipment Inventory"
+          variant="ghost"
+          style={{ marginTop: 12 }}
+          onPress={() => navigation.navigate("Equipment")}
+        />
+      </Card>
+
       {/* Roadmap */}
       {c.workflow_steps && c.workflow_steps.length ? (
         <Card>

@@ -104,24 +104,54 @@ export default function HomeScreen({ navigation }) {
       {/* Quick actions */}
       <SectionTitle>Quick actions</SectionTitle>
       <View style={styles.actions}>
+        <Action icon="add-circle-outline" label="+ New AMC" onPress={() => navigation.navigate("NewAMC")} />
+        <Action icon="shield-outline" label="Equipment" onPress={() => navigation.navigate("Equipment")} />
         <Action icon="flame-outline" label="Refill order" onPress={() => navigation.navigate("RequestRefill")} />
         <Action icon="ribbon-outline" label="Certificates" onPress={() => {
           const activeContract = contracts.find((c) => c.status === "active") || contracts[0];
           if (activeContract) {
             navigation.navigate("Certificate", { id: activeContract.id, contract: activeContract });
+          } else {
+            Alert.alert("No Active AMC", "A certificate is generated once your contract completes its service cycle.");
           }
         }} />
         <Action icon="pricetags-outline" label="Quotations" onPress={() => navigation.navigate("Quotes")} />
-        <Action icon="chatbox-ellipses-outline" label="Raise complaint" onPress={() => navigation.navigate("RaiseTicket", {})} />
+        <Action icon="chatbox-ellipses-outline" label="Complaints" onPress={() => navigation.navigate("RaiseTicket", {})} />
         <Action icon="time-outline" label="My journey" onPress={() => navigation.navigate("Journey")} />
         <Action icon="construct-outline" label="Requests" onPress={() => navigation.navigate("Requests")} />
       </View>
+
+      {/* New AMC Application Banner */}
+      <TouchableOpacity
+        style={styles.newAmcBanner}
+        activeOpacity={0.85}
+        onPress={() => navigation.navigate("NewAMC")}
+      >
+        <View style={styles.newAmcIcon}>
+          <Ionicons name="document-text" size={20} color="#FFFFFF" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.newAmcTitle}>Need a New AMC for Another Site?</Text>
+          <Text style={styles.newAmcSub}>Submit site details for an on-site inspection & quotation.</Text>
+        </View>
+        <View style={styles.newAmcBtn}>
+          <Text style={styles.newAmcBtnText}>Apply Now</Text>
+          <Ionicons name="chevron-forward" size={14} color="#FFFFFF" />
+        </View>
+      </TouchableOpacity>
 
       {/* Contracts */}
       <SectionTitle style={{ marginTop: 8 }}>My AMC contracts</SectionTitle>
       {contracts.length === 0 ? (
         <Card>
-          <Text style={styles.muted}>No contracts yet. Once you sign up for an AMC plan, it will appear here.</Text>
+          <Text style={styles.muted}>No contracts yet. Protect your building with an Annual Maintenance Contract.</Text>
+          <TouchableOpacity
+            style={styles.applyNowBtn}
+            onPress={() => navigation.navigate("NewAMC")}
+          >
+            <Ionicons name="add-circle" size={18} color="#FFFFFF" />
+            <Text style={styles.applyNowText}>Apply for New AMC</Text>
+          </TouchableOpacity>
         </Card>
       ) : (
         contracts.map((c) => (
@@ -322,4 +352,45 @@ const styles = StyleSheet.create({
   gradeText: { fontSize: 12, fontWeight: "700" },
   next: { fontSize: 13, color: theme.inkMuted, fontWeight: "600" },
   muted: { color: theme.inkSubtle, fontSize: 14, lineHeight: 20 },
+  newAmcBanner: {
+    backgroundColor: theme.navy,
+    borderRadius: 14,
+    padding: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginTop: 10,
+    marginBottom: 10,
+  },
+  newAmcIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  newAmcTitle: { color: "#FFFFFF", fontSize: 14, fontWeight: "700" },
+  newAmcSub: { color: "rgba(255,255,255,0.8)", fontSize: 11, marginTop: 2 },
+  newAmcBtn: {
+    backgroundColor: theme.amber,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  newAmcBtnText: { color: "#1b1c22", fontSize: 12, fontWeight: "700" },
+  applyNowBtn: {
+    backgroundColor: theme.navy,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginTop: 12,
+  },
+  applyNowText: { color: "#FFFFFF", fontSize: 14, fontWeight: "700" },
 });

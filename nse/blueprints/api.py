@@ -1102,6 +1102,175 @@ def plans():
     } for p in rows])
 
 
+# --------------------------------------------------------------------------- #
+# New AMC Form — customer application for a new AMC contract
+# --------------------------------------------------------------------------- #
+@api_bp.route("/apply", methods=["POST"])
+@customer_only
+def api_apply_amc():
+    body = request.get_json(silent=True) or {}
+    u = g.current_user
+    site_name = (body.get("site_name") or "").strip()
+    site_address = (body.get("site_address") or "").strip()
+    area = (body.get("area") or "").strip()
+    property_type = (body.get("property_type") or "Residential Building").strip()
+    problem_desc = (body.get("problem_description") or body.get("notes") or "").strip()
+    plan_id = body.get("plan_id")
+
+    if not site_name:
+        return jsonify(error="Site or Building Name is required"), 400
+
+    contract = Contract(
+        status="pending",
+        lead_stage="new",
+        project_type="new",
+        site_name=site_name,
+        site_address=site_address or u.address or "Address provided on site inspection",
+        area=area or u.area or "",
+        applicant_name=u.name,
+        applicant_phone=u.phone,
+        applicant_email=u.email,
+        property_type=property_type,
+        problem_description=problem_desc or None,
+        payment_mode="cash",
+        customer_id=u.id,
+    )
+    if plan_id:
+        try:
+            pid = int(plan_id)
+            p = db.session.get(AMCPlan, pid)
+            if p:
+                contract.plan_id = p.id
+                contract.price = p.price
+                contract.total_visits = p.visits_per_year
+        except (ValueError, TypeError):
+            pass
+
+    db.session.add(contract)
+    db.session.commit()
+
+    db.session.add(CustomerJourneyEvent(
+        customer_id=u.id,
+        event_type="enquiry_submitted",
+        description=f"New AMC enquiry submitted for {contract.site_name} (#{contract.reference})",
+        ref_type="contract",
+        ref_id=contract.id,
+    ))
+    db.session.commit()
+
+    notify_staff(
+        f"New AMC Enquiry — {contract.reference}",
+        f"{u.name} submitted an AMC enquiry for {contract.site_name} ({contract.area or 'Site'}). Ready for site inspection.",
+        link=f"/admin/leads"
+    )
+    return jsonify(ok=True, contract=contract_json(contract), message="AMC application submitted successfully!")
+
+
+# --------------------------------------------------------------------------- #
+# Equipment Inventory — customer equipment list & transparency metrics
+# --------------------------------------------------------------------------- #
+@api_bp.route("/equipment")
+@customer_only
+def api_customer_equipment():
+    u = g.current_user
+    contracts = Contract.query.filter_by(customer_id=u.id).all()
+    contract_ids = [c.id for c in contracts]
+    if not contract_ids and u.phone:
+        by_phone = Contract.query.filter_by(applicant_phone=u.phone).all()
+        contract_ids = [c.id for c in by_phone]
+
+    equipment_list = Equipment.query.filter(Equipment.contract_id.in_(contract_ids)).all() if contract_ids else []
+
+    overdue_count = sum(1 for e in equipment_list if e.refill_status == "overdue")
+    due_soon_count = sum(1 for e in equipment_list if e.refill_status == "due_soon")
+    ok_count = len(equipment_list) - overdue_count - due_soon_count
+
+    return jsonify(
+        total=len(equipment_list),
+        overdue_count=overdue_count,
+        due_soon_count=due_soon_count,
+        ok_count=ok_count,
+        equipment=[equipment_json(e) for e in equipment_list]
+    )
+
+
+@api_bp.route("/equipment/<int:equip_id>")
+@customer_only
+def api_customer_equipment_detail(equip_id):
+    u = g.current_user
+    e = db.session.get(Equipment, equip_id)
+    if not e:
+        return jsonify(error="Equipment not found"), 404
+    c = e.contract
+    if not c or (c.customer_id != u.id and c.applicant_phone != u.phone):
+        return jsonify(error="Forbidden"), 403
+
+    refills = [{
+        "id": r.id,
+        "refill_date": _d(r.refill_date),
+        "performed_by": r.performed_by or "Authorized Technician",
+        "vendor": r.performed_by or "Authorized Technician",
+        "notes": r.notes,
+    } for r in (e.refills or [])]
+
+    visits = [{
+        "id": v.id,
+        "visit_number": v.visit_number,
+        "label": v.label,
+        "status": v.status,
+        "scheduled_date": _d(v.scheduled_date),
+        "completed_date": _d(v.completed_date),
+        "technician_name": v.technician.name if v.technician else "Assigned Technician",
+    } for v in (c.visits or []) if v.status == "completed"]
+
+    data = equipment_json(e)
+    data["refill_records"] = refills
+    data["past_visits"] = visits
+    data["contract_reference"] = c.reference
+    return jsonify(equipment=data)
+
+
+# --------------------------------------------------------------------------- #
+# AMC Requests — customer application and enquiry tracking
+# --------------------------------------------------------------------------- #
+@api_bp.route("/amc-requests")
+@customer_only
+def api_customer_amc_requests():
+    u = g.current_user
+    pending_contracts = Contract.query.filter(
+        (Contract.customer_id == u.id) | (Contract.applicant_phone == u.phone),
+        Contract.status == "pending"
+    ).order_by(Contract.created_at.desc()).all()
+
+    enquiries = Enquiry.query.filter(
+        (Enquiry.customer_id == u.id) | (Enquiry.phone == u.phone)
+    ).order_by(Enquiry.created_at.desc()).all()
+
+    apps = [{
+        "id": c.id,
+        "reference": c.reference,
+        "site_name": c.site_name,
+        "site_address": c.site_address,
+        "area": c.area,
+        "lead_stage": c.lead_stage,
+        "created_at": _d(c.created_at),
+        "status": c.status
+    } for c in pending_contracts]
+
+    enqs = [{
+        "id": eq.id,
+        "reference": eq.reference or f"ENQ-{eq.id:04d}",
+        "name": eq.name,
+        "phone": eq.phone,
+        "service": eq.service_requirement or "Fire Safety Inspection",
+        "message": eq.message,
+        "status": eq.status,
+        "created_at": _d(eq.created_at)
+    } for eq in enquiries]
+
+    return jsonify(applications=apps, enquiries=enqs)
+
+
 # =========================================================================== #
 #  MODULE 3 — Technician App (native, staff-facing)
 #  Everything below reuses the exact same models/queries the Ops Console

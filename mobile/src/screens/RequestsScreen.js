@@ -10,6 +10,7 @@ import { Card, Pill, Loading, ErrorNote, SectionTitle, Empty, Btn } from "../com
 
 export default function RequestsScreen({ navigation }) {
   const [data, setData] = useState(null);
+  const [amcData, setAmcData] = useState({ applications: [], enquiries: [] });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
@@ -31,7 +32,12 @@ export default function RequestsScreen({ navigation }) {
   const load = useCallback(async () => {
     try {
       setError(null);
-      setData(await api.requests());
+      const [reqRes, amcRes] = await Promise.all([
+        api.requests(),
+        api.amcRequests().catch(() => ({ applications: [], enquiries: [] })),
+      ]);
+      setData(reqRes);
+      setAmcData(amcRes || { applications: [], enquiries: [] });
     } catch (e) { setError(e.message); }
     finally { setLoading(false); setRefreshing(false); }
   }, []);
@@ -65,14 +71,32 @@ export default function RequestsScreen({ navigation }) {
   if (loading) return <Loading />;
   if (error) return <ErrorNote message={error} onRetry={() => { setLoading(true); load(); }} />;
 
-  const requests = data.requests || [];
-  const refills = data.refills || [];
-  const empty = requests.length === 0 && refills.length === 0;
+  const requests = data?.requests || [];
+  const refills = data?.refills || [];
+  const applications = amcData?.applications || [];
+  const enquiries = amcData?.enquiries || [];
+  const empty = requests.length === 0 && refills.length === 0 && applications.length === 0 && enquiries.length === 0;
 
   return (
     <ScrollView style={styles.wrap} contentContainerStyle={{ padding: 16, paddingBottom: 40, flexGrow: 1 }}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}>
-      
+
+      {/* Quick Request Action Bar */}
+      <View style={styles.actionGrid}>
+        <TouchableOpacity style={styles.quickActionBtn} onPress={() => navigation.navigate("NewAMC")}>
+          <Ionicons name="document-text" size={18} color={theme.navy} />
+          <Text style={styles.quickActionTxt}>+ New AMC</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.quickActionBtn, styles.quickActionEmergency]} onPress={() => setModalVisible(true)}>
+          <Ionicons name="flash" size={18} color="#B91C1C" />
+          <Text style={[styles.quickActionTxt, { color: "#B91C1C" }]}>Emergency</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.quickActionBtn} onPress={() => navigation.navigate("RequestRefill")}>
+          <Ionicons name="flame" size={18} color={theme.navy} />
+          <Text style={styles.quickActionTxt}>Refill</Text>
+        </TouchableOpacity>
+      </View>
+
       {/* Top Banner CTA for Emergency Request */}
       <Card style={styles.emergencyCtaCard}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
@@ -106,8 +130,29 @@ export default function RequestsScreen({ navigation }) {
       {empty ? (
         <Empty icon={<Ionicons name="construct-outline" size={40} color={theme.inkSubtle} />}
                title="No requests yet"
-               subtitle="Emergency, NOC, and refill requests will appear here." />
+               subtitle="AMC applications, emergency visits, and refill requests will appear here." />
       ) : null}
+
+      {/* AMC Applications */}
+      {applications.length ? <SectionTitle>AMC Applications ({applications.length})</SectionTitle> : null}
+      {applications.map((app) => (
+        <Card key={`app${app.id}`} style={{ marginBottom: 10 }}>
+          <View style={styles.head}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.ref}>{app.reference}</Text>
+              <Text style={styles.title}>{app.site_name || "New AMC Application"}</Text>
+              {app.area || app.site_address ? (
+                <Text style={styles.desc}>{app.area || app.site_address}</Text>
+              ) : null}
+            </View>
+            <Pill status={app.lead_stage || app.status} label={app.lead_stage === "new" ? "Audit Pending" : app.lead_stage} />
+          </View>
+          <View style={styles.metaRow}>
+            <Text style={styles.meta}>Applied on {fmtDate(app.created_at)}</Text>
+            <Text style={[styles.meta, { color: theme.navy, fontWeight: "700" }]}>Inspection Follow-up</Text>
+          </View>
+        </Card>
+      ))}
 
       {requests.length ? <SectionTitle>Emergency & NOC</SectionTitle> : null}
       {requests.map((r) => (
@@ -210,6 +255,21 @@ export default function RequestsScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: theme.canvas },
+  actionGrid: { flexDirection: "row", gap: 10, marginBottom: 14 },
+  quickActionBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: theme.hair,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  quickActionEmergency: { backgroundColor: "#FEF2F2", borderColor: "#FCA5A5" },
+  quickActionTxt: { fontSize: 13, fontWeight: "700", color: theme.navy },
   emergencyCtaCard: {
     backgroundColor: "#FEF2F2",
     borderColor: "#FCA5A5",

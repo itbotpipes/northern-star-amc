@@ -153,4 +153,13 @@ export const api = {
 
   // ----- Plans (public) ----------------------------------------------------
   plans: () => request("/plans"),
+
+  // ----- New AMC Application & Enquiries ------------------------------------
+  applyAMC: (fields) =>
+    request("/apply", { method: "POST", auth: true, body: fields }),
+  amcRequests: () => request("/amc-requests", { auth: true }),
+
+  // ----- Equipment Transparency & Tracking ---------------------------------
+  equipment: () => request("/equipment", { auth: true }),
+  equipmentDetail: (id) => request(`/equipment/${id}`, { auth: true }),
 };

@@ -32,6 +32,9 @@ import JourneyScreen from "./src/screens/JourneyScreen";
 import AgreementScreen from "./src/screens/AgreementScreen";
 import CertificateScreen from "./src/screens/CertificateScreen";
 import ReferScreen from "./src/screens/ReferScreen";
+import NewAMCScreen from "./src/screens/NewAMCScreen";
+import EquipmentScreen from "./src/screens/EquipmentScreen";
+import EquipmentDetailScreen from "./src/screens/EquipmentDetailScreen";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -102,6 +105,9 @@ function Routes() {
           <Stack.Screen name="Agreement" component={AgreementScreen} options={{ title: "AMC Agreement" }} />
           <Stack.Screen name="Certificate" component={CertificateScreen} options={{ title: "Fire Safety Certificate" }} />
           <Stack.Screen name="Refer" component={ReferScreen} options={{ title: "Refer a Friend" }} />
+          <Stack.Screen name="NewAMC" component={NewAMCScreen} options={{ title: "Apply for New AMC" }} />
+          <Stack.Screen name="Equipment" component={EquipmentScreen} options={{ title: "Equipment Inventory" }} />
+          <Stack.Screen name="EquipmentDetail" component={EquipmentDetailScreen} options={{ title: "Equipment Details" }} />
         </>
       ) : (
         <>
