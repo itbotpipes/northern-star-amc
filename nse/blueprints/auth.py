@@ -65,11 +65,10 @@ def login():
 @auth_bp.route("/otp/request", methods=["POST"])
 def otp_request():
     raw_phone = (request.form.get("phone") or "").strip()
-    if len(raw_phone) < 8:
-        flash("Please enter a valid phone number.", "danger")
-        return redirect(url_for("auth.login"))
-
     clean = _clean_phone(raw_phone)
+    if len(clean) != 10:
+        flash("Please enter a valid 10-digit mobile number.", "danger")
+        return redirect(url_for("auth.login"))
     # Staff must log in with email and password
     staff_user = User.query.filter(
         (User.phone == raw_phone) |
@@ -110,11 +109,10 @@ def otp_verify():
     phone = session.get("otp_phone") or request.form.get("phone")
     code = (request.form.get("code") or "").strip()
     name = (request.form.get("name") or "").strip()
-    if not phone or not verify_otp(phone, code):
+    clean = _clean_phone(phone)
+    if not phone or len(clean) != 10 or not verify_otp(phone, code):
         flash("Invalid or expired OTP. Please try again.", "danger")
         return redirect(url_for("auth.login"))
-
-    clean = _clean_phone(phone)
     # Block staff members from signing into customer portal via OTP
     staff_user = User.query.filter(
         (User.phone == phone) |

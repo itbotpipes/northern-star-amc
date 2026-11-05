@@ -306,3 +306,4 @@ const styles = StyleSheet.create({
   tapHint: { fontSize: 11, color: theme.inkSubtle, fontWeight: "500" },
   viewMore: { fontSize: 11, color: theme.navy, fontWeight: "700", marginRight: 2 },
 });
+

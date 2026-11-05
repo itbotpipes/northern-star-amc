@@ -22,6 +22,7 @@ Design choices (so the mobile dev can rely on them):
 To wire it up it is registered in nse/__init__.py:  app.register_blueprint(api_bp)
 """
 
+import re
 from datetime import date, datetime, timedelta
 from functools import wraps
 
@@ -218,8 +219,13 @@ def notification_json(n):
 def otp_request():
     body = request.get_json(silent=True) or {}
     phone = (body.get("phone") or "").strip()
-    if len(phone) < 8:
-        return jsonify(error="Please enter a valid phone number."), 400
+    clean = re.sub(r"\D", "", phone)
+    if clean.startswith("91") and len(clean) == 12:
+        clean = clean[2:]
+    elif clean.startswith("0") and len(clean) == 11:
+        clean = clean[1:]
+    if len(clean) != 10:
+        return jsonify(error="Please enter a valid 10-digit mobile number."), 400
     code = generate_otp(phone)
     # Dev flow: return the code so the app can auto-fill it (no SMS gateway yet).
     # In production, wire generate_otp() to an SMS provider and stop returning it.

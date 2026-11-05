@@ -213,3 +213,4 @@ const styles = StyleSheet.create({
   visitTech: { fontSize: 12, color: theme.inkMuted, marginTop: 1 },
   visitDate: { fontSize: 11, color: theme.inkSubtle, marginTop: 1 },
 });
+

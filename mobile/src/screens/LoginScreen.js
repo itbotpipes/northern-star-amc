@@ -13,8 +13,8 @@ export default function LoginScreen({ navigation }) {
 
   const onContinue = async () => {
     const clean = phone.replace(/\D/g, "");
-    if (clean.length < 10) {
-      Alert.alert("Invalid number", "Enter your 10-digit mobile number.");
+    if (clean.length !== 10) {
+      Alert.alert("Invalid number", "Please enter exactly 10 digits for your mobile number.");
       return;
     }
     setBusy(true);
@@ -53,11 +53,11 @@ export default function LoginScreen({ navigation }) {
           <Text style={styles.cc}>+91</Text>
           <TextInput
             style={styles.input}
-            placeholder="98765 43210"
+            placeholder="9876543210"
             keyboardType="number-pad"
             maxLength={10}
             value={phone}
-            onChangeText={setPhone}
+            onChangeText={(text) => setPhone(text.replace(/\D/g, "").slice(0, 10))}
             editable={!busy}
           />
         </View>

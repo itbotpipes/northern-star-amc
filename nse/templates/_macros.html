@@ -94,6 +94,7 @@
     <span class="text-sm font-medium text-ink-muted">{{ label }}{% if required %} <span class="text-danger">*</span>{% endif %}</span>
     <input type="{{ type }}" name="{{ name }}" value="{{ value }}" {% if required %}required{% endif %}
            placeholder="{{ placeholder }}"
+           {% if type == 'tel' or name == 'phone' or 'phone' in name or 'mobile' in name %}maxlength="10" inputmode="numeric" pattern="[0-9]{10}" oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0, 10)"{% endif %}
            class="mt-1.5 w-full px-3 py-2.5">
   </label>
 {% endmacro %}

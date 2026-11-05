@@ -253,3 +253,4 @@ const styles = StyleSheet.create({
   },
   contactNoticeText: { fontSize: 12, color: theme.navy, flex: 1, lineHeight: 17 },
 });
+
