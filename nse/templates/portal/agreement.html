@@ -29,7 +29,7 @@
     {% endif %}
 
     <!-- Scrollable clauses -->
-    <div id="clauseBox" class="border border-hairline rounded-xl bg-surface-1 max-h-[55vh] overflow-y-auto p-5 space-y-4">
+    <div id="clauseBox" class="border-2 border-hairline rounded-xl bg-surface-1 max-h-[50vh] overflow-y-auto p-5 space-y-4 transition-all">
       {% for title, body in clauses %}
       <div>
         <h3 class="font-bold text-ink text-sm">{{ loop.index }}. {{ title }}</h3>
@@ -40,24 +40,47 @@
         This agreement is between {{ COMPANY_NAME }} ({{ COMPANY_CITY }}) and the registered
         customer for contract {{ c.reference }}. Issued under GST No. 24ALQPD0899P1ZD.
       </p>
+      <div id="agreementBottomSentinel" class="h-6 flex items-center justify-center text-xs text-slate-400 font-mono border-t border-dashed border-slate-200 mt-4 pt-2">
+        — End of Agreement Terms (All {{ clauses|length }} Clauses Read) —
+      </div>
     </div>
 
     {% if not c.agreement_accepted %}
-    <!-- Accept form -->
-    <form method="post" action="{{ url_for('portal.agreement_accept', contract_id=c.id) }}" class="mt-5">
-      <label class="flex items-start gap-2.5 text-sm text-ink-muted">
-        <input type="checkbox" name="agree" value="1" id="agreeChk" required class="mt-0.5">
-        <span>I have read and understood all {{ clauses|length }} clauses above and agree to the
-        terms of this AMC maintenance agreement on behalf of the registered site.</span>
-      </label>
-      <div class="mt-5 flex flex-wrap gap-3">
-        <button type="submit" id="agreeBtn"
-                class="btn btn-primary px-6 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
-          Agree &amp; Continue
-        </button>
-        <a href="{{ url_for('portal.contract', contract_id=c.id) }}" class="btn btn-ghost px-5">Read later</a>
+    <!-- Scroll Progress Banner -->
+    <div id="scrollBanner" class="mt-4 p-3.5 bg-amber-50 border-2 border-amber-300 rounded-xl flex items-center justify-between gap-3 text-xs text-amber-900 font-medium transition-all shadow-2xs">
+      <div class="flex items-center gap-2">
+        <svg id="scrollIcon" class="w-4 h-4 text-amber-600 shrink-0 animate-bounce" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 14l-7 7m0 0l-7-7m7 7V3"/>
+        </svg>
+        <span id="scrollText">Please scroll down through all {{ clauses|length }} clauses above to unlock agreement acceptance.</span>
       </div>
-      <p class="text-xs text-ink-subtle mt-2">For your protection, this agreement is view-only and cannot be downloaded.</p>
+      <span id="scrollBadge" class="shrink-0 font-mono font-bold text-[11px] px-2.5 py-0.5 rounded-full bg-amber-200 text-amber-900">
+        0% Read
+      </span>
+    </div>
+
+    <!-- Accept form -->
+    <form method="post" action="{{ url_for('portal.agreement_accept', contract_id=c.id) }}" class="mt-4" id="agreeForm">
+      <div id="agreeWrapper" class="p-3.5 rounded-xl border border-dashed border-slate-300 bg-slate-50 transition cursor-not-allowed">
+        <label id="agreeLabel" class="flex items-start gap-2.5 text-sm text-slate-400 select-none cursor-not-allowed">
+          <input type="checkbox" name="agree" value="1" id="agreeChk" required disabled
+                 class="mt-0.5 w-4 h-4 rounded text-primary focus:ring-primary cursor-not-allowed opacity-50 transition">
+          <span id="agreeText" class="leading-snug">
+            I have read and understood all {{ clauses|length }} clauses above and agree to the
+            terms of this AMC maintenance agreement on behalf of the registered site.
+          </span>
+        </label>
+      </div>
+
+      <div class="mt-5 flex flex-wrap items-center gap-3">
+        <button type="submit" id="agreeBtn"
+                class="btn btn-primary px-6 py-2.5 font-bold disabled:opacity-40 disabled:cursor-not-allowed shadow-sm transition" disabled>
+          Agree &amp; Confirm Contract
+        </button>
+        <a href="{{ url_for('portal.contract', contract_id=c.id) }}" class="btn btn-ghost px-5 text-sm">Read later</a>
+        <span id="lockHelp" class="text-xs text-amber-700 italic">🔒 Checkbox locked until entire agreement is scrolled to the bottom.</span>
+      </div>
+      <p class="text-xs text-ink-subtle mt-3">For your protection, this agreement is view-only and cannot be altered.</p>
     </form>
     {% endif %}
   </div>
@@ -69,21 +92,105 @@
   var chk = document.getElementById('agreeChk');
   var btn = document.getElementById('agreeBtn');
   var box = document.getElementById('clauseBox');
+  var banner = document.getElementById('scrollBanner');
+  var scrollText = document.getElementById('scrollText');
+  var scrollBadge = document.getElementById('scrollBadge');
+  var scrollIcon = document.getElementById('scrollIcon');
+  var agreeWrapper = document.getElementById('agreeWrapper');
+  var agreeLabel = document.getElementById('agreeLabel');
+  var lockHelp = document.getElementById('lockHelp');
+  var sentinel = document.getElementById('agreementBottomSentinel');
   var scrolled = false;
-  // Require the client to scroll the clauses before the checkbox is enabled.
-  function checkScroll() {
-    if (box.scrollTop + box.clientHeight >= box.scrollHeight - 24) scrolled = true;
-    sync();
+
+  function updateProgress() {
+    if (scrolled) return;
+    var maxScroll = box.scrollHeight - box.clientHeight;
+    if (maxScroll <= 0) {
+      unlock();
+      return;
+    }
+    var currentScroll = box.scrollTop;
+    var pct = Math.min(100, Math.round((currentScroll / maxScroll) * 100));
+    if (scrollBadge) scrollBadge.textContent = pct + '% Read';
+
+    if (currentScroll + box.clientHeight >= box.scrollHeight - 30) {
+      unlock();
+    }
   }
-  function sync() {
-    chk.disabled = !scrolled;
+
+  function unlock() {
+    if (scrolled) return;
+    scrolled = true;
+
+    // Enable checkbox
+    chk.disabled = false;
+    chk.classList.remove('cursor-not-allowed', 'opacity-50');
+    chk.classList.add('cursor-pointer');
+
+    // Update wrapper & label
+    agreeWrapper.classList.remove('border-dashed', 'border-slate-300', 'bg-slate-50', 'cursor-not-allowed');
+    agreeWrapper.classList.add('border-solid', 'border-emerald-300', 'bg-emerald-50/50', 'cursor-pointer');
+    agreeLabel.classList.remove('text-slate-400', 'cursor-not-allowed');
+    agreeLabel.classList.add('text-ink', 'cursor-pointer');
+
+    // Update banner
+    banner.classList.remove('bg-amber-50', 'border-amber-300', 'text-amber-900');
+    banner.classList.add('bg-emerald-50', 'border-emerald-300', 'text-emerald-900');
+    if (scrollIcon) {
+      scrollIcon.classList.remove('text-amber-600', 'animate-bounce');
+      scrollIcon.classList.add('text-emerald-600');
+      scrollIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>';
+    }
+    if (scrollText) scrollText.textContent = 'Agreement read completely. You can now tick the box below to sign.';
+    if (scrollBadge) {
+      scrollBadge.textContent = '100% Read';
+      scrollBadge.classList.remove('bg-amber-200', 'text-amber-900');
+      scrollBadge.classList.add('bg-emerald-200', 'text-emerald-900');
+    }
+    if (lockHelp) {
+      lockHelp.textContent = '✓ Agreement unlocked. Please check the box to continue.';
+      lockHelp.classList.remove('text-amber-700', 'italic');
+      lockHelp.classList.add('text-emerald-700', 'font-medium');
+    }
+  }
+
+  function guardClick(e) {
+    if (!scrolled) {
+      e.preventDefault();
+      e.stopPropagation();
+      chk.checked = false;
+      box.classList.add('ring-2', 'ring-amber-500');
+      banner.classList.add('scale-[1.01]');
+      setTimeout(function() {
+        box.classList.remove('ring-2', 'ring-amber-500');
+        banner.classList.remove('scale-[1.01]');
+      }, 400);
+      alert('Please scroll to the bottom of the terms to read the full agreement before checking this box.');
+    }
+  }
+
+  agreeWrapper.addEventListener('click', function(e) {
+    if (!scrolled) guardClick(e);
+  });
+  chk.addEventListener('click', function(e) {
+    if (!scrolled) guardClick(e);
+  });
+
+  if ('IntersectionObserver' in window && sentinel) {
+    var observer = new IntersectionObserver(function(entries) {
+      if (entries[0].isIntersecting) {
+        unlock();
+      }
+    }, { root: box, threshold: 0.5 });
+    observer.observe(sentinel);
+  }
+
+  box.addEventListener('scroll', updateProgress, { passive: true });
+  chk.addEventListener('change', function() {
     btn.disabled = !(scrolled && chk.checked);
-  }
-  // If the content is short enough that there's nothing to scroll, allow immediately.
-  if (box.scrollHeight <= box.clientHeight + 24) scrolled = true;
-  box.addEventListener('scroll', checkScroll);
-  chk.addEventListener('change', sync);
-  sync();
+  });
+
+  setTimeout(updateProgress, 100);
 })();
 </script>
 {% endif %}

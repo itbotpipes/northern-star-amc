@@ -136,6 +136,21 @@ def dashboard():
 
     scheduled_inspections.sort(key=lambda x: x["scheduled_date"])
 
+    # Contracts where AMC agreement is generated but not yet signed by customer
+    unsigned_agreements = []
+    for c in contracts:
+        if not c.agreement_accepted and c.status not in ("cancelled", "rejected", "expired"):
+            has_accepted_sq = any(sq.status == "accepted" for sq in getattr(c, "service_quotations", []))
+            if (
+                c.status == "active"
+                or c.payment_status == "paid"
+                or c.free_amc
+                or c.lead_stage in ("pending_agreement", "agreement_pending", "agreement_ready", "quote_accepted")
+                or (c.price and c.price > 0)
+                or has_accepted_sq
+            ):
+                unsigned_agreements.append(c)
+
     # Only surface action buttons for services the customer actually uses.
     has_emergencies = any(r.request_type == "emergency" for r in requests_)
     has_refills = bool(refills)
@@ -148,6 +163,7 @@ def dashboard():
                            negotiation_replied_quotes=negotiation_replied_quotes,
                            negotiation_in_progress_quotes=negotiation_in_progress_quotes,
                            scheduled_inspections=scheduled_inspections,
+                           unsigned_agreements=unsigned_agreements,
                            refills=refills, inquiries=inquiries,
                            has_emergencies=has_emergencies, has_refills=has_refills,
                            has_finalised_contract=has_finalised_contract)
