@@ -13,16 +13,32 @@
     </div>
     {% endif %}
 
+    {% if not is_new_user and existing_name %}
+    <div class="mt-4 p-3 bg-slate-50 border border-slate-200 rounded-lg flex items-center gap-3">
+      <div class="w-9 h-9 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm">
+        {{ existing_name[0]|upper }}
+      </div>
+      <div>
+        <div class="text-sm font-semibold text-ink">Welcome back, {{ existing_name }}!</div>
+        <div class="text-xs text-ink-subtle">Enter your 6-digit OTP below to log in.</div>
+      </div>
+    </div>
+    {% endif %}
+
     <form method="post" action="{{ url_for('auth.otp_verify') }}" class="mt-6 space-y-4">
       <input type="hidden" name="phone" value="{{ phone }}">
+      {% if is_new_user %}
       <label class="block">
         <span class="text-sm font-medium text-ink-muted">Your name <span class="text-ink-subtle">(first time only)</span></span>
-        <input type="text" name="name" placeholder="Full name" class="mt-1.5 w-full px-3 py-2.5">
+        <input type="text" name="name" placeholder="Full name" class="mt-1.5 w-full px-3 py-2.5" required autofocus>
       </label>
+      {% endif %}
       <label class="block">
         <span class="text-sm font-medium text-ink-muted">6-digit OTP</span>
         <input type="text" name="code" required maxlength="6" inputmode="numeric"
-               class="mt-1.5 w-full px-3 py-3 text-center text-2xl tracking-[0.5em] font-mono">
+               class="mt-1.5 w-full px-3 py-3 text-center text-2xl tracking-[0.5em] font-mono"
+               placeholder="••••••"
+               {% if not is_new_user %}autofocus{% endif %}>
       </label>
       <button class="btn btn-primary w-full">Verify &amp; login</button>
     </form>
