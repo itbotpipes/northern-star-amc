@@ -159,6 +159,9 @@ export const api = {
     request("/apply", { method: "POST", auth: true, body: fields }),
   amcRequests: () => request("/amc-requests", { auth: true }),
 
+  // ----- Inspections -------------------------------------------------------
+  inspections: () => request("/inspections", { auth: true }),
+
   // ----- Equipment Transparency & Tracking ---------------------------------
   equipment: () => request("/equipment", { auth: true }),
   equipmentDetail: (id) => request(`/equipment/${id}`, { auth: true }),

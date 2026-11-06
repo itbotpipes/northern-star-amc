@@ -35,6 +35,7 @@ import ReferScreen from "./src/screens/ReferScreen";
 import NewAMCScreen from "./src/screens/NewAMCScreen";
 import EquipmentScreen from "./src/screens/EquipmentScreen";
 import EquipmentDetailScreen from "./src/screens/EquipmentDetailScreen";
+import InspectionsScreen from "./src/screens/InspectionsScreen";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -108,6 +109,7 @@ function Routes() {
           <Stack.Screen name="NewAMC" component={NewAMCScreen} options={{ title: "Apply for New AMC" }} />
           <Stack.Screen name="Equipment" component={EquipmentScreen} options={{ title: "Equipment Inventory" }} />
           <Stack.Screen name="EquipmentDetail" component={EquipmentDetailScreen} options={{ title: "Equipment Details" }} />
+          <Stack.Screen name="Inspections" component={InspectionsScreen} options={{ title: "Site Inspections" }} />
         </>
       ) : (
         <>

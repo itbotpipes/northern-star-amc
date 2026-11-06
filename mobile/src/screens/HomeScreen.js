@@ -1,4 +1,4 @@
-// Home / dashboard: greeting, quick counts, contract cards, quick actions.
+// Home / dashboard: greeting, quick counts, unsigned agreement banner, portal pills, contract cards, quick actions.
 import React, { useState, useCallback } from "react";
 import {
   View, Text, ScrollView, RefreshControl, TouchableOpacity, StyleSheet, Linking, Alert,
@@ -7,8 +7,14 @@ import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "../api/client";
 import { useAuth } from "../context/AuthContext";
-import { theme, rupees, fmtDate, gradeColors } from "../theme";
+import { theme, rupees, fmtDate } from "../theme";
 import { Card, Pill, Loading, ErrorNote, SectionTitle } from "../components/ui";
+
+const gradeColors = {
+  emerald: theme.success,
+  amber: theme.warning,
+  rose: theme.danger,
+};
 
 export default function HomeScreen({ navigation }) {
   const { user } = useAuth();
@@ -33,35 +39,141 @@ export default function HomeScreen({ navigation }) {
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const handleCallEmergency = () => {
-    const phoneNumber = "tel:18008918565";
-    Linking.canOpenURL(phoneNumber)
-      .then((supported) => {
-        if (supported) {
-          Linking.openURL(phoneNumber);
-        } else {
-          Alert.alert("Emergency Hotline", "Call 1800-891-8565 for 24x7 Emergency Fire Response.");
-        }
-      })
-      .catch(() => {
-        Alert.alert("Emergency Hotline", "Call 1800-891-8565 for 24x7 Emergency Fire Response.");
-      });
+    Linking.openURL("tel:18008918565").catch(() => {
+      Alert.alert("Emergency Dispatch", "Call our 24x7 control room at 1800-891-8565");
+    });
   };
 
   if (loading) return <Loading text="Loading your dashboard…" />;
   if (error) return <ErrorNote message={error} onRetry={() => { setLoading(true); load(); }} />;
 
-  const counts = data.counts || {};
-  const contracts = data.contracts || [];
+  const counts = data?.counts || {};
+  const contracts = data?.contracts || [];
   const firstName = (user?.name || "there").split(" ")[0];
+
+  // Contracts where agreement has been generated but not yet accepted
+  const unsignedAgreements = contracts.filter(
+    (c) => (c.status === "active" || c.status === "pending") && !c.agreement_accepted
+  );
 
   return (
     <ScrollView
       style={styles.wrap}
-      contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+      contentContainerStyle={{ padding: 16, paddingBottom: 50 }}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
     >
       <Text style={styles.hi}>Hello, {firstName}</Text>
       <Text style={styles.sub}>Your fire-safety, all in one place.</Text>
+
+      {/* Top Portal Navigation Pills — exact mirror of WebApp base_portal.html */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.portalPillsWrap}
+        style={styles.portalPillsScroll}
+      >
+        <TouchableOpacity
+          style={[styles.portalPill, styles.portalPillActive]}
+          activeOpacity={0.8}
+          onPress={() => navigation.navigate("Inspections")}
+        >
+          <Ionicons name="clipboard-outline" size={14} color={theme.colors.navy} />
+          <Text style={styles.portalPillText}>Site Inspections</Text>
+          {(counts.scheduled_inspections ?? 0) > 0 && (
+            <View style={styles.pillBadge}>
+              <Text style={styles.pillBadgeText}>{counts.scheduled_inspections}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.portalPill}
+          activeOpacity={0.8}
+          onPress={() => navigation.navigate("Journey")}
+        >
+          <Ionicons name="time-outline" size={14} color={theme.colors.navy} />
+          <Text style={styles.portalPillText}>My Journey</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.portalPill}
+          activeOpacity={0.8}
+          onPress={() => navigation.navigate("Equipment")}
+        >
+          <Ionicons name="shield-outline" size={14} color={theme.colors.navy} />
+          <Text style={styles.portalPillText}>Equipment</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.portalPill}
+          activeOpacity={0.8}
+          onPress={() => navigation.navigate("Quotes")}
+        >
+          <Ionicons name="pricetags-outline" size={14} color={theme.colors.navy} />
+          <Text style={styles.portalPillText}>Quotations</Text>
+          {(counts.pending_quotes ?? 0) > 0 && (
+            <View style={styles.pillBadge}>
+              <Text style={styles.pillBadgeText}>{counts.pending_quotes}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.portalPill}
+          activeOpacity={0.8}
+          onPress={() => navigation.navigate("Requests")}
+        >
+          <Ionicons name="construct-outline" size={14} color={theme.colors.navy} />
+          <Text style={styles.portalPillText}>My Requests</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.portalPill, styles.portalPillPrimary]}
+          activeOpacity={0.8}
+          onPress={() => navigation.navigate("NewAMC")}
+        >
+          <Ionicons name="add-circle" size={14} color="#FFFFFF" />
+          <Text style={[styles.portalPillText, { color: "#FFFFFF", fontWeight: "700" }]}>+ New AMC</Text>
+        </TouchableOpacity>
+      </ScrollView>
+
+      {/* Unsigned AMC Agreement Ready for Signature Banner — matches WebApp dashboard.html */}
+      {unsignedAgreements.length > 0 && (
+        <View style={styles.agreementAlert}>
+          <View style={styles.agreementAlertHead}>
+            <View style={styles.alertIconBox}>
+              <Ionicons name="shield-half" size={20} color="#FFFFFF" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.alertTitle}>
+                {unsignedAgreements.length === 1
+                  ? "AMC Agreement Ready for Signature"
+                  : `${unsignedAgreements.length} AMC Agreements Ready for Signature`}
+              </Text>
+              <Text style={styles.alertSub}>
+                Your AMC agreement has been generated. Please review the terms and complete your digital sign-off to activate scheduled visits.
+              </Text>
+            </View>
+          </View>
+          {unsignedAgreements.map((c) => (
+            <View key={c.id} style={styles.agreementCard}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.agreementRef}>{c.reference}</Text>
+                <Text style={styles.agreementSite} numberOfLines={1}>
+                  {c.site_name || "Covered Site"}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.signBtn}
+                activeOpacity={0.85}
+                onPress={() => navigation.navigate("Agreement", { id: c.id })}
+              >
+                <Text style={styles.signBtnText}>Review & Sign →</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+        </View>
+      )}
 
       {/* 24x7 Emergency SOS Card */}
       <View style={styles.sosCard}>
@@ -95,6 +207,8 @@ export default function HomeScreen({ navigation }) {
       <View style={styles.stats}>
         <Stat icon="document-text" label="Contracts" value={counts.contracts ?? 0}
               onPress={() => {}} />
+        <Stat icon="clipboard" label="Inspections" value={counts.scheduled_inspections ?? 0}
+              onPress={() => navigation.navigate("Inspections")} />
         <Stat icon="pricetag" label="Open quotes" value={counts.pending_quotes ?? 0}
               onPress={() => navigation.navigate("Quotes")} />
         <Stat icon="notifications" label="Alerts" value={counts.unread_notifications ?? 0}
@@ -105,6 +219,7 @@ export default function HomeScreen({ navigation }) {
       <SectionTitle>Quick actions</SectionTitle>
       <View style={styles.actions}>
         <Action icon="add-circle-outline" label="+ New AMC" onPress={() => navigation.navigate("NewAMC")} />
+        <Action icon="clipboard-outline" label="Inspections" onPress={() => navigation.navigate("Inspections")} />
         <Action icon="shield-outline" label="Equipment" onPress={() => navigation.navigate("Equipment")} />
         <Action icon="flame-outline" label="Refill order" onPress={() => navigation.navigate("RequestRefill")} />
         <Action icon="ribbon-outline" label="Certificates" onPress={() => {
@@ -135,7 +250,7 @@ export default function HomeScreen({ navigation }) {
           <Text style={styles.newAmcSub}>Submit site details for an on-site inspection & quotation.</Text>
         </View>
         <View style={styles.newAmcBtn}>
-          <Text style={styles.newAmcBtnText}>Apply Now</Text>
+          <Text style={styles.newAmcBtnText}>Send Enquiry</Text>
           <Ionicons name="chevron-forward" size={14} color="#FFFFFF" />
         </View>
       </TouchableOpacity>
@@ -171,6 +286,16 @@ export default function HomeScreen({ navigation }) {
                 <Meta label="Visits" value={`${c.completed_visits}/${c.total_visits}`} />
                 <Meta label="Value" value={rupees(c.price)} />
               </View>
+
+              {/* Inspection Notice on pending contract */}
+              {c.status === "pending" && c.inspection_scheduled_date ? (
+                <View style={styles.inspectionNoticeBox}>
+                  <Ionicons name="calendar-outline" size={14} color="#0284C7" />
+                  <Text style={styles.inspectionNoticeText}>
+                    Inspection: {fmtDate(c.inspection_scheduled_date)} · Certified Engineer Assigned
+                  </Text>
+                </View>
+              ) : null}
 
               <View style={styles.footer}>
                 {c.safety_grade ? (
@@ -227,7 +352,119 @@ function Meta({ label, value }) {
 const styles = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: theme.canvas },
   hi: { fontSize: 24, fontWeight: "800", color: theme.ink },
-  sub: { color: theme.inkMuted, marginTop: 2, marginBottom: 14 },
+  sub: { color: theme.inkMuted, marginTop: 2, marginBottom: 12 },
+
+  portalPillsScroll: {
+    marginBottom: 16,
+  },
+  portalPillsWrap: {
+    flexDirection: "row",
+    gap: 8,
+    paddingVertical: 2,
+  },
+  portalPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: theme.hair,
+  },
+  portalPillActive: {
+    borderColor: "#BAE6FD",
+    backgroundColor: "#F0F9FF",
+  },
+  portalPillPrimary: {
+    backgroundColor: theme.navy,
+    borderColor: theme.navy,
+  },
+  portalPillText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: theme.ink,
+  },
+  pillBadge: {
+    backgroundColor: theme.navy,
+    borderRadius: 10,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+  },
+  pillBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 10,
+    fontWeight: "800",
+  },
+
+  agreementAlert: {
+    backgroundColor: "#FFFBEB",
+    borderWidth: 1.5,
+    borderColor: "#F59E0B",
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 18,
+  },
+  agreementAlertHead: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    marginBottom: 12,
+  },
+  alertIconBox: {
+    width: 34,
+    height: 34,
+    borderRadius: 8,
+    backgroundColor: "#D97706",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  alertTitle: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#78350F",
+  },
+  alertSub: {
+    fontSize: 12,
+    color: "#92400E",
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  agreementCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#FDE68A",
+    padding: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  agreementRef: {
+    fontSize: 12,
+    fontWeight: "800",
+    fontFamily: "monospace",
+    color: theme.navy,
+  },
+  agreementSite: {
+    fontSize: 12,
+    color: "#475569",
+    fontWeight: "500",
+  },
+  signBtn: {
+    backgroundColor: theme.navy,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  signBtnText: {
+    color: "#FFFFFF",
+    fontSize: 11,
+    fontWeight: "700",
+  },
+
   sosCard: {
     backgroundColor: "#FEF2F2",
     borderWidth: 1.5,
@@ -235,11 +472,6 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 14,
     marginBottom: 20,
-    shadowColor: "#B91C1C",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 2,
   },
   sosHeader: {
     flexDirection: "row",
@@ -255,13 +487,13 @@ const styles = StyleSheet.create({
   sosBadgeIcon: {
     width: 28,
     height: 28,
-    borderRadius: 14,
+    borderRadius: 8,
     backgroundColor: "#DC2626",
-    alignItems: "center",
     justifyContent: "center",
+    alignItems: "center",
   },
   sosTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "800",
     color: "#991B1B",
   },
@@ -269,17 +501,17 @@ const styles = StyleSheet.create({
     backgroundColor: "#FEE2E2",
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 12,
+    borderRadius: 6,
     borderWidth: 1,
-    borderColor: "#FECACA",
+    borderColor: "#FCA5A5",
   },
   slaText: {
     fontSize: 11,
     fontWeight: "800",
-    color: "#991B1B",
+    color: "#B91C1C",
   },
   sosSub: {
-    fontSize: 12.5,
+    fontSize: 12,
     color: "#7F1D1D",
     lineHeight: 17,
     marginBottom: 12,
@@ -289,7 +521,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   sosCallBtn: {
-    flex: 1.2,
+    flex: 1.1,
     backgroundColor: "#DC2626",
     flexDirection: "row",
     alignItems: "center",
@@ -320,13 +552,15 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
   },
-  stats: { flexDirection: "row", gap: 10, marginBottom: 20 },
+
+  stats: { flexDirection: "row", gap: 8, marginBottom: 20 },
   stat: {
     flex: 1, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.hair,
-    borderRadius: 14, padding: 14, alignItems: "center", gap: 2,
+    borderRadius: 14, padding: 12, alignItems: "center", gap: 2,
   },
-  statValue: { fontSize: 22, fontWeight: "800", color: theme.ink, marginTop: 4 },
-  statLabel: { fontSize: 12, color: theme.inkSubtle },
+  statValue: { fontSize: 20, fontWeight: "800", color: theme.ink, marginTop: 4 },
+  statLabel: { fontSize: 11, color: theme.inkSubtle },
+
   actions: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 8 },
   action: {
     width: "47%", flexGrow: 1, flexDirection: "row", alignItems: "center", gap: 10,
@@ -337,21 +571,42 @@ const styles = StyleSheet.create({
     width: 38, height: 38, borderRadius: 10, backgroundColor: theme.amberLight,
     alignItems: "center", justifyContent: "center",
   },
-  actionLabel: { fontSize: 14, fontWeight: "600", color: theme.ink, flexShrink: 1 },
+  actionLabel: { fontSize: 13, fontWeight: "600", color: theme.ink, flexShrink: 1 },
+
   cardHead: { flexDirection: "row", alignItems: "flex-start", marginBottom: 12 },
   ref: { fontSize: 13, fontWeight: "700", color: theme.navy, fontVariant: ["tabular-nums"] },
-  site: { fontSize: 17, fontWeight: "700", color: theme.ink, marginTop: 2 },
+  site: { fontSize: 16, fontWeight: "700", color: theme.ink, marginTop: 2 },
   metaRow: { flexDirection: "row", gap: 8 },
   metaLabel: { fontSize: 11, color: theme.inkSubtle, textTransform: "uppercase", letterSpacing: 0.4 },
-  metaValue: { fontSize: 14, fontWeight: "700", color: theme.ink, marginTop: 2 },
+  metaValue: { fontSize: 13, fontWeight: "700", color: theme.ink, marginTop: 2 },
+
+  inspectionNoticeBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#F0F9FF",
+    borderWidth: 1,
+    borderColor: "#BAE6FD",
+    borderRadius: 8,
+    padding: 8,
+    marginTop: 10,
+  },
+  inspectionNoticeText: {
+    fontSize: 11,
+    color: "#0369A1",
+    fontWeight: "600",
+    flex: 1,
+  },
+
   footer: {
     flexDirection: "row", justifyContent: "space-between", alignItems: "center",
-    marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: theme.hair,
+    marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: theme.hair,
   },
   grade: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
   gradeText: { fontSize: 12, fontWeight: "700" },
-  next: { fontSize: 13, color: theme.inkMuted, fontWeight: "600" },
+  next: { fontSize: 12, color: theme.inkMuted, fontWeight: "600" },
   muted: { color: theme.inkSubtle, fontSize: 14, lineHeight: 20 },
+
   newAmcBanner: {
     backgroundColor: theme.navy,
     borderRadius: 14,
@@ -382,6 +637,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   newAmcBtnText: { color: "#1b1c22", fontSize: 12, fontWeight: "700" },
+
   applyNowBtn: {
     backgroundColor: theme.navy,
     flexDirection: "row",

@@ -1319,6 +1319,87 @@ def api_customer_amc_requests():
     return jsonify(applications=apps, enquiries=enqs)
 
 
+@api_bp.route("/inspections")
+@customer_only
+def api_customer_inspections():
+    from sqlalchemy import or_
+    u = g.current_user
+    phone_digits = "".join(filter(str.isdigit, u.phone or ""))
+    phone_last10 = phone_digits[-10:] if len(phone_digits) >= 10 else phone_digits
+
+    contract_filters = [Contract.customer_id == u.id]
+    if u.phone:
+        contract_filters.append(Contract.applicant_phone == u.phone)
+        if phone_last10:
+            contract_filters.append(Contract.applicant_phone.ilike(f"%{phone_last10}%"))
+    contracts = Contract.query.filter(or_(*contract_filters)).order_by(Contract.created_at.desc()).all()
+
+    inquiry_filters = [Enquiry.customer_id == u.id]
+    if u.phone:
+        inquiry_filters.append(Enquiry.phone == u.phone)
+        if phone_last10:
+            inquiry_filters.append(Enquiry.phone.ilike(f"%{phone_last10}%"))
+    inquiries = Enquiry.query.filter(or_(*inquiry_filters)).order_by(Enquiry.created_at.desc()).all()
+
+    scheduled = []
+    completed = []
+
+    for c in contracts:
+        if c.inspection_scheduled_date:
+            hr_completed = any(hr.status == "completed" for hr in getattr(c, "health_reports", []))
+            insp_data = {
+                "id": c.id,
+                "type": "amc_request",
+                "reference": c.reference,
+                "service_name": "Fire Safety Site Inspection & Survey",
+                "site_name": c.site_name or c.applicant_name or f"AMC Application #{c.reference}",
+                "scheduled_date": _d(c.inspection_scheduled_date),
+                "time_slot": "Standard Hours (10:00 AM – 06:00 PM)",
+                "technician_name": c.inspection_technician.name if c.inspection_technician else "Technician Assigned",
+                "technician_phone": c.inspection_technician.phone if c.inspection_technician else None,
+                "address": c.site_address or c.area or "On-Site",
+                "status": "completed" if hr_completed else (c.lead_stage or "inspection_scheduled"),
+                "badge": "Inspection Completed" if hr_completed else "Inspection Scheduled",
+                "contract_id": c.id,
+            }
+            if hr_completed:
+                completed.append(insp_data)
+            elif c.status not in ("cancelled", "rejected", "expired"):
+                scheduled.append(insp_data)
+
+    for inq in inquiries:
+        if inq.visit_scheduled_date:
+            is_done = bool(inq.visit_completed_at or inq.status in ("checklist_submitted", "quotation_generated", "closed"))
+            insp_data = {
+                "id": inq.id,
+                "type": "inquiry",
+                "reference": inq.ref_code,
+                "service_name": inq.service_requirement or "On-Site Fire Safety Inspection",
+                "site_name": inq.name or f"Inquiry #{inq.ref_code}",
+                "scheduled_date": _d(inq.visit_scheduled_date),
+                "completed_date": _d(inq.visit_completed_at),
+                "time_slot": inq.visit_time_slot or "Standard Hours (10:00 AM – 06:00 PM)",
+                "technician_name": inq.assigned_to.name if inq.assigned_to else "Technician Assigned",
+                "technician_phone": inq.assigned_to.phone if inq.assigned_to else None,
+                "address": inq.address or inq.city or "On-Site",
+                "status": "completed" if is_done else inq.status,
+                "badge": "Visit Completed" if is_done else "Site Visit Scheduled",
+                "quotation_id": inq.quotation_id,
+            }
+            if is_done:
+                completed.append(insp_data)
+            else:
+                scheduled.append(insp_data)
+
+    return jsonify(
+        total=len(scheduled) + len(completed),
+        scheduled_count=len(scheduled),
+        completed_count=len(completed),
+        scheduled_inspections=scheduled,
+        completed_inspections=completed
+    )
+
+
 # =========================================================================== #
 #  MODULE 3 — Technician App (native, staff-facing)
 #  Everything below reuses the exact same models/queries the Ops Console

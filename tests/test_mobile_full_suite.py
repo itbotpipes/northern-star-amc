@@ -177,7 +177,15 @@ def run_all_mobile_functionality_tests():
         res_contract = client.get(f"/api/v1/contracts/{c.id}", headers=headers)
         assert res_contract.status_code == 200
         assert res_contract.get_json()["contract"]["site_name"] == "Sky City Commercial Tower"
-        print("✓ Dashboard metrics and contract detail PASSED.")
+
+        # Test Inspections endpoint (matching WebApp portal/inspections.html)
+        c.inspection_scheduled_date = date.today()
+        c.inspection_technician_id = tech.id
+        db.session.commit()
+        res_insp = client.get("/api/v1/inspections", headers=headers)
+        assert res_insp.status_code == 200
+        assert len(res_insp.get_json()["scheduled_inspections"]) >= 1
+        print("✓ Dashboard metrics, contract detail, and inspections PASSED.")
 
         # -------------------------------------------------------------------
         # 6. AGREEMENT, RENEWAL & REFERRAL
