@@ -180,9 +180,9 @@ export default function NewAMCScreen({ navigation }) {
       {/* Signed-in Banner */}
       {user && (
         <View style={styles.signedInBox}>
-          <Ionicons name="person-circle-outline" size={20} color={theme.colors.navy} />
+          <Ionicons name="person-circle-outline" size={20} color={theme.navy} />
           <Text style={styles.signedInText}>
-            Signed in as <Text style={{ fontWeight: "700", color: theme.colors.navy }}>{user.name || "Customer"}</Text>. We've filled in your contact details below — edit any of them here if something has changed.
+            Signed in as <Text style={{ fontWeight: "700", color: theme.navy }}>{user.name || "Customer"}</Text>. We've filled in your contact details below — edit any of them here if something has changed.
           </Text>
         </View>
       )}
@@ -291,7 +291,7 @@ export default function NewAMCScreen({ navigation }) {
             activeOpacity={0.8}
             onPress={handleUseCurrentLocation}
           >
-            <Ionicons name="location-sharp" size={17} color={theme.colors.navy} />
+            <Ionicons name="location-sharp" size={17} color={theme.navy} />
             <Text style={styles.locationBtnText}>Use my current location</Text>
           </TouchableOpacity>
           {locStatus ? (
@@ -354,7 +354,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "800",
     letterSpacing: 1.2,
-    color: theme.colors.navy,
+    color: theme.navy,
     marginBottom: 4,
   },
   title: {
@@ -425,7 +425,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
   },
   siteChipActive: {
-    borderColor: theme.colors.navy,
+    borderColor: theme.navy,
     backgroundColor: "#EFF6FF",
   },
   siteChipText: {
@@ -434,7 +434,7 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   siteChipTextActive: {
-    color: theme.colors.navy,
+    color: theme.navy,
     fontWeight: "700",
   },
   typeWrap: {
@@ -452,8 +452,8 @@ const styles = StyleSheet.create({
     backgroundColor: "#F8FAFC",
   },
   typeChipActive: {
-    borderColor: theme.colors.navy,
-    backgroundColor: theme.colors.navy,
+    borderColor: theme.navy,
+    backgroundColor: theme.navy,
   },
   typeText: {
     fontSize: 12,
@@ -479,7 +479,7 @@ const styles = StyleSheet.create({
   locationBtnText: {
     fontSize: 13,
     fontWeight: "600",
-    color: theme.colors.navy,
+    color: theme.navy,
   },
   locStatusText: {
     fontSize: 12,

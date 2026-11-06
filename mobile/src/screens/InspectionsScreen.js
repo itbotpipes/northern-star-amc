@@ -101,7 +101,7 @@ export default function InspectionsScreen({ navigation }) {
 
             <View style={styles.detailsBox}>
               <View style={styles.detailRow}>
-                <Ionicons name="calendar" size={15} color={theme.colors.navy} />
+                <Ionicons name="calendar" size={15} color={theme.navy} />
                 <Text style={styles.detailText}>
                   Visit Date: <Text style={styles.bold}>{insp.scheduled_date || "To be confirmed"}</Text>
                   {insp.time_slot ? ` · ${insp.time_slot}` : ""}
@@ -192,7 +192,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: theme.colors.navy,
+    backgroundColor: theme.navy,
     paddingHorizontal: 14,
     paddingVertical: 9,
     borderRadius: 10,
@@ -229,7 +229,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 6,
   },
-  refCode: { fontSize: 13, fontWeight: "800", color: theme.colors.navy, fontFamily: "monospace" },
+  refCode: { fontSize: 13, fontWeight: "800", color: theme.navy, fontFamily: "monospace" },
   badgeScheduled: {
     paddingHorizontal: 8,
     paddingVertical: 3,
@@ -273,10 +273,11 @@ const styles = StyleSheet.create({
   emptySub: { fontSize: 12, color: "#64748B", textAlign: "center", marginTop: 4, lineHeight: 17 },
   emptyBtn: {
     marginTop: 12,
-    backgroundColor: theme.colors.navy,
+    backgroundColor: theme.navy,
     paddingHorizontal: 14,
     paddingVertical: 7,
     borderRadius: 8,
   },
   emptyBtnText: { color: "#FFFFFF", fontSize: 12, fontWeight: "700" },
 });
+

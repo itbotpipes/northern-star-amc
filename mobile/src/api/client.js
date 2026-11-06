@@ -21,6 +21,12 @@ export const API_BASE = "https://northern-star-amc.vercel.app/api/v1";
 const TOKEN_KEY = "nse_token";
 
 export async function saveToken(token) {
+  if (Platform.OS === "web") {
+    if (typeof window !== "undefined" && window.localStorage) {
+      window.localStorage.setItem(TOKEN_KEY, token);
+    }
+    return;
+  }
   try {
     await SecureStore.setItemAsync(TOKEN_KEY, token);
   } catch (e) {
@@ -31,6 +37,12 @@ export async function saveToken(token) {
 }
 
 export async function getToken() {
+  if (Platform.OS === "web") {
+    if (typeof window !== "undefined" && window.localStorage) {
+      return window.localStorage.getItem(TOKEN_KEY);
+    }
+    return null;
+  }
   try {
     return await SecureStore.getItemAsync(TOKEN_KEY);
   } catch (e) {
@@ -42,6 +54,12 @@ export async function getToken() {
 }
 
 export async function clearToken() {
+  if (Platform.OS === "web") {
+    if (typeof window !== "undefined" && window.localStorage) {
+      window.localStorage.removeItem(TOKEN_KEY);
+    }
+    return;
+  }
   try {
     await SecureStore.deleteItemAsync(TOKEN_KEY);
   } catch (e) {

@@ -77,7 +77,7 @@ export default function HomeScreen({ navigation }) {
           activeOpacity={0.8}
           onPress={() => navigation.navigate("Inspections")}
         >
-          <Ionicons name="clipboard-outline" size={14} color={theme.colors.navy} />
+          <Ionicons name="clipboard-outline" size={14} color={theme.navy} />
           <Text style={styles.portalPillText}>Site Inspections</Text>
           {(counts.scheduled_inspections ?? 0) > 0 && (
             <View style={styles.pillBadge}>
@@ -91,7 +91,7 @@ export default function HomeScreen({ navigation }) {
           activeOpacity={0.8}
           onPress={() => navigation.navigate("Journey")}
         >
-          <Ionicons name="time-outline" size={14} color={theme.colors.navy} />
+          <Ionicons name="time-outline" size={14} color={theme.navy} />
           <Text style={styles.portalPillText}>My Journey</Text>
         </TouchableOpacity>
 
@@ -100,7 +100,7 @@ export default function HomeScreen({ navigation }) {
           activeOpacity={0.8}
           onPress={() => navigation.navigate("Equipment")}
         >
-          <Ionicons name="shield-outline" size={14} color={theme.colors.navy} />
+          <Ionicons name="shield-outline" size={14} color={theme.navy} />
           <Text style={styles.portalPillText}>Equipment</Text>
         </TouchableOpacity>
 
@@ -109,7 +109,7 @@ export default function HomeScreen({ navigation }) {
           activeOpacity={0.8}
           onPress={() => navigation.navigate("Quotes")}
         >
-          <Ionicons name="pricetags-outline" size={14} color={theme.colors.navy} />
+          <Ionicons name="pricetags-outline" size={14} color={theme.navy} />
           <Text style={styles.portalPillText}>Quotations</Text>
           {(counts.pending_quotes ?? 0) > 0 && (
             <View style={styles.pillBadge}>
@@ -123,7 +123,7 @@ export default function HomeScreen({ navigation }) {
           activeOpacity={0.8}
           onPress={() => navigation.navigate("Requests")}
         >
-          <Ionicons name="construct-outline" size={14} color={theme.colors.navy} />
+          <Ionicons name="construct-outline" size={14} color={theme.navy} />
           <Text style={styles.portalPillText}>My Requests</Text>
         </TouchableOpacity>
 

@@ -73,9 +73,9 @@ export default function AgreementScreen({ route, navigation }) {
   if (data?.accepted) {
     return (
       <View style={styles.acceptedWrap}>
-        <Card style={{ backgroundColor: theme.colors.emerald + "14", borderColor: theme.colors.emerald, padding: 24, borderRadius: 16 }}>
+        <Card style={{ backgroundColor: theme.emerald + "14", borderColor: theme.emerald, padding: 24, borderRadius: 16 }}>
           <View style={{ alignItems: "center", marginBottom: 12 }}>
-            <Ionicons name="checkmark-circle" size={48} color={theme.colors.emerald} />
+            <Ionicons name="checkmark-circle" size={48} color={theme.emerald} />
           </View>
           <Text style={styles.acceptedTitle}>Agreement Digitally Signed</Text>
           <Text style={styles.acceptedBody}>
@@ -199,14 +199,14 @@ const styles = StyleSheet.create({
     height: 22,
     borderRadius: 6,
     borderWidth: 2,
-    borderColor: theme.colors.navy,
+    borderColor: theme.navy,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#FFFFFF",
   },
   checkboxChecked: {
-    backgroundColor: theme.colors.navy,
-    borderColor: theme.colors.navy,
+    backgroundColor: theme.navy,
+    borderColor: theme.navy,
   },
   checkboxLocked: {
     borderColor: "#CBD5E1",

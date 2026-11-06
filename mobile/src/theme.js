@@ -19,7 +19,9 @@ export const theme = {
   warningLight: "#fbf0dc",
   blue: "#2f6fed",
   blueLight: "#eef1fb",
+  emerald: "#17864a",
 };
+theme.colors = theme;
 
 // Status pill colours — same map the web `status_badge` macro uses.
 export const statusColors = {
