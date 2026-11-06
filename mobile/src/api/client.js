@@ -105,10 +105,18 @@ async function request(path, { method = "GET", body, auth = false } = {}) {
 // ---------------------------------------------------------------------------
 export const api = {
   // ----- Auth --------------------------------------------------------------
+  checkPhone: (phone) =>
+    request("/auth/check-phone", { method: "POST", body: { phone } }),
   requestOtp: (phone) =>
     request("/auth/otp/request", { method: "POST", body: { phone } }),
   verifyOtp: (phone, code, name) =>
     request("/auth/otp/verify", { method: "POST", body: { phone, code, name } }),
+  staffLogin: (phone, password) =>
+    request("/auth/staff-login", { method: "POST", body: { phone, password } }),
+  forgotPasswordRequest: (phone) =>
+    request("/auth/forgot-password/request", { method: "POST", body: { phone } }),
+  forgotPasswordReset: (phone, code, new_password) =>
+    request("/auth/forgot-password/reset", { method: "POST", body: { phone, code, new_password } }),
 
   // ----- Profile -----------------------------------------------------------
   me: () => request("/me", { auth: true }),

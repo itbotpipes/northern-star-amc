@@ -48,31 +48,39 @@ def run():
         # ---- Staff -------------------------------------------------------- #
         admin = User.query.filter_by(email="admin@northernstar.example").first()
         if not admin:
-            admin = User(role="admin", name="Ops Admin",
+            admin = User(role="admin", name="Ops Admin", phone="9825000001",
                          email="admin@northernstar.example", city="Surat, Gujarat")
-            admin.set_password("admin123")
             db.session.add(admin)
+        else:
+            admin.phone = "9825000001"
+        admin.set_password("password123")
 
         tech = User.query.filter_by(email="tech@northernstar.example").first()
         if not tech:
-            tech = User(role="technician", name="Ravi (Technician)",
+            tech = User(role="technician", name="Ravi (Technician)", phone="9825000004",
                         email="tech@northernstar.example", city="Surat, Gujarat")
-            tech.set_password("tech123")
             db.session.add(tech)
+        else:
+            tech.phone = "9825000004"
+        tech.set_password("password123")
 
         teamleader = User.query.filter_by(email="teamleader@northernstar.example").first()
         if not teamleader:
-            teamleader = User(role="team_leader", name="Vikram (Team Leader)",
+            teamleader = User(role="team_leader", name="Vikram (Team Leader)", phone="9825000003",
                               email="teamleader@northernstar.example", city="Surat, Gujarat")
-            teamleader.set_password("teamleader123")
             db.session.add(teamleader)
+        else:
+            teamleader.phone = "9825000003"
+        teamleader.set_password("password123")
 
         manager = User.query.filter_by(email="manager@northernstar.example").first()
         if not manager:
-            manager = User(role="manager", name="Ops Manager",
+            manager = User(role="manager", name="Ops Manager", phone="9825000002",
                            email="manager@northernstar.example", city="Surat, Gujarat")
-            manager.set_password("manager123")
             db.session.add(manager)
+        else:
+            manager.phone = "9825000002"
+        manager.set_password("password123")
         db.session.commit()
 
         # ---- Inventory (spare parts for visit-linked quotations) --------- #

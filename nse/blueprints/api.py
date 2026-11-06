@@ -82,12 +82,12 @@ def token_required(fn):
 
 
 def customer_only(fn):
-    """token_required + must be a customer (staff use the web ops console)."""
+    """token_required + customer or staff user."""
     @wraps(fn)
     @token_required
     def wrapper(*args, **kwargs):
-        if g.current_user.role != "customer":
-            return jsonify(error="This endpoint is for customer accounts."), 403
+        if g.current_user.role != "customer" and not g.current_user.is_staff:
+            return jsonify(error="This endpoint is for customer or staff accounts."), 403
         return fn(*args, **kwargs)
     return wrapper
 
@@ -213,8 +213,46 @@ def notification_json(n):
 
 
 # --------------------------------------------------------------------------- #
-# Auth — phone OTP (mirrors auth.py, but returns a token instead of a session)
+# Auth — Unified Phone (OTP for customers, Password for staff)
 # --------------------------------------------------------------------------- #
+def _find_staff_by_phone(phone_input):
+    if not phone_input:
+        return None
+    raw = str(phone_input).strip()
+    clean = re.sub(r"\D", "", raw)
+    if clean.startswith("91") and len(clean) == 12:
+        clean = clean[2:]
+    elif clean.startswith("0") and len(clean) == 11:
+        clean = clean[1:]
+    if not clean:
+        return None
+    variants = [raw, clean, f"+91{clean}", f"+91 {clean}", f"0{clean}"]
+    u = User.query.filter(User.phone.in_(variants), User.role != "customer").first()
+    if u and u.is_staff:
+        return u
+    if len(clean) >= 10:
+        last10 = clean[-10:]
+        u = User.query.filter(User.phone.endswith(last10), User.role != "customer").first()
+        if u and u.is_staff:
+            return u
+    return None
+
+
+@api_bp.route("/auth/check-phone", methods=["POST"])
+def check_phone_api():
+    body = request.get_json(silent=True) or {}
+    phone = (body.get("phone") or "").strip()
+    staff_user = _find_staff_by_phone(phone)
+    if staff_user:
+        return jsonify(
+            is_staff=True,
+            name=staff_user.name,
+            role=staff_user.role,
+            role_title=staff_user.role.replace("_", " ").title()
+        )
+    return jsonify(is_staff=False)
+
+
 @api_bp.route("/auth/otp/request", methods=["POST"])
 def otp_request():
     body = request.get_json(silent=True) or {}
@@ -226,10 +264,21 @@ def otp_request():
         clean = clean[1:]
     if len(clean) != 10:
         return jsonify(error="Please enter a valid 10-digit mobile number."), 400
+
+    # If this phone is staff, notify mobile to prompt for password
+    staff_user = _find_staff_by_phone(phone)
+    if staff_user:
+        return jsonify(
+            ok=True,
+            is_staff=True,
+            name=staff_user.name,
+            role=staff_user.role,
+            role_title=staff_user.role.replace("_", " ").title(),
+            message="Staff account detected. Please enter your password."
+        )
+
     code = generate_otp(phone)
-    # Dev flow: return the code so the app can auto-fill it (no SMS gateway yet).
-    # In production, wire generate_otp() to an SMS provider and stop returning it.
-    resp = {"ok": True, "message": "OTP sent."}
+    resp = {"ok": True, "is_staff": False, "message": "OTP sent."}
     if current_app.debug or not current_app.config.get("SMS_ENABLED"):
         resp["dev_code"] = code
     return jsonify(resp)
@@ -244,10 +293,10 @@ def otp_verify():
     if not phone or not verify_otp(phone, code):
         return jsonify(error="Invalid or expired OTP."), 401
 
-    # Staff must log in with email and password
-    staff_user = User.query.filter(User.phone == phone, User.role != "customer").first()
+    # Staff must log in with password
+    staff_user = _find_staff_by_phone(phone)
     if staff_user and staff_user.is_staff:
-        return jsonify(error="Staff members must sign in with email and password."), 403
+        return jsonify(error="Staff members must sign in with their password."), 403
 
     user = User.query.filter_by(phone=phone, role="customer").first()
     if not user:
@@ -264,21 +313,67 @@ def otp_verify():
 
 @api_bp.route("/auth/staff-login", methods=["POST"])
 def staff_login_api():
-    """Technician App login — mirrors auth.staff_login but returns a token."""
+    """Unified login for staff using phone (or email) and password."""
     body = request.get_json(silent=True) or {}
-    email = (body.get("email") or "").strip().lower()
+    identifier = (body.get("phone") or body.get("email") or body.get("identifier") or "").strip()
     password = body.get("password") or ""
-    user = User.query.filter_by(email=email).first()
+
+    user = _find_staff_by_phone(identifier)
+    if not user and "@" in identifier:
+        user = User.query.filter(User.email.ilike(identifier), User.role != "customer").first()
+    elif not user:
+        user = User.query.filter(
+            ((User.phone == identifier) | (User.email.ilike(identifier))),
+            User.role != "customer"
+        ).first()
+
     if not user or not user.is_staff or not user.check_password(password):
-        return jsonify(error="Invalid staff credentials."), 401
-    return jsonify(token=issue_token(user), user=user_json(user))
+        return jsonify(error="Invalid staff credentials or password."), 401
+    return jsonify(token=issue_token(user), user=user_json(user), is_staff=True)
+
+
+@api_bp.route("/auth/forgot-password/request", methods=["POST"])
+def forgot_password_request_api():
+    body = request.get_json(silent=True) or {}
+    phone = (body.get("phone") or "").strip()
+    staff_user = _find_staff_by_phone(phone)
+    if not staff_user:
+        return jsonify(error="No staff account found with this phone number."), 404
+
+    code = generate_otp(phone)
+    resp = {"ok": True, "message": "Verification OTP sent."}
+    if current_app.debug or not current_app.config.get("SMS_ENABLED"):
+        resp["dev_code"] = code
+    return jsonify(resp)
+
+
+@api_bp.route("/auth/forgot-password/reset", methods=["POST"])
+def forgot_password_reset_api():
+    body = request.get_json(silent=True) or {}
+    phone = (body.get("phone") or "").strip()
+    code = (body.get("code") or "").strip()
+    new_password = (body.get("new_password") or body.get("password") or "").strip()
+
+    if not phone or not verify_otp(phone, code):
+        return jsonify(error="Invalid or expired OTP."), 400
+
+    if len(new_password) < 6:
+        return jsonify(error="Password must be at least 6 characters."), 400
+
+    staff_user = _find_staff_by_phone(phone)
+    if not staff_user:
+        return jsonify(error="Staff account not found."), 404
+
+    staff_user.set_password(new_password)
+    db.session.commit()
+    return jsonify(ok=True, message="Password updated successfully.")
 
 
 # --------------------------------------------------------------------------- #
 # Customer resources
 # --------------------------------------------------------------------------- #
 @api_bp.route("/me")
-@customer_only
+@token_required
 def me():
     return jsonify(user=user_json(g.current_user))
 

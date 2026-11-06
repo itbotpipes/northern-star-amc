@@ -1,37 +1,154 @@
 {% extends "base.html" %}
-{% block title %}Login — {{ COMPANY_NAME }}{% endblock %}
+{% block title %}Sign In — {{ COMPANY_NAME }}{% endblock %}
 {% block content %}
-<section class="max-w-md mx-auto px-4 py-16">
-  <div class="card p-8">
-    <h1 class="text-2xl font-extrabold text-ink">Customer login</h1>
-    <p class="text-ink-subtle text-sm mt-1.5">Log in with your mobile number to track your AMC, visits and requests.</p>
-    <form method="post" action="{{ url_for('auth.otp_request') }}" class="mt-6 space-y-4">
+<section class="max-w-md mx-auto px-4 py-14">
+  <div class="card p-8 shadow-sm border border-slate-200 bg-white rounded-2xl">
+    <div class="text-center mb-6">
+      <div class="w-12 h-12 bg-navy text-amber-400 font-extrabold text-2xl flex items-center justify-center rounded-xl mx-auto shadow-sm">
+        ★
+      </div>
+      <h1 class="text-2xl font-extrabold text-ink mt-3">Welcome to {{ COMPANY_NAME }}</h1>
+      <p class="text-ink-subtle text-sm mt-1">Sign in with your registered mobile number</p>
+    </div>
+
+    <!-- Dynamic Staff Notice Banner -->
+    <div id="staffBanner" class="hidden mb-4 p-3 bg-amber-50 border border-amber-300 rounded-xl flex items-center justify-between text-xs text-amber-950 animate-fade-in">
+      <div class="flex items-center gap-2">
+        <span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-500 text-white font-bold text-xs">✓</span>
+        <div>
+          <span class="font-bold">Staff Account Detected:</span><br>
+          <span id="staffNameDisplay" class="font-semibold text-ink"></span> <span id="staffRoleDisplay" class="text-amber-800"></span>
+        </div>
+      </div>
+      <span class="bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full font-semibold text-[10px] tracking-wide uppercase">Staff</span>
+    </div>
+
+    <form id="unifiedLoginForm" method="post" action="{{ url_for('auth.otp_request') }}" class="space-y-4">
       <label class="block">
-        <span class="text-sm font-medium text-ink-muted">Mobile number</span>
+        <span class="text-sm font-semibold text-ink">Mobile number</span>
         <div class="relative mt-1.5 flex rounded-lg shadow-xs">
           <span class="inline-flex items-center px-3.5 rounded-l-lg border border-r-0 border-slate-300 bg-slate-100 text-slate-700 font-semibold text-sm select-none">
             +91
           </span>
           <input type="tel" name="phone" id="phoneInput" required maxlength="10" inputmode="numeric"
                  pattern="[0-9]{10}" placeholder="9876543210" autofocus
+                 value="{{ phone or '' }}"
                  class="w-full px-3 py-2.5 rounded-r-lg border border-slate-300 focus:border-primary focus:ring-1 focus:ring-primary font-mono text-base tracking-wide"
-                 oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0, 10)">
+                 oninput="handlePhoneInput(this.value)">
         </div>
-        <span class="text-xs text-ink-subtle mt-1.5 block">Enter exactly 10 digits (no country code or symbols).</span>
+        <span class="text-xs text-ink-subtle mt-1.5 block">Enter your 10-digit registered number.</span>
       </label>
-      <button class="btn btn-primary w-full">Send OTP</button>
+
+      <!-- Staff Password Field (Dynamically displayed for staff numbers) -->
+      <div id="passwordSection" class="hidden space-y-1.5 pt-1">
+        <div class="flex items-center justify-between">
+          <label for="passwordInput" class="text-sm font-semibold text-ink">Staff Password</label>
+          <a id="forgotPasswordLink" href="{{ url_for('auth.forgot_password') }}" class="text-xs font-semibold text-primary hover:underline">
+            Forgot Password?
+          </a>
+        </div>
+        <div class="relative">
+          <input type="password" name="password" id="passwordInput" placeholder="Enter your staff password"
+                 class="w-full px-3 py-2.5 rounded-lg border border-slate-300 focus:border-primary focus:ring-1 focus:ring-primary text-base pr-10">
+          <button type="button" onclick="togglePasswordVisibility()" class="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 text-sm focus:outline-none">
+            <span id="pwdToggleIcon">👁️</span>
+          </button>
+        </div>
+      </div>
+
+      <button id="submitBtn" class="btn btn-primary w-full py-2.5 text-base font-semibold shadow-sm transition-all duration-150">
+        Send OTP
+      </button>
     </form>
   </div>
-
-  <div class="mt-6 card p-6 bg-navy-50 border-navy-100">
-    <details {{ 'open' if request.args.get('tab') == 'staff' }}>
-      <summary class="text-sm font-semibold text-primary cursor-pointer">Staff / Ops login</summary>
-      <form method="post" action="{{ url_for('auth.staff_login') }}" class="mt-4 space-y-3">
-        <input type="email" name="email" required placeholder="Email" class="w-full px-3 py-2.5">
-        <input type="password" name="password" required placeholder="Password" class="w-full px-3 py-2.5">
-        <button class="btn btn-primary w-full">Staff login</button>
-      </form>
-    </details>
-  </div>
 </section>
+
+<script>
+  const phoneInput = document.getElementById('phoneInput');
+  const passwordSection = document.getElementById('passwordSection');
+  const passwordInput = document.getElementById('passwordInput');
+  const staffBanner = document.getElementById('staffBanner');
+  const staffNameDisplay = document.getElementById('staffNameDisplay');
+  const staffRoleDisplay = document.getElementById('staffRoleDisplay');
+  const submitBtn = document.getElementById('submitBtn');
+  const form = document.getElementById('unifiedLoginForm');
+  const forgotPasswordLink = document.getElementById('forgotPasswordLink');
+
+  let checkTimeout = null;
+
+  function togglePasswordVisibility() {
+    if (passwordInput.type === 'password') {
+      passwordInput.type = 'text';
+      document.getElementById('pwdToggleIcon').textContent = '🙈';
+    } else {
+      passwordInput.type = 'password';
+      document.getElementById('pwdToggleIcon').textContent = '👁️';
+    }
+  }
+
+  function switchToStaff(info, phone) {
+    staffBanner.classList.remove('hidden');
+    staffNameDisplay.textContent = info.name || 'Staff Member';
+    staffRoleDisplay.textContent = info.role_title ? `(${info.role_title})` : '';
+    passwordSection.classList.remove('hidden');
+    passwordInput.required = true;
+    submitBtn.textContent = 'Sign In as Staff';
+    submitBtn.classList.remove('btn-primary');
+    submitBtn.classList.add('btn-primary');
+    form.action = "{{ url_for('auth.staff_login') }}";
+    forgotPasswordLink.href = "{{ url_for('auth.forgot_password') }}?phone=" + encodeURIComponent(phone);
+  }
+
+  function switchToCustomer(phone) {
+    staffBanner.classList.add('hidden');
+    passwordSection.classList.add('hidden');
+    passwordInput.required = false;
+    passwordInput.value = '';
+    submitBtn.textContent = 'Send OTP';
+    form.action = "{{ url_for('auth.otp_request') }}";
+  }
+
+  async function checkStaffPhone(phone) {
+    const clean = phone.replace(/[^0-9]/g, '');
+    if (clean.length !== 10) {
+      switchToCustomer(clean);
+      return;
+    }
+
+    try {
+      const res = await fetch("{{ url_for('auth.check_phone') }}", {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: clean })
+      });
+      const data = await res.json();
+      if (data.is_staff) {
+        switchToStaff(data, clean);
+      } else {
+        switchToCustomer(clean);
+      }
+    } catch (e) {
+      // fallback to customer flow
+      switchToCustomer(clean);
+    }
+  }
+
+  function handlePhoneInput(val) {
+    const clean = val.replace(/[^0-9]/g, '').slice(0, 10);
+    phoneInput.value = clean;
+    clearTimeout(checkTimeout);
+    if (clean.length === 10) {
+      checkTimeout = setTimeout(() => checkStaffPhone(clean), 150);
+    } else {
+      switchToCustomer(clean);
+    }
+  }
+
+  // Auto-check on page load if phone prefilled or staff query param set
+  document.addEventListener('DOMContentLoaded', () => {
+    if (phoneInput.value && phoneInput.value.trim().length === 10) {
+      checkStaffPhone(phoneInput.value.trim());
+    }
+  });
+</script>
 {% endblock %}
