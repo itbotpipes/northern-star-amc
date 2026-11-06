@@ -1116,15 +1116,53 @@ def plans():
 def api_apply_amc():
     body = request.get_json(silent=True) or {}
     u = g.current_user
+
+    name = (body.get("name") or u.name or "").strip()
+    phone = (body.get("phone") or u.phone or "").strip()
+    email = (body.get("email") or u.email or "").strip()
     site_name = (body.get("site_name") or "").strip()
     site_address = (body.get("site_address") or "").strip()
     area = (body.get("area") or "").strip()
-    property_type = (body.get("property_type") or "Residential Building").strip()
+    property_type = (body.get("property_type") or "Residential apartment").strip()
     problem_desc = (body.get("problem_description") or body.get("notes") or "").strip()
+    voice = (body.get("voice_note") or "").strip()
+    lat = str(body.get("latitude") or "").strip()
+    lng = str(body.get("longitude") or "").strip()
     plan_id = body.get("plan_id")
+    raw_site_id = body.get("existing_site_id")
+
+    # Link to existing site if customer selected one
+    related = None
+    if raw_site_id:
+        try:
+            related_id = int(raw_site_id)
+            c_check = db.session.get(Contract, related_id)
+            if c_check and c_check.customer_id == u.id:
+                related = c_check
+        except (ValueError, TypeError):
+            pass
+
+    if not site_name and related:
+        site_name = related.site_name
+    if not site_address and related:
+        site_address = related.site_address
+    if not area and related:
+        area = related.area
 
     if not site_name:
         return jsonify(error="Site or Building Name is required"), 400
+
+    # Persist updated profile info for customer
+    if name and u.name != name:
+        u.name = name
+    if email and u.email != email:
+        dup = User.query.filter(User.email == email, User.id != u.id).first()
+        if not dup:
+            u.email = email
+    if site_address and not u.address:
+        u.address = site_address
+    if area and not u.area:
+        u.area = area
 
     contract = Contract(
         status="pending",
@@ -1133,13 +1171,17 @@ def api_apply_amc():
         site_name=site_name,
         site_address=site_address or u.address or "Address provided on site inspection",
         area=area or u.area or "",
-        applicant_name=u.name,
-        applicant_phone=u.phone,
-        applicant_email=u.email,
+        applicant_name=name,
+        applicant_phone=phone,
+        applicant_email=email,
         property_type=property_type,
         problem_description=problem_desc or None,
+        voice_note=voice or None,
+        latitude=lat or None,
+        longitude=lng or None,
         payment_mode="cash",
         customer_id=u.id,
+        related_contract_id=related.id if related else None,
     )
     if plan_id:
         try:
@@ -1166,7 +1208,7 @@ def api_apply_amc():
 
     notify_staff(
         f"New AMC Enquiry — {contract.reference}",
-        f"{u.name} submitted an AMC enquiry for {contract.site_name} ({contract.area or 'Site'}). Ready for site inspection.",
+        f"{name} submitted an AMC enquiry for {contract.site_name} ({contract.area or 'Site'}). Ready for site inspection.",
         link=f"/admin/leads"
     )
     return jsonify(ok=True, contract=contract_json(contract), message="AMC application submitted successfully!")
