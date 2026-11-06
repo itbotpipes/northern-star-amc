@@ -1,6 +1,6 @@
 // Profile: view + edit the customer's details, plus sign out.
 import React, { useState, useEffect } from "react";
-import { View, Text, ScrollView, StyleSheet, Alert } from "react-native";
+import { View, Text, ScrollView, StyleSheet, Alert, Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "../api/client";
 import { useAuth } from "../context/AuthContext";
@@ -15,6 +15,7 @@ export default function ProfileScreen({ navigation }) {
     company_name: user?.company_name || "", gst_number: user?.gst_number || "",
   });
   const [busy, setBusy] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -43,6 +44,35 @@ export default function ProfileScreen({ navigation }) {
     } finally { setBusy(false); }
   };
 
+  const executeSignOut = async () => {
+    setSigningOut(true);
+    try {
+      if (signOut) {
+        await signOut();
+      }
+    } catch (e) {
+      console.warn("Sign out error:", e);
+    } finally {
+      setSigningOut(false);
+    }
+  };
+
+  const handleSignOut = () => {
+    if (Platform.OS === "web") {
+      const confirmed = typeof window !== "undefined"
+        ? window.confirm("Are you sure you want to sign out?")
+        : true;
+      if (confirmed) {
+        executeSignOut();
+      }
+    } else {
+      Alert.alert("Sign out", "Are you sure you want to sign out?", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Sign out", style: "destructive", onPress: executeSignOut },
+      ]);
+    }
+  };
+
   const initials = (user?.name || "?").split(" ").map((s) => s[0]).slice(0, 2).join("").toUpperCase();
 
   return (
@@ -69,11 +99,7 @@ export default function ProfileScreen({ navigation }) {
       </Card>
 
       <Btn title="Save changes" variant="primary" loading={busy} onPress={save} style={{ marginBottom: 12 }} />
-      <Btn title="Sign out" variant="ghost" onPress={() =>
-        Alert.alert("Sign out", "Are you sure?", [
-          { text: "Cancel", style: "cancel" },
-          { text: "Sign out", style: "destructive", onPress: signOut },
-        ])} />
+      <Btn title="Sign out" variant="ghost" loading={signingOut} onPress={handleSignOut} />
 
       <View style={styles.footer}>
         <Ionicons name="shield-checkmark" size={16} color={theme.inkSubtle} />

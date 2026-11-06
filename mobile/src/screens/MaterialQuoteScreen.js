@@ -2,7 +2,7 @@
 // the liability waiver, exactly like the web portal).
 import React, { useState, useCallback } from "react";
 import {
-  View, Text, ScrollView, StyleSheet, Alert, Modal, TouchableOpacity,
+  View, Text, ScrollView, StyleSheet, Alert, Modal, TouchableOpacity, Platform,
 } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { api } from "../api/client";
@@ -30,18 +30,31 @@ export default function MaterialQuoteScreen({ route }) {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
+  const runApprove = async () => {
+    setBusy(true);
+    try {
+      await api.decideMaterialQuote(id, "approve", false);
+      Alert.alert("Approved", "Thank you.");
+      load();
+    } catch (e) {
+      Alert.alert("Failed", e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const approve = () => {
-    Alert.alert("Approve quotation", "Approve these materials for replacement?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Approve", onPress: async () => {
-          setBusy(true);
-          try { await api.decideMaterialQuote(id, "approve", false); Alert.alert("Approved", "Thank you."); load(); }
-          catch (e) { Alert.alert("Failed", e.message); }
-          finally { setBusy(false); }
-        },
-      },
-    ]);
+    if (Platform.OS === "web") {
+      const ok = typeof window !== "undefined"
+        ? window.confirm("Approve these materials for replacement?")
+        : true;
+      if (ok) runApprove();
+    } else {
+      Alert.alert("Approve quotation", "Approve these materials for replacement?", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Approve", onPress: runApprove },
+      ]);
+    }
   };
 
   const confirmDecline = async () => {

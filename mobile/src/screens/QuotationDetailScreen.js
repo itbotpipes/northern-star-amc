@@ -1,7 +1,7 @@
 // Service quotation detail: line items, totals, and accept / negotiate actions.
 import React, { useState, useCallback } from "react";
 import {
-  View, Text, ScrollView, StyleSheet, Alert, TouchableOpacity,
+  View, Text, ScrollView, StyleSheet, Alert, TouchableOpacity, Platform,
 } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { api } from "../api/client";
@@ -28,18 +28,31 @@ export default function QuotationDetailScreen({ route }) {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
+  const runAccept = async () => {
+    setBusy(true);
+    try {
+      await api.acceptQuote(id);
+      Alert.alert("Accepted", "Thank you! Our team will proceed.");
+      load();
+    } catch (e) {
+      Alert.alert("Failed", e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const accept = () => {
-    Alert.alert("Accept quotation", "Confirm you accept this quotation and its price?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Accept", onPress: async () => {
-          setBusy(true);
-          try { await api.acceptQuote(id); Alert.alert("Accepted", "Thank you! Our team will proceed."); load(); }
-          catch (e) { Alert.alert("Failed", e.message); }
-          finally { setBusy(false); }
-        },
-      },
-    ]);
+    if (Platform.OS === "web") {
+      const ok = typeof window !== "undefined"
+        ? window.confirm("Confirm you accept this quotation and its price?")
+        : true;
+      if (ok) runAccept();
+    } else {
+      Alert.alert("Accept quotation", "Confirm you accept this quotation and its price?", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Accept", onPress: runAccept },
+      ]);
+    }
   };
 
   const negotiate = async () => {
