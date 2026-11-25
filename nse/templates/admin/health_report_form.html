@@ -297,7 +297,7 @@
           <span class="block text-sm font-medium text-slate-700 mb-1">Inspection Result</span>
           <div class="space-y-2">
             <label class="flex items-center gap-2 text-sm cursor-pointer" id="outcomeOkWrap" style="display:none;">
-              <input type="radio" name="outcome" value="ok" id="outcomeOk" {{ 'checked' if (r and r.outcome=='ok') or (not r and not answers and (r.score is none or r.score >= 85)) }} required>
+              <input type="radio" name="outcome" value="ok" id="outcomeOk" {{ 'checked' if (r and r.outcome=='ok') or (not r and not answers) }} required>
               <span class="font-semibold text-green-700">OK — Everything Satisfactory</span>
               <span class="text-xs text-slate-400">(Score ≥ 85)</span>
             </label>
