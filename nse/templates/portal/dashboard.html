@@ -226,9 +226,12 @@
   {% if inspections_waiting_for_quote %}
   <div class="mt-6 bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300 rounded-2xl p-5 shadow-xs">
     <div class="flex items-start gap-3.5">
-      <div class="w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center flex-shrink-0 mt-0.5 shadow-2xs font-bold">
-        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+      <div
+        class="w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center flex-shrink-0 mt-0.5 shadow-2xs font-bold">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+          <polyline points="22 4 12 14.01 9 11.01" />
         </svg>
       </div>
       <div class="flex-1">
@@ -240,18 +243,21 @@
             {{ inspections_waiting_for_quote|length }} inspections done — Waiting for quotation
             {% endif %}
           </h3>
-          <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-200 text-amber-900 border border-amber-300 uppercase tracking-wide">
+          <span
+            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-200 text-amber-900 border border-amber-300 uppercase tracking-wide">
             Inspection Done · Waiting for Quotation
           </span>
         </div>
-        <p class="text-sm text-amber-900 mt-1">Our certified technician has completed the on-site inspection. Our engineering team is reviewing the findings and preparing your official AMC quotation.</p>
+        <p class="text-sm text-amber-900 mt-1">Our certified technician has completed the on-site inspection. Our
+          engineering team is reviewing the findings and preparing your official AMC quotation.</p>
 
         <div class="mt-3.5 grid gap-3 sm:grid-cols-2">
           {% for insp in inspections_waiting_for_quote %}
           <div class="bg-white border border-amber-200 rounded-xl p-3.5 shadow-2xs hover:border-amber-300 transition">
             <div class="flex items-center justify-between gap-2 mb-2">
               <span class="font-mono font-bold text-navy-900 text-sm">{{ insp.reference }}</span>
-              <span class="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+              <span
+                class="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
                 Inspection Done
               </span>
             </div>

@@ -104,11 +104,13 @@ def dashboard():
 @manager_required
 def amc_module():
     active_count  = Contract.query.filter_by(status="active").count()
-    pending_count = Contract.query.filter_by(status="pending").count()
+    all_pending = Contract.query.filter_by(status="pending")\
+        .options(selectinload(Contract.service_quotations))\
+        .order_by(Contract.created_at.desc()).all()
+    pending_apps = [c for c in all_pending if c.show_in_contracts]
+    pending_count = len(pending_apps)
     expired_count = Contract.query.filter(
         Contract.status.in_(["expired", "cancelled"])).count()
-    pending_apps = Contract.query.filter_by(status="pending")\
-        .order_by(Contract.created_at.desc()).all()
     upcoming = Visit.query.filter(
         Visit.status.in_(["scheduled", "in_progress"]),
         Visit.scheduled_date != None)\
@@ -182,11 +184,14 @@ def reminders():
 def contracts():
     status = request.args.get("status")
     q = Contract.query.options(
-        joinedload(Contract.customer), selectinload(Contract.visits)
+        joinedload(Contract.customer),
+        selectinload(Contract.visits),
+        selectinload(Contract.service_quotations),
     )
     if status:
         q = q.filter_by(status=status)
     items = q.order_by(Contract.created_at.desc()).all()
+    items = [c for c in items if c.show_in_contracts]
     return render_template("admin/contracts.html", contracts=items, status=status)
 
 

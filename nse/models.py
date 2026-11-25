@@ -363,6 +363,19 @@ class Contract(db.Model):
 
 
     @property
+    def is_quotation_accepted(self):
+        return any(sq.status == "accepted" for sq in getattr(self, "service_quotations", []))
+
+    @property
+    def show_in_contracts(self):
+        """Only display in Admin Contracts list if quotation is accepted, or if already active/finalized."""
+        if self.status in ("active", "completed", "expired", "cancelled"):
+            return True
+        if getattr(self, "free_amc", False) or getattr(self, "agreement_accepted", False):
+            return True
+        return self.is_quotation_accepted
+
+    @property
     def can_activate(self):
         """True only if quotation was accepted (or complimentary first-year handover).
 
