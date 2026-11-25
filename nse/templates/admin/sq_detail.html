@@ -4,6 +4,61 @@
 <section class="max-w-5xl mx-auto px-4 py-10">
   <a href="{{ url_for('sq.list_quotations') }}" class="text-sm text-ink-subtle hover:text-ink">← Quotations</a>
 
+  <!-- Negotiation panel (on top) -->
+  {% if sq.status == 'negotiation_requested' or sq.negotiation_note %}
+  <div class="card p-5 mt-3 border-2 border-amber-300 bg-amber-50/95 shadow-sm">
+    <div class="flex items-center justify-between flex-wrap gap-2 mb-2">
+      <span class="text-amber-900 font-bold text-base flex items-center gap-1.5">
+        💬 Customer Requested Negotiation
+      </span>
+      {% if sq.status == 'negotiation_requested' %}
+      <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-200 text-amber-900 border border-amber-300 uppercase tracking-wide">Action Required</span>
+      {% endif %}
+    </div>
+
+    {% if sq.negotiation_note %}
+    <div class="text-sm text-amber-900 bg-amber-100/90 border border-amber-300/80 rounded-xl p-3.5 mb-3 font-medium">
+      <span class="font-bold text-amber-950 block text-xs uppercase tracking-wider mb-1">Customer's Negotiation Message:</span>
+      "{{ sq.negotiation_note }}"
+    </div>
+    {% endif %}
+
+    {% if sq.staff_response %}
+    <div class="text-xs text-blue-900 bg-blue-50 border border-blue-200 rounded-lg p-2.5 mb-3">
+      <span class="font-bold">Your Saved Response:</span> {{ sq.staff_response }}
+    </div>
+    {% endif %}
+
+    {% if sq.status == 'negotiation_requested' %}
+    <form method="post" class="mb-4">
+      <input type="hidden" name="action" value="respond_negotiation">
+      <label class="block text-sm font-medium text-ink mb-1">Your response / revised offer notes</label>
+      <textarea name="staff_response" rows="2" class="w-full px-3 py-2.5 text-sm mb-3 rounded-lg border border-slate-300">{{ sq.staff_response or '' }}</textarea>
+      <button class="btn btn-ghost text-sm">Save Response (no re-send)</button>
+    </form>
+
+    <!-- Revise rates and re-send for a fresh acceptance -->
+    <form method="post" class="border-t border-amber-200 pt-4">
+      <input type="hidden" name="action" value="revise_send">
+      <p class="text-sm font-semibold text-amber-800 mb-2">Revise &amp; re-send</p>
+      <div class="space-y-2 mb-3">
+        {% for item in sq.items %}
+        <div class="flex items-center gap-2 text-sm">
+          <span class="flex-1 truncate text-ink">{{ item.description.split('\n')[0] }}</span>
+          <span class="text-ink-subtle">₹</span>
+          <input type="number" step="0.01" name="rate_{{ item.id }}" value="{{ item.rate }}"
+                 class="w-32 px-2 py-1.5 rounded-lg border border-amber-300 text-sm text-right">
+        </div>
+        {% endfor %}
+      </div>
+      <textarea name="staff_response" rows="2" placeholder="Optional note to the customer about the revision"
+                class="w-full px-3 py-2.5 text-sm mb-3 rounded-lg border border-amber-300">{{ sq.staff_response or '' }}</textarea>
+      <button class="btn btn-primary text-sm">Revise Quotation &amp; Send to Customer →</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+
   <!-- Header -->
   <div class="card p-6 mt-3">
     <div class="flex items-start justify-between flex-wrap gap-4">
@@ -153,41 +208,7 @@
     {% endif %}
   </div>
 
-  <!-- Negotiation panel -->
-  {% if sq.status == 'negotiation_requested' %}
-  <div class="card p-5 mt-5 border-amber-200 bg-amber-50">
-    <h3 class="font-bold text-amber-800 mb-2">Customer Requested Negotiation</h3>
-    {% if sq.negotiation_note %}
-    <p class="text-amber-700 text-sm mb-3 bg-amber-100 rounded-lg p-3">{{ sq.negotiation_note }}</p>
-    {% endif %}
-    <form method="post" class="mb-4">
-      <input type="hidden" name="action" value="respond_negotiation">
-      <label class="block text-sm font-medium text-ink mb-1">Your response / revised offer notes</label>
-      <textarea name="staff_response" rows="2" class="w-full px-3 py-2.5 text-sm mb-3">{{ sq.staff_response or '' }}</textarea>
-      <button class="btn btn-ghost text-sm">Save Response (no re-send)</button>
-    </form>
 
-    <!-- Revise rates and re-send for a fresh acceptance -->
-    <form method="post" class="border-t border-amber-200 pt-4">
-      <input type="hidden" name="action" value="revise_send">
-      <p class="text-sm font-semibold text-amber-800 mb-2">Revise &amp; re-send</p>
-      <div class="space-y-2 mb-3">
-        {% for item in sq.items %}
-        <div class="flex items-center gap-2 text-sm">
-          <span class="flex-1 truncate text-ink">{{ item.description.split('\n')[0] }}</span>
-          <span class="text-ink-subtle">₹</span>
-          <input type="number" step="0.01" name="rate_{{ item.id }}" value="{{ item.rate }}"
-                 class="w-32 px-2 py-1.5 rounded-lg border border-amber-300 text-sm text-right">
-        </div>
-        {% endfor %}
-      </div>
-      <textarea name="staff_response" rows="2" placeholder="Optional note to the customer about the revision"
-                class="w-full px-3 py-2.5 text-sm mb-3 rounded-lg border border-amber-300">{{ sq.staff_response or '' }}</textarea>
-      <button class="btn btn-primary text-sm">📤 Save &amp; re-send revised quote</button>
-      <p class="text-xs text-amber-700 mt-2">Re-sending sets the quote back to <strong>Sent</strong> so the customer can accept the new price. The contract stays locked until they accept.</p>
-    </form>
-  </div>
-  {% endif %}
 
   <!-- Line items -->
   <div class="card mt-5 overflow-hidden">

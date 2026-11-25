@@ -4,6 +4,51 @@
 <section class="max-w-4xl mx-auto px-4 py-10">
   <a href="{{ url_for('portal.service_quotations') }}" class="text-sm text-ink-subtle hover:text-ink">← My Quotations</a>
 
+  <!-- Active Negotiation Banner / Message on TOP -->
+  {% if sq.status == 'negotiation_requested' or sq.negotiation_note or sq.staff_response %}
+  <div class="card p-5 mt-4 border-2 border-amber-300 bg-amber-50/95 shadow-sm">
+    <div class="flex items-center justify-between flex-wrap gap-2 mb-2">
+      <div class="flex items-center gap-2">
+        <span class="w-8 h-8 rounded-lg bg-amber-200 text-amber-800 grid place-items-center font-bold text-sm">💬</span>
+        <h3 class="font-extrabold text-amber-950 text-base">Quotation Negotiation</h3>
+      </div>
+      {% if sq.status == 'negotiation_requested' %}
+      <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-200 text-amber-900 border border-amber-300">Under Review with Operations</span>
+      {% endif %}
+    </div>
+
+    {% if sq.negotiation_note %}
+    <div class="text-sm text-amber-900 bg-white/90 border border-amber-200 rounded-xl p-3 mb-2.5">
+      <span class="text-xs font-bold text-amber-950 block uppercase tracking-wider mb-0.5">Your Negotiation Request:</span>
+      "{{ sq.negotiation_note }}"
+    </div>
+    {% endif %}
+
+    {% if sq.staff_response %}
+    <div class="text-sm text-blue-900 bg-blue-50 border border-blue-200 rounded-xl p-3 mb-3">
+      <span class="text-xs font-bold text-blue-950 block uppercase tracking-wider mb-0.5">Office Reply:</span>
+      {{ sq.staff_response }}
+    </div>
+    {% if sq.status in ('sent', 'viewed', 'negotiation_requested') %}
+    <div class="flex items-center gap-3 mt-2">
+      <form method="post" action="{{ url_for('portal.service_quotation_accept', sq_id=sq.id) }}" class="m-0">
+        <button type="submit" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-xs transition cursor-pointer">
+          ✓ Accept Revised Offer ({{ sq.grand_total|rupees }})
+        </button>
+      </form>
+      <form method="post" action="{{ url_for('portal.service_quotation_reject', sq_id=sq.id) }}" class="m-0" onsubmit="return confirm('Decline this offer?');">
+        <button type="submit" class="text-xs text-rose-700 hover:bg-rose-100 px-3 py-2 rounded-lg font-semibold transition cursor-pointer">
+          Decline Offer
+        </button>
+      </form>
+    </div>
+    {% endif %}
+    {% else %}
+    <p class="text-xs text-amber-800 mt-1">Our sales manager will call you at <strong>{{ sq.customer_phone }}</strong> shortly to discuss.</p>
+    {% endif %}
+  </div>
+  {% endif %}
+
   <!-- Status banner -->
   {% if sq.status == 'sent' or sq.status == 'viewed' %}
   <div class="mt-4 bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
@@ -74,8 +119,6 @@
     </div>
   </div>
   {% endif %}
-  {% elif sq.status == 'negotiation_requested' %}
-  <div class="mt-4 bg-amber-50 border border-amber-200 rounded-xl p-4 text-amber-800 text-sm">Negotiation requested. Our sales manager will call you at <strong>{{ sq.customer_phone }}</strong> shortly.</div>
   {% elif sq.status == 'rejected' %}
   <div class="mt-4 bg-red-50 border border-red-200 rounded-xl p-4 text-red-800">You have declined this quotation. Contact us if you change your mind.</div>
   {% endif %}
@@ -239,25 +282,5 @@
   </div>
   {% endif %}
 
-  <!-- Staff response to negotiation -->
-  {% if sq.staff_response %}
-  <div class="card p-5 mt-5 border-blue-200 bg-blue-50">
-    <div class="flex items-center gap-2 mb-2">
-      <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider bg-blue-100 text-blue-800">Office Reply</span>
-      <h3 class="font-bold text-blue-900">Response from our team</h3>
-    </div>
-    <p class="text-blue-800 text-sm leading-relaxed mb-3 bg-white/70 p-3 rounded-lg border border-blue-200">{{ sq.staff_response }}</p>
-    {% if sq.status in ('sent', 'viewed', 'negotiation_requested') %}
-    <div class="flex items-center gap-3">
-      <form method="post" action="{{ url_for('portal.service_quotation_accept', sq_id=sq.id) }}" class="m-0">
-        <button type="submit" class="btn btn-primary text-xs px-4 py-2">✓ Accept revised offer ({{ sq.grand_total|rupees }})</button>
-      </form>
-      <form method="post" action="{{ url_for('portal.service_quotation_reject', sq_id=sq.id) }}" class="m-0" onsubmit="return confirm('Decline this offer?');">
-        <button type="submit" class="btn btn-ghost text-xs text-rose-700 hover:bg-rose-100 px-3 py-2">Decline Offer</button>
-      </form>
-    </div>
-    {% endif %}
-  </div>
-  {% endif %}
 </section>
 {% endblock %}
