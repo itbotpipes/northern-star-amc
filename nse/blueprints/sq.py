@@ -26,6 +26,13 @@ import io
 sq_bp = Blueprint("sq", __name__, url_prefix="/ops/sq")
 
 
+@sq_bp.before_request
+def _block_technicians():
+    if current_user.is_authenticated and current_user.is_technician and not (current_user.is_manager or current_user.is_admin):
+        flash("Quotations are managed by sales and operations.", "info")
+        return redirect(url_for("admin.day_plan"))
+
+
 # ─────────────────────────────────────────────────────────────────
 # helpers
 # ─────────────────────────────────────────────────────────────────

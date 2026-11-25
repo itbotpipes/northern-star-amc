@@ -62,10 +62,15 @@
     <!-- Nav -->
     <nav style="flex:1;padding:6px 10px;display:flex;flex-direction:column;gap:1px;overflow-y:auto;">
       {% set _ep = request.endpoint %}
+      {% set is_pure_tech = current_user.is_technician and not (current_user.is_manager or current_user.is_admin) %}
+
+      {% if not is_pure_tech %}
       <a href="{{ url_for('admin.dashboard') }}" class="snav {{ 'active' if _ep == 'admin.dashboard' }}">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="3" width="7" height="8" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="11" width="7" height="10" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/></svg>
         Dashboard
       </a>
+      {% endif %}
+
       <a href="{{ url_for('admin.day_plan') }}" class="snav {{ 'active' if _ep == 'admin.day_plan' }}">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M9 16l2 2 4-4"/></svg>
         Day Plan
@@ -74,6 +79,22 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
         Calendar
       </a>
+
+      {% if is_pure_tech %}
+      <div class="snav-section">My Inspections</div>
+      <a href="{{ url_for('admin.leads') }}" class="snav {{ 'active' if _ep in ('admin.leads','admin.lead_detail') }}">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+        <span>My Assigned Inspections</span>
+      </a>
+      <a href="{{ url_for('admin.surveys') }}" class="snav {{ 'active' if _ep in ('admin.surveys','admin.survey','admin.survey_to_quote') }}">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h4"/></svg>
+        Site Surveys
+      </a>
+      <a href="{{ url_for('admin.health_reports') }}" class="snav {{ 'active' if _ep in ('admin.health_reports','admin.health_report') }}">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        Health Reports
+      </a>
+      {% else %}
 
       <a href="{{ url_for('admin.analytics') }}" class="snav {{ 'active' if _ep == 'admin.analytics' }}">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg>
@@ -112,6 +133,7 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
         Health Reports
       </a>
+      {% endif %}
 
       <div class="snav-section">Operations</div>
       <a href="{{ url_for('admin.enquiries') }}" class="snav {{ 'active' if _ep in ('admin.enquiries', 'admin.enquiry_detail', 'admin.enquiry_new', 'admin.enquiry_checklist') }}">

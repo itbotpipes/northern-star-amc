@@ -2,11 +2,13 @@
 {% block title %}Leads — Ops{% endblock %}
 {% block content %}
 <section class="max-w-6xl mx-auto px-4 py-8">
+  {% set is_pure_tech = current_user.is_technician and not (current_user.is_manager or current_user.is_admin) %}
   <div class="flex items-center justify-between flex-wrap gap-3 mb-6">
     <div>
-      <h1 class="text-2xl font-extrabold text-ink">Inbound Leads</h1>
-      <p class="text-sm text-ink-subtle">Customer AMC requests, general inquiries, site inspection requests &amp; project handovers.</p>
+      <h1 class="text-2xl font-extrabold text-ink">{% if is_pure_tech %}My Assigned Inspections{% else %}Inbound Leads{% endif %}</h1>
+      <p class="text-sm text-ink-subtle">{% if is_pure_tech %}Site inspection requests and surveys assigned to you for inspection.{% else %}Customer AMC requests, general inquiries, site inspection requests &amp; project handovers.{% endif %}</p>
     </div>
+    {% if not is_pure_tech %}
     <div class="flex items-center gap-2">
       <button type="button" onclick="openNewLead('amc')" class="btn btn-secondary text-sm shadow-2xs">+ Request New AMC</button>
       <button type="button" onclick="openNewLead('enquiry')" class="btn btn-secondary text-sm shadow-2xs">+ New Enquiry</button>
@@ -16,6 +18,7 @@
         + Handover
       </button>
     </div>
+    {% endif %}
   </div>
 
   <!-- Manual intake (phone-in enquiry, site inspection, or staff-created handover) -->

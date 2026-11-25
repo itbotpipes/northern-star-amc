@@ -51,6 +51,8 @@ def _apply_reschedule(v, new_date):
 @login_required
 @staff_required
 def dashboard():
+    if current_user.is_technician and not (current_user.is_manager or current_user.is_admin):
+        return redirect(url_for("admin.day_plan"))
     pending_apps = Contract.query.options(joinedload(Contract.customer))\
         .filter_by(status="pending")\
         .order_by(Contract.created_at.desc()).all()
@@ -182,6 +184,9 @@ def reminders():
 @login_required
 @staff_required
 def contracts():
+    if current_user.is_technician and not (current_user.is_manager or current_user.is_admin):
+        flash("Contracts management is reserved for operations and management.", "info")
+        return redirect(url_for("admin.day_plan"))
     status = request.args.get("status")
     q = Contract.query.options(
         joinedload(Contract.customer),
@@ -272,17 +277,21 @@ def leads():
         r[0] for r in db.session.query(HealthCheckReport.contract_id).filter_by(status="completed").all()
     )
 
+    is_pure_tech = current_user.is_technician and not (current_user.is_manager or current_user.is_admin)
+
     # Fetch all Contract leads
-    contract_leads = (Contract.query
-                      .filter(Contract.lead_stage.isnot(None))
-                      .options(selectinload(Contract.service_quotations), joinedload(Contract.customer), joinedload(Contract.inspection_technician))
-                      .order_by(Contract.created_at.desc())
-                      .all())
+    cq = (Contract.query
+          .filter(Contract.lead_stage.isnot(None))
+          .options(selectinload(Contract.service_quotations), joinedload(Contract.customer), joinedload(Contract.inspection_technician)))
+    if is_pure_tech:
+        cq = cq.filter(Contract.inspection_technician_id == current_user.id)
+    contract_leads = cq.order_by(Contract.created_at.desc()).all()
 
     # Fetch all Enquiries
-    enquiry_records = (Enquiry.query
-                       .order_by(Enquiry.created_at.desc())
-                       .all())
+    eq = Enquiry.query
+    if is_pure_tech:
+        eq = eq.filter(Enquiry.assigned_to_id == current_user.id)
+    enquiry_records = eq.order_by(Enquiry.created_at.desc()).all()
 
     # Unify leads
     unified_leads = []
@@ -382,6 +391,10 @@ def leads():
 @staff_required
 def lead_detail(lead_id):
     c = db.session.get(Contract, lead_id) or abort(404)
+    if current_user.is_technician and not (current_user.is_manager or current_user.is_admin):
+        if c.inspection_technician_id != current_user.id:
+            flash("You can only view inspections assigned to you.", "warning")
+            return redirect(url_for("admin.day_plan"))
     technicians = User.query.filter_by(role="technician").order_by(User.name).all()
     fshcr = (HealthCheckReport.query.filter_by(contract_id=c.id)
              .order_by(HealthCheckReport.created_at.desc()).first())
@@ -824,6 +837,9 @@ def rework_toggle(item_id):
 @login_required
 @staff_required
 def contract(contract_id):
+    if current_user.is_technician and not (current_user.is_manager or current_user.is_admin):
+        flash("Contracts access is reserved for operations and management.", "info")
+        return redirect(url_for("admin.day_plan"))
     c = db.session.get(Contract, contract_id) or abort(404)
     techs = User.query.filter(User.role.in_(["technician", "admin"])).all()
     attachments = FormAttachment.query.filter(
@@ -2018,6 +2034,10 @@ def enquiry_new():
 def enquiry_detail(enq_id):
     """Complete Inquiry detail page with workflow track, assignment, checklist review, and history."""
     e = db.session.get(Enquiry, enq_id) or abort(404)
+    if current_user.is_technician and not (current_user.is_manager or current_user.is_admin):
+        if e.assigned_to_id != current_user.id:
+            flash("You can only view inspections assigned to you.", "warning")
+            return redirect(url_for("admin.day_plan"))
     technicians = User.query.filter(User.role.in_(["technician", "admin"])).order_by(User.name).all()
 
     # Group checklist items by category if completed
