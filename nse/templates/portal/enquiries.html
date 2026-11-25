@@ -1,0 +1,196 @@
+{% extends "base_portal.html" %}
+{% block title %}My Enquiries — {{ COMPANY_NAME }}{% endblock %}
+{% block content %}
+
+<section class="max-w-5xl mx-auto px-4 py-8">
+  <!-- Header -->
+  <div class="flex items-center justify-between flex-wrap gap-4 mb-6">
+    <div>
+      <a href="{{ url_for('portal.dashboard') }}" class="text-xs text-slate-500 hover:text-navy-700 inline-flex items-center gap-1 mb-1">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg>
+        Back to Dashboard
+      </a>
+      <h1 class="text-2xl font-extrabold text-navy-900">My Enquiries</h1>
+      <p class="text-sm text-slate-600">Track all your submitted fire safety enquiries, site survey requests, assigned engineers, and progress.</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <a href="{{ url_for('public.enquiry') }}" class="inline-flex items-center gap-2 bg-primary text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-primary-hover shadow-sm transition">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+        + New Inquiry
+      </a>
+      <a href="{{ url_for('public.apply') }}" class="inline-flex items-center gap-2 bg-slate-100 text-slate-700 border border-slate-200 text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-slate-200 transition">
+        + Request AMC
+      </a>
+    </div>
+  </div>
+
+  {% if enquiries %}
+  <div class="space-y-5">
+    {% for e in enquiries %}
+    {% set st = e.status or 'new' %}
+    {% set badge_info = {
+      'new': ('Submitted', 'bg-blue-50 text-blue-700 border-blue-200'),
+      'assigned': ('Engineer Assigned', 'bg-sky-50 text-sky-700 border-sky-200'),
+      'site_visit_scheduled': ('Visit Scheduled', 'bg-indigo-50 text-indigo-700 border-indigo-200'),
+      'site_visit_in_progress': ('Inspection In Progress', 'bg-amber-50 text-amber-700 border-amber-200'),
+      'checklist_submitted': ('Checklist Ready', 'bg-purple-50 text-purple-700 border-purple-200'),
+      'quotation_generated': ('Quotation Ready', 'bg-emerald-50 text-emerald-700 border-emerald-200'),
+      'responded': ('Responded', 'bg-emerald-50 text-emerald-700 border-emerald-200'),
+      'closed': ('Closed', 'bg-slate-100 text-slate-600 border-slate-200')
+    }.get(st, (st|replace('_', ' ')|title, 'bg-slate-100 text-slate-600 border-slate-200')) %}
+
+    <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:border-slate-300 transition">
+      <!-- Top Row: Reference + Status -->
+      <div class="flex items-center justify-between flex-wrap gap-2 pb-4 border-b border-slate-100">
+        <div class="flex items-center gap-3">
+          <span class="font-mono text-sm font-extrabold text-navy-900 px-3 py-1 bg-slate-100 rounded-lg">{{ e.reference or ('INQ-' ~ '%04d'|format(e.id)) }}</span>
+          <span class="text-xs text-slate-500">{{ e.created_at|datefmt }}</span>
+        </div>
+        <span class="text-xs font-semibold px-3 py-1 rounded-full border {{ badge_info[1] }}">
+          {{ badge_info[0] }}
+        </span>
+      </div>
+
+      <!-- Main Inquiry Info -->
+      <div class="mt-4 grid md:grid-cols-3 gap-6">
+        <div class="md:col-span-2 space-y-3">
+          <div>
+            <h3 class="text-base font-bold text-navy-900">{{ e.subject or e.service_requirement or 'Fire Safety Inquiry' }}</h3>
+            {% if e.address or e.area %}
+            <p class="text-xs text-slate-600 flex items-center gap-1.5 mt-1">
+              <svg class="w-3.5 h-3.5 text-slate-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              <span>{{ e.address }}{% if e.area and e.area not in (e.address or '') %}, {{ e.area }}{% endif %}</span>
+              {% if e.latitude and e.longitude %}
+              <a href="https://maps.google.com/?q={{ e.latitude }},{{ e.longitude }}" target="_blank" class="text-primary underline ml-1 font-medium">Map ↗</a>
+              {% endif %}
+            </p>
+            {% endif %}
+          </div>
+
+          <!-- Problem description / Requirement text -->
+          {% if e.message %}
+          <div class="bg-slate-50 rounded-xl p-3.5 border border-slate-100 text-xs text-slate-700 leading-relaxed">
+            <span class="font-semibold text-slate-900 block mb-1">Requirement / Problem Description:</span>
+            {{ e.message }}
+          </div>
+          {% endif %}
+
+          <!-- Audio Voice Note Widget if present -->
+          {% set audio_att = None %}
+          {% if e.photos %}
+            {% for ph in e.photos %}
+              {% if ph.file_path and ph.file_path.endswith(('.webm', '.wav', '.mp3', '.ogg', '.m4a', '.aac')) %}
+                {% set audio_att = ph.file_path %}
+              {% endif %}
+            {% endfor %}
+          {% endif %}
+          {% if audio_att %}
+          <div class="bg-navy-50/60 rounded-xl p-3 border border-navy-100">
+            <span class="text-xs font-semibold text-navy-800 flex items-center gap-1.5 mb-1.5">
+              <svg class="w-4 h-4 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3M8 22h8"/></svg>
+              Recorded Voice Note for Technician
+            </span>
+            <audio controls src="{{ audio_att|upload_url }}" class="w-full h-8 rounded"></audio>
+          </div>
+          {% endif %}
+
+          <!-- Uploaded Media Photos -->
+          {% if e.photos %}
+          {% set image_photos = [] %}
+          {% for ph in e.photos %}
+            {% if not ph.file_path.endswith(('.webm', '.wav', '.mp3', '.ogg', '.m4a', '.aac')) %}
+              {% set _ = image_photos.append(ph) %}
+            {% endif %}
+          {% endfor %}
+          {% if image_photos %}
+          <div>
+            <span class="text-xs font-semibold text-slate-700 block mb-2">Uploaded Site Media ({{ image_photos|length }}):</span>
+            <div class="flex flex-wrap gap-2">
+              {% for ph in image_photos %}
+              <a href="{{ ph.file_path|upload_url }}" target="_blank" class="w-16 h-16 rounded-lg overflow-hidden border border-slate-200 hover:opacity-80 transition inline-block">
+                <img src="{{ ph.file_path|upload_url }}" alt="{{ ph.caption or 'Site Photo' }}" class="w-full h-full object-cover">
+              </a>
+              {% endfor %}
+            </div>
+          </div>
+          {% endif %}
+          {% endif %}
+        </div>
+
+        <!-- Right Side: Engineer & Quotation Info -->
+        <div class="space-y-4 border-t md:border-t-0 md:border-l md:pl-6 border-slate-100">
+          {% if e.assigned_to %}
+          <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
+            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-2">Assigned Engineer</span>
+            <div class="flex items-center gap-3">
+              {% if e.assigned_to.photo_path %}
+              <img src="{{ e.assigned_to.photo_path|upload_url }}" alt="{{ e.assigned_to.name }}" class="w-10 h-10 rounded-full object-cover border border-slate-200">
+              {% else %}
+              <div class="w-10 h-10 rounded-full bg-navy-100 text-navy-800 font-bold flex items-center justify-center text-xs">
+                {{ e.assigned_to.name[:2]|upper }}
+              </div>
+              {% endif %}
+              <div>
+                <h4 class="text-xs font-bold text-slate-900">{{ e.assigned_to.name }}</h4>
+                <p class="text-[11px] text-slate-500">{{ e.assigned_to.role|title }}</p>
+                {% if e.assigned_to.phone %}
+                <a href="tel:{{ e.assigned_to.phone }}" class="text-[11px] text-primary font-semibold hover:underline inline-flex items-center gap-1 mt-0.5">
+                  <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                  {{ e.assigned_to.phone }}
+                </a>
+                {% endif %}
+              </div>
+            </div>
+            {% if e.visit_scheduled_date %}
+            <div class="mt-3 pt-3 border-t border-slate-200/60 text-xs text-slate-600 space-y-1">
+              <div>Scheduled: <strong class="text-navy-900">{{ e.visit_scheduled_date|datefmt }}</strong></div>
+              {% if e.visit_time_slot %}<div>Slot: <strong class="text-slate-800">{{ e.visit_time_slot }}</strong></div>{% endif %}
+            </div>
+            {% endif %}
+          </div>
+          {% else %}
+          <div class="bg-amber-50/70 p-4 rounded-xl border border-amber-200/60 text-xs text-amber-800">
+            <span class="font-bold block mb-1">Under Team Leader Review</span>
+            Our operations team is assigning a certified fire safety engineer for your area.
+          </div>
+          {% endif %}
+
+          <!-- Linked Quotation Card -->
+          {% if e.quotation %}
+          <div class="bg-emerald-50 p-4 rounded-xl border border-emerald-200">
+            <span class="text-[11px] font-bold uppercase tracking-wider text-emerald-800 block mb-1">Official Quotation Ready</span>
+            <div class="font-mono text-sm font-bold text-emerald-900">{{ e.quotation.reference }}</div>
+            <div class="text-xs text-emerald-800 mt-1">Amount: <strong>{{ e.quotation.grand_total|rupees }}</strong></div>
+            <a href="{{ url_for('portal.service_quotation', sq_id=e.quotation.id) }}" class="mt-3 inline-flex items-center gap-1.5 text-xs bg-emerald-700 text-white font-bold px-3 py-1.5 rounded-lg hover:bg-emerald-800 transition">
+              View &amp; Decide Quotation →
+            </a>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <!-- Empty State -->
+  <div class="bg-white rounded-2xl border border-dashed border-slate-300 p-12 text-center">
+    <div class="w-16 h-16 rounded-2xl bg-navy-50 text-primary flex items-center justify-center mx-auto mb-4">
+      <svg class="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+    </div>
+    <h3 class="text-lg font-bold text-navy-900">No enquiries submitted yet</h3>
+    <p class="text-xs text-slate-500 mt-1.5 max-w-md mx-auto">
+      Need a certified fire safety inspection, maintenance quotation, or audit for your commercial building, society, or industrial unit?
+    </p>
+    <div class="mt-6 flex items-center justify-center gap-3">
+      <a href="{{ url_for('public.enquiry') }}" class="inline-flex items-center gap-2 bg-primary text-white text-xs font-bold px-4 py-2.5 rounded-xl hover:bg-primary-hover shadow-sm transition">
+        + Send an Enquiry
+      </a>
+      <a href="{{ url_for('public.apply') }}" class="inline-flex items-center gap-2 bg-slate-100 text-slate-700 border border-slate-200 text-xs font-semibold px-4 py-2.5 rounded-xl hover:bg-slate-200 transition">
+        Request New AMC
+      </a>
+    </div>
+  </div>
+  {% endif %}
+</section>
+
+{% endblock %}

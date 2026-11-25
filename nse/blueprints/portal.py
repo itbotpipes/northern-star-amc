@@ -895,6 +895,25 @@ def submit_referral(contract_id):
 # Customer journey timeline
 # ─────────────────────────────────────────────────────────────────
 
+@portal_bp.route("/enquiries", endpoint="enquiries")
+@login_required
+@customer_required
+def enquiries():
+    """Dedicated My Enquiries page for customer portal."""
+    phone_digits = "".join(filter(str.isdigit, current_user.phone or ""))
+    phone_last10 = phone_digits[-10:] if len(phone_digits) >= 10 else phone_digits
+    inquiry_filters = [Enquiry.customer_id == current_user.id]
+    if current_user.phone:
+        inquiry_filters.append(Enquiry.phone == current_user.phone)
+        if phone_last10:
+            inquiry_filters.append(Enquiry.phone.ilike(f"%{phone_last10}%"))
+    my_enquiries = (Enquiry.query
+                    .filter(or_(*inquiry_filters))
+                    .order_by(Enquiry.created_at.desc())
+                    .all())
+    return render_template("portal/enquiries.html", enquiries=my_enquiries)
+
+
 @portal_bp.route("/journey", endpoint="journey")
 @login_required
 @customer_required
