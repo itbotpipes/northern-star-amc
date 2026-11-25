@@ -257,6 +257,104 @@
   </div>
 </div>
 
+<!-- Staff Notification Pop-up Modal on Login / Page Load -->
+{% if unread_notifications and recent_notifications %}
+{% set unread_list = [] %}
+{% for n in recent_notifications %}
+  {% if not n.read %}
+    {% set _ = unread_list.append(n) %}
+  {% endif %}
+{% endfor %}
+
+{% if unread_list %}
+{% set top_n = unread_list[0] %}
+<div id="nseOpsNotifModal" class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-navy-950/40 backdrop-blur-sm transition-opacity duration-300" style="display:none;">
+  <div class="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden transform transition-all duration-300 scale-95" id="nseOpsNotifCard">
+    <!-- Header banner -->
+    <div class="bg-gradient-to-r from-navy-900 to-primary px-5 py-4 text-white flex items-center justify-between">
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-amber-300">
+          <svg class="w-4 h-4 animate-bounce" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 01-3.4 0"/></svg>
+        </div>
+        <div>
+          <h3 class="text-sm font-bold tracking-tight">New Staff Alert</h3>
+          <p class="text-[11px] text-white/70">{{ unread_notifications }} unread alert{{ 's' if unread_notifications > 1 else '' }}</p>
+        </div>
+      </div>
+      <button type="button" onclick="closeOpsNotifModal()" class="text-white/70 hover:text-white p-1 rounded-lg hover:bg-white/10 transition" aria-label="Close">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+
+    <!-- Body content -->
+    <div class="p-5 space-y-3.5">
+      <div class="flex items-start gap-3">
+        <span class="w-2 h-2 rounded-full bg-primary mt-1.5 shrink-0"></span>
+        <div class="flex-1 min-w-0">
+          <h4 class="text-sm font-bold text-navy-950 leading-snug">{{ top_n.title }}</h4>
+          {% if top_n.body %}
+          <p class="text-xs text-slate-600 mt-1 leading-relaxed">{{ top_n.body }}</p>
+          {% endif %}
+          <div class="text-[11px] text-slate-400 mt-1.5">{{ top_n.created_at|datefmt }}</div>
+        </div>
+      </div>
+
+      {% if unread_list|length > 1 %}
+      <div class="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+        <span>+ {{ unread_list|length - 1 }} other unread alert{{ 's' if (unread_list|length - 1) > 1 else '' }}</span>
+        <a href="{{ url_for('admin.notifications') }}" class="text-primary font-semibold hover:underline">View all →</a>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Actions -->
+    <div class="bg-slate-50 px-5 py-3.5 border-t border-slate-100 flex items-center justify-end gap-2.5">
+      <button type="button" onclick="dismissOpsNotifModal()" class="px-3.5 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 rounded-lg hover:bg-slate-200/60 transition">
+        Dismiss
+      </button>
+      {% if top_n.link %}
+      <a href="{{ url_for('portal.open_notification', notif_id=top_n.id) }}" class="px-4 py-2 text-xs font-bold bg-primary hover:bg-primary-hover text-white rounded-lg shadow-sm transition inline-flex items-center gap-1.5">
+        View Assignment →
+      </a>
+      {% else %}
+      <a href="{{ url_for('portal.mark_read') }}" class="px-4 py-2 text-xs font-bold bg-primary hover:bg-primary-hover text-white rounded-lg shadow-sm transition">
+        Mark as Read
+      </a>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  var notifId = "{{ top_n.id }}";
+  if (!sessionStorage.getItem('nse_ops_dismissed_notif_' + notifId)) {
+    var modal = document.getElementById('nseOpsNotifModal');
+    var card = document.getElementById('nseOpsNotifCard');
+    if (modal) {
+      modal.style.display = 'flex';
+      setTimeout(function() {
+        if (card) card.classList.remove('scale-95');
+      }, 50);
+    }
+  }
+})();
+
+function closeOpsNotifModal() {
+  var modal = document.getElementById('nseOpsNotifModal');
+  if (modal) modal.style.display = 'none';
+  sessionStorage.setItem('nse_ops_dismissed_notif_{{ top_n.id }}', '1');
+}
+
+function dismissOpsNotifModal() {
+  closeOpsNotifModal();
+  fetch("{{ url_for('portal.mark_read') }}", { method: 'GET', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+    .catch(function(e) {});
+}
+</script>
+{% endif %}
+{% endif %}
+
 <script>
   function nseChime(){try{var C=window.AudioContext||window.webkitAudioContext;if(!C)return;var c=new C(),notes=[[880,0],[1318.5,.12]];notes.forEach(function(n){var o=c.createOscillator(),g=c.createGain();o.type='sine';o.frequency.value=n[0];o.connect(g);g.connect(c.destination);var t=c.currentTime+n[1];g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.3,t+.02);g.gain.exponentialRampToValueAtTime(.0001,t+.5);o.start(t);o.stop(t+.55);});}catch(e){}}
   document.addEventListener('DOMContentLoaded',function(){if(!!document.querySelector('[data-nse-chime]')||new URLSearchParams(window.location.search).get('chime')==='1')nseChime();});
