@@ -178,38 +178,50 @@ def apply():
         db.session.commit()
 
         # Save actual recorded voice note audio (if recorded by client)
-        voice_file = request.files.get("voice_audio")
-        if voice_file and voice_file.filename:
-            audio_path = save_upload(voice_file, f"form/contract/{contract.id}",
-                                     {"webm", "wav", "mp3", "ogg", "m4a", "aac", "mp4"})
-            if audio_path:
-                contract.voice_note = audio_path
-                db.session.add(FormAttachment(
-                    ref_type="contract", ref_id=contract.id,
-                    file_path=audio_path, attachment_type="audio",
-                    caption="Customer Recorded Voice Note"
-                ))
-                db.session.commit()
+        try:
+            voice_file = request.files.get("voice_audio")
+            if voice_file and voice_file.filename:
+                audio_path = save_upload(voice_file, f"form/contract/{contract.id}",
+                                         {"webm", "wav", "mp3", "ogg", "m4a", "aac", "mp4"})
+                if audio_path:
+                    contract.voice_note = audio_path
+                    db.session.add(FormAttachment(
+                        ref_type="contract", ref_id=contract.id,
+                        file_path=audio_path, attachment_type="audio",
+                        caption="Customer Recorded Voice Note"
+                    ))
+                    db.session.commit()
+        except Exception as e:
+            current_app.logger.warning("Failed saving contract voice note: %s", e)
 
         # Save uploaded site photos/videos
-        _save_attachments(request.files.getlist("site_photos"), "contract", contract.id, "photo")
-        db.session.commit()
+        try:
+            _save_attachments(request.files.getlist("site_photos"), "contract", contract.id, "photo")
+            db.session.commit()
+        except Exception as e:
+            current_app.logger.warning("Failed saving contract photos: %s", e)
 
         if contract.customer_id:
-            db.session.add(CustomerJourneyEvent(
-                customer_id=contract.customer_id,
-                event_type="enquiry_submitted",
-                description=f"Enquiry submitted for {contract.site_name or contract.area or 'new site'} via website.",
-                ref_type="contract",
-                ref_id=contract.id
-            ))
-            db.session.commit()
+            try:
+                db.session.add(CustomerJourneyEvent(
+                    customer_id=contract.customer_id,
+                    event_type="enquiry_submitted",
+                    description=f"Enquiry submitted for {contract.site_name or contract.area or 'new site'} via website.",
+                    ref_type="contract",
+                    ref_id=contract.id
+                ))
+                db.session.commit()
+            except Exception as e:
+                current_app.logger.warning("Failed logging customer journey event: %s", e)
 
-        notify_managers(
-            f"New enquiry — {contract.reference}",
-            f"{name} · {site_name or area or 'site not named'}"
-            + (f" — \"{contract.problem_description[:80]}\"" if contract.problem_description else ""),
-            link=url_for("admin.lead_detail", lead_id=contract.id))
+        try:
+            notify_managers(
+                f"New enquiry — {contract.reference}",
+                f"{name} · {site_name or area or 'site not named'}"
+                + (f" — \"{contract.problem_description[:80]}\"" if contract.problem_description else ""),
+                link=url_for("admin.lead_detail", lead_id=contract.id))
+        except Exception as e:
+            current_app.logger.warning("Failed notifying managers: %s", e)
 
         msg = ("Thank you — your enquiry has been sent. Our technician will visit, "
                "inspect your site, and share a quotation — no payment now.")
@@ -414,44 +426,54 @@ def enquiry():
         e.reference = f"INQ-{e.id:04d}"
 
         # Save voice note if recorded
-        voice_file = request.files.get("voice_audio")
-        if voice_file and voice_file.filename:
-            audio_path = save_upload(voice_file, f"form/enquiry/{e.id}",
-                                     {"webm", "wav", "mp3", "ogg", "m4a", "aac", "mp4"})
-            if audio_path:
+        try:
+            voice_file = request.files.get("voice_audio")
+            if voice_file and voice_file.filename:
+                audio_path = save_upload(voice_file, f"form/enquiry/{e.id}",
+                                         {"webm", "wav", "mp3", "ogg", "m4a", "aac", "mp4"})
+                if audio_path:
+                    db.session.add(FormAttachment(
+                        ref_type="enquiry", ref_id=e.id,
+                        file_path=audio_path, attachment_type="audio",
+                        caption="Customer Recorded Voice Note"
+                    ))
+            elif voice:
                 db.session.add(FormAttachment(
                     ref_type="enquiry", ref_id=e.id,
-                    file_path=audio_path, attachment_type="audio",
-                    caption="Customer Recorded Voice Note"
+                    file_path=voice, attachment_type="audio",
+                    caption="Customer Voice Note URL"
                 ))
-        elif voice:
-            db.session.add(FormAttachment(
-                ref_type="enquiry", ref_id=e.id,
-                file_path=voice, attachment_type="audio",
-                caption="Customer Voice Note URL"
-            ))
+            db.session.commit()
+        except Exception as ex:
+            current_app.logger.warning("Failed saving enquiry voice note: %s", ex)
 
         # Save photos / videos
-        _save_attachments(request.files.getlist("site_photos"), "enquiry", e.id, "photo")
-        db.session.commit()
+        try:
+            _save_attachments(request.files.getlist("site_photos"), "enquiry", e.id, "photo")
+            db.session.commit()
+        except Exception as ex:
+            current_app.logger.warning("Failed saving enquiry photos: %s", ex)
 
         # Log initial history
-        history = InquiryHistory(
-            inquiry_id=e.id,
-            action="Inquiry Created",
-            actor_name=name or "Customer",
-            details=f"Inquiry generated via public portal. Service requirement: {service_requirement} at {site_name or area or 'Surat'}."
-        )
-        db.session.add(history)
-        if cu_id:
-            db.session.add(CustomerJourneyEvent(
-                customer_id=cu_id,
-                event_type="enquiry_submitted",
-                description=f"Inquiry {e.reference} submitted for {site_name or area or 'site'}.",
-                ref_type="enquiry",
-                ref_id=e.id
-            ))
-        db.session.commit()
+        try:
+            history = InquiryHistory(
+                inquiry_id=e.id,
+                action="Inquiry Created",
+                actor_name=name or "Customer",
+                details=f"Inquiry generated via public portal. Service requirement: {service_requirement} at {site_name or area or 'Surat'}."
+            )
+            db.session.add(history)
+            if cu_id:
+                db.session.add(CustomerJourneyEvent(
+                    customer_id=cu_id,
+                    event_type="enquiry_submitted",
+                    description=f"Inquiry {e.reference} submitted for {site_name or area or 'site'}.",
+                    ref_type="enquiry",
+                    ref_id=e.id
+                ))
+            db.session.commit()
+        except Exception as ex:
+            current_app.logger.warning("Failed logging enquiry history: %s", ex)
 
         # Notify Team Leader
         try:

@@ -290,12 +290,27 @@ def save_upload(file_storage, subdir="general", allowed_ext=None):
         except Exception as e:
             current_app.logger.warning("Supabase Storage upload failed, falling back: %s", e)
 
-    # 3. Local disk (dev / fallback)
-    dest_dir = os.path.join(current_app.config["UPLOAD_FOLDER"], subdir)
-    os.makedirs(dest_dir, exist_ok=True)
-    file_storage.seek(0)
-    file_storage.save(os.path.join(dest_dir, unique))
-    return f"uploads/{subdir}/{unique}"
+    # 3. Local disk (dev / fallback with serverless /tmp protection)
+    try:
+        dest_dir = os.path.join(current_app.config["UPLOAD_FOLDER"], subdir)
+        os.makedirs(dest_dir, exist_ok=True)
+        file_storage.seek(0)
+        file_storage.save(os.path.join(dest_dir, unique))
+        return f"uploads/{subdir}/{unique}"
+    except (OSError, PermissionError) as e:
+        current_app.logger.warning("Local static upload folder not writable (read-only filesystem): %s. Trying /tmp...", e)
+        try:
+            tmp_dir = os.path.join("/tmp", "uploads", subdir)
+            os.makedirs(tmp_dir, exist_ok=True)
+            file_storage.seek(0)
+            file_storage.save(os.path.join(tmp_dir, unique))
+            return f"uploads/{subdir}/{unique}"
+        except Exception as e2:
+            current_app.logger.error("Failed to save upload even to /tmp: %s", e2)
+            return None
+    except Exception as e:
+        current_app.logger.error("Unexpected error saving upload: %s", e)
+        return None
 
 
 def _save_to_blob(file_storage, pathname, token):
@@ -362,46 +377,73 @@ def upload_url(path):
 # --------------------------------------------------------------------------- #
 # Notifications
 # --------------------------------------------------------------------------- #
+def _safe_str(val, max_len):
+    if not val:
+        return val
+    s = str(val).strip()
+    return (s[:max_len - 3] + "...") if len(s) > max_len else s
+
+
 def notify(user_id, title, body=None, link=None):
     if not user_id:
         return
-    db.session.add(Notification(user_id=user_id, title=title, body=body, link=link))
-    db.session.commit()
+    try:
+        safe_title = _safe_str(title, 160) or "Notification"
+        safe_body = _safe_str(body, 255)
+        safe_link = _safe_str(link, 255)
+        db.session.add(Notification(user_id=user_id, title=safe_title, body=safe_body, link=safe_link))
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.warning("notify failed: %s", e)
 
 
 def notify_staff(title, body=None, link=None):
-    """Fan a notification out to every staff member (admin + technician + manager + team_leader).
-
-    Used for events the Ops Console must surface — e.g. a customer accepting or
-    requesting negotiation on a quotation. Each staff user gets their own
-    Notification row so the unread badge / bell works per-account.
-    """
-    from .models import User
-    staff = User.query.filter(User.role.in_(["admin", "technician", "manager", "team_leader"])).all()
-    for u in staff:
-        db.session.add(Notification(user_id=u.id, title=title, body=body, link=link))
-    db.session.commit()
+    """Fan a notification out to every staff member (admin + technician + manager + team_leader)."""
+    try:
+        from .models import User
+        staff = User.query.filter(User.role.in_(["admin", "technician", "manager", "team_leader"])).all()
+        safe_title = _safe_str(title, 160) or "Notification"
+        safe_body = _safe_str(body, 255)
+        safe_link = _safe_str(link, 255)
+        for u in staff:
+            db.session.add(Notification(user_id=u.id, title=safe_title, body=safe_body, link=safe_link))
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.warning("notify_staff failed: %s", e)
 
 
 def notify_team_leaders(title, body=None, link=None):
-    """Notify Team Leaders, Managers, and Admins — used for new inquiry assignment
-    and inquiry workflow progression."""
-    from .models import User
-    leaders = User.query.filter(User.role.in_(["team_leader", "manager", "admin"])).all()
-    for u in leaders:
-        db.session.add(Notification(user_id=u.id, title=title, body=body, link=link))
-    db.session.commit()
+    """Notify Team Leaders, Managers, and Admins."""
+    try:
+        from .models import User
+        leaders = User.query.filter(User.role.in_(["team_leader", "manager", "admin"])).all()
+        safe_title = _safe_str(title, 160) or "Notification"
+        safe_body = _safe_str(body, 255)
+        safe_link = _safe_str(link, 255)
+        for u in leaders:
+            db.session.add(Notification(user_id=u.id, title=safe_title, body=safe_body, link=safe_link))
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.warning("notify_team_leaders failed: %s", e)
 
 
 def notify_managers(title, body=None, link=None):
-    """Notify managers (+ admin, who often doubles as manager on a small team)
-    specifically — used for events that are the maintenance manager's job to act
-    on, e.g. a new customer enquiry that needs an inspection scheduled."""
-    from .models import User
-    mgrs = User.query.filter(User.role.in_(["manager", "admin"])).all()
-    for u in mgrs:
-        db.session.add(Notification(user_id=u.id, title=title, body=body, link=link))
-    db.session.commit()
+    """Notify managers (+ admin) specifically."""
+    try:
+        from .models import User
+        mgrs = User.query.filter(User.role.in_(["manager", "admin"])).all()
+        safe_title = _safe_str(title, 160) or "Notification"
+        safe_body = _safe_str(body, 255)
+        safe_link = _safe_str(link, 255)
+        for u in mgrs:
+            db.session.add(Notification(user_id=u.id, title=safe_title, body=safe_body, link=safe_link))
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.warning("notify_managers failed: %s", e)
 
 
 def public_url(endpoint, **values):
