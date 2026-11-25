@@ -4,35 +4,54 @@
 {% block content %}
 <section class="max-w-6xl mx-auto px-4 py-10">
   {% if not current_user.has_completed_profile %}
-  <div class="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-5 flex flex-wrap items-center justify-between gap-3 shadow-sm">
+  <div
+    class="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-5 flex flex-wrap items-center justify-between gap-3 shadow-sm">
     <div class="flex items-center gap-3">
       <div class="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center text-amber-700 font-bold shrink-0">
-        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10" />
+          <line x1="12" y1="8" x2="12" y2="12" />
+          <line x1="12" y1="16" x2="12.01" y2="16" />
+        </svg>
       </div>
       <div>
         <h4 class="text-sm font-bold text-amber-900">Complete your profile details</h4>
-        <p class="text-xs text-amber-700 mt-0.5">Please add your full address, area, and email to ensure prompt dispatch of maintenance teams.</p>
+        <p class="text-xs text-amber-700 mt-0.5">Please add your full address, area, and email to ensure prompt dispatch
+          of maintenance teams.</p>
       </div>
     </div>
-    <a href="{{ url_for('portal.profile') }}" class="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-semibold transition shadow-sm">Complete Profile →</a>
+    <a href="{{ url_for('portal.profile') }}"
+      class="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-semibold transition shadow-sm">Complete
+      Profile →</a>
   </div>
   {% endif %}
 
   <div class="flex items-center justify-between flex-wrap gap-3">
     <div>
       <h1 class="text-2xl font-extrabold text-navy-800">Welcome, {{ current_user.name }}</h1>
-      <p class="text-slate-600 text-sm">{{ current_user.phone }}{% if current_user.area %} · {{ current_user.area }}{% endif %}</p>
+      <p class="text-slate-600 text-sm">{{ current_user.phone }}{% if current_user.area %} · {{ current_user.area }}{%
+        endif %}</p>
     </div>
+
     <div class="flex flex-wrap gap-2">
-      <a href="{{ url_for('portal.profile') }}" class="btn btn-ghost text-sm px-3 py-2">My Profile</a>
-      <a href="{{ url_for('portal.service_quotations') }}" class="btn btn-ghost text-sm px-3 py-2">My Quotes</a>
+      <a href="{{ url_for('portal.enquiries') }}" class="btn btn-ghost text-sm px-3 py-2">My Enquiry</a>
       <a href="{{ url_for('portal.amc_requests') }}" class="btn btn-ghost text-sm px-3 py-2">My AMC Requests</a>
       <a href="{{ url_for('portal.inspections') }}" class="btn btn-ghost text-sm px-3 py-2">Site Inspections</a>
-      <a href="{{ url_for('public.enquiry') }}" class="bg-surface-2 text-ink px-4 py-2 rounded-lg text-sm font-medium border border-hairline hover:border-primary transition">+ Request Site Inspection</a>
-      <a href="{{ url_for('public.apply') }}" class="bg-surface-2 text-ink px-4 py-2 rounded-lg text-sm font-medium border border-hairline hover:border-primary transition">+ Request New AMC</a>
-      <a href="{{ url_for('public.enquiry') }}" class="bg-primary text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-hover transition shadow-sm">+ New Inquiry</a>
-      {% if has_refills %}<a href="{{ url_for('public.refill') }}" class="bg-surface-2 text-ink px-4 py-2 rounded-lg text-sm font-medium border border-hairline hover:border-primary transition">Book refill</a>{% endif %}
-      {% if has_emergencies %}<a href="{{ url_for('public.emergency') }}" class="bg-danger text-white px-4 py-2 rounded-lg text-sm font-medium hover:opacity-90 transition">Emergency</a>{% endif %}
+      <a href="{{ url_for('public.enquiry') }}"
+        class="bg-surface-2 text-ink px-4 py-2 rounded-lg text-sm font-medium border border-hairline hover:border-primary transition">+
+        Request Site Inspection</a>
+      <a href="{{ url_for('public.apply') }}"
+        class="bg-surface-2 text-ink px-4 py-2 rounded-lg text-sm font-medium border border-hairline hover:border-primary transition">+
+        Request New AMC</a>
+      <a href="{{ url_for('public.enquiry') }}"
+        class="bg-primary text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-hover transition shadow-sm">+
+        New Inquiry</a>
+      {% if has_refills %}<a href="{{ url_for('public.refill') }}"
+        class="bg-surface-2 text-ink px-4 py-2 rounded-lg text-sm font-medium border border-hairline hover:border-primary transition">Book
+        refill</a>{% endif %}
+      {% if has_emergencies %}<a href="{{ url_for('public.emergency') }}"
+        class="bg-danger text-white px-4 py-2 rounded-lg text-sm font-medium hover:opacity-90 transition">Emergency</a>{%
+      endif %}
     </div>
   </div>
 
@@ -40,46 +59,58 @@
   <!-- AMC Agreement Action Required Banner -->
   <div class="mt-6 bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-400 rounded-2xl p-5 shadow-sm">
     <div class="flex items-start gap-3.5">
-      <div class="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-sm">
-        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
+      <div
+        class="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-sm">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
         </svg>
       </div>
       <div class="flex-1 min-w-0">
         <div class="flex items-center justify-between flex-wrap gap-2">
           <div class="flex items-center gap-2">
-            <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-bold uppercase tracking-wider bg-amber-200 text-amber-900">Action Required</span>
+            <span
+              class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-bold uppercase tracking-wider bg-amber-200 text-amber-900">Action
+              Required</span>
             <h3 class="font-extrabold text-amber-950 text-base">
               {% if unsigned_agreements|length == 1 %}
-                AMC Maintenance Agreement Ready for Signature
+              AMC Maintenance Agreement Ready for Signature
               {% else %}
-                {{ unsigned_agreements|length }} AMC Agreements Ready for Signature
+              {{ unsigned_agreements|length }} AMC Agreements Ready for Signature
               {% endif %}
             </h3>
           </div>
-          <span class="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
+          <span
+            class="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
             Pending Signature
           </span>
         </div>
         <p class="text-sm text-amber-900 mt-1">
-          Your AMC agreement has been generated. Please review the terms and complete your digital sign-off to activate scheduled service visits and emergency coverage.
+          Your AMC agreement has been generated. Please review the terms and complete your digital sign-off to activate
+          scheduled service visits and emergency coverage.
         </p>
-        
+
         <div class="mt-3.5 grid gap-3 sm:grid-cols-2">
           {% for c in unsigned_agreements %}
-          <div class="bg-white border border-amber-300 rounded-xl p-4 shadow-2xs flex flex-col justify-between hover:border-amber-400 transition">
+          <div
+            class="bg-white border border-amber-300 rounded-xl p-4 shadow-2xs flex flex-col justify-between hover:border-amber-400 transition">
             <div>
               <div class="flex items-center justify-between gap-2">
                 <span class="font-mono font-bold text-navy-900 text-sm">{{ c.reference }}</span>
                 {% if c.payment_status == 'paid' %}
-                <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">Payment Confirmed</span>
+                <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">Payment
+                  Confirmed</span>
                 {% elif c.free_amc %}
-                <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800">Complimentary 1st Year</span>
+                <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800">Complimentary
+                  1st Year</span>
                 {% else %}
-                <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">Ready to Sign</span>
+                <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">Ready to
+                  Sign</span>
                 {% endif %}
               </div>
-              <p class="text-xs font-semibold text-slate-800 mt-1 truncate">{{ c.site_name or c.area or 'Registered Premises' }}</p>
+              <p class="text-xs font-semibold text-slate-800 mt-1 truncate">{{ c.site_name or c.area or 'Registered
+                Premises' }}</p>
               {% if c.plan %}
               <p class="text-[11px] text-slate-500 mt-0.5">{{ c.plan.name }} · {{ c.total_visits or 4 }} visits/yr</p>
               {% endif %}
@@ -87,7 +118,7 @@
             <div class="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between">
               <span class="text-[11px] text-amber-800 font-medium">Digital sign-off required</span>
               <a href="{{ url_for('portal.agreement', contract_id=c.id) }}"
-                 class="btn btn-primary text-xs px-3.5 py-1.5 font-bold shadow-2xs">
+                class="btn btn-primary text-xs px-3.5 py-1.5 font-bold shadow-2xs">
                 Review &amp; Sign Agreement →
               </a>
             </div>
@@ -102,48 +133,75 @@
   {% if scheduled_inspections %}
   <div class="mt-6 bg-sky-50 border border-sky-200 rounded-xl p-4 shadow-sm">
     <div class="flex items-start gap-3">
-      <div class="w-9 h-9 rounded-xl bg-sky-100 flex items-center justify-center text-sky-700 font-bold shrink-0 mt-0.5">
-        <svg class="w-5 h-5 text-sky-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><circle cx="12" cy="15" r="2"/></svg>
+      <div
+        class="w-9 h-9 rounded-xl bg-sky-100 flex items-center justify-center text-sky-700 font-bold shrink-0 mt-0.5">
+        <svg class="w-5 h-5 text-sky-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+          <line x1="16" y1="2" x2="16" y2="6" />
+          <line x1="8" y1="2" x2="8" y2="6" />
+          <line x1="3" y1="10" x2="21" y2="10" />
+          <circle cx="12" cy="15" r="2" />
+        </svg>
       </div>
       <div class="flex-1">
         <div class="flex items-center justify-between flex-wrap gap-2">
           <h3 class="font-semibold text-sky-900 text-base">
-            {% if scheduled_inspections|length == 1 %}1 site inspection is scheduled{% else %}{{ scheduled_inspections|length }} site inspections are scheduled{% endif %}
+            {% if scheduled_inspections|length == 1 %}1 site inspection is scheduled{% else %}{{
+            scheduled_inspections|length }} site inspections are scheduled{% endif %}
           </h3>
-          <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-sky-100 text-sky-800 border border-sky-200">
+          <span
+            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-sky-100 text-sky-800 border border-sky-200">
             Confirmed Visit
           </span>
         </div>
-        <p class="text-sm text-sky-700 mt-0.5">Our certified fire safety technician will visit your site on the scheduled date for inspection and system audit.</p>
-        
+        <p class="text-sm text-sky-700 mt-0.5">Our certified fire safety technician will visit your site on the
+          scheduled date for inspection and system audit.</p>
+
         <div class="mt-3.5 grid gap-3 sm:grid-cols-2">
           {% for insp in scheduled_inspections %}
           <div class="bg-white border border-sky-200 rounded-xl p-3.5 shadow-sm hover:border-sky-300 transition">
             <div class="flex items-center justify-between gap-2 mb-2">
               <span class="font-mono font-bold text-navy-800 text-sm">{{ insp.reference }}</span>
-              <span class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-sky-100 text-sky-700 border border-sky-200 uppercase tracking-wider">{{ insp.badge }}</span>
+              <span
+                class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-sky-100 text-sky-700 border border-sky-200 uppercase tracking-wider">{{
+                insp.badge }}</span>
             </div>
-            
+
             <p class="text-xs font-semibold text-slate-800 mb-2 truncate">{{ insp.service_name }}</p>
 
             <div class="space-y-1.5 text-xs text-slate-600 mb-3">
               <div class="flex items-center gap-1.5">
-                <svg class="w-3.5 h-3.5 text-sky-600 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                <svg class="w-3.5 h-3.5 text-sky-600 flex-shrink-0" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                  <line x1="16" y1="2" x2="16" y2="6" />
+                  <line x1="8" y1="2" x2="8" y2="6" />
+                  <line x1="3" y1="10" x2="21" y2="10" />
+                </svg>
                 <span class="font-semibold text-slate-900">{{ insp.scheduled_date|datefmt }}</span>
                 {% if insp.time_slot %}<span class="text-slate-500 font-normal">({{ insp.time_slot }})</span>{% endif %}
               </div>
-              
+
               <div class="flex items-center gap-1.5">
-                <svg class="w-3.5 h-3.5 text-slate-500 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                <svg class="w-3.5 h-3.5 text-slate-500 flex-shrink-0" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                  <circle cx="12" cy="7" r="4" />
+                </svg>
                 <span>Engineer: <strong class="text-slate-800">{{ insp.technician_name }}</strong></span>
                 {% if insp.technician_phone %}
-                <a href="tel:{{ insp.technician_phone }}" class="text-sky-700 hover:underline font-semibold ml-1">📞 {{ insp.technician_phone }}</a>
+                <a href="tel:{{ insp.technician_phone }}" class="text-sky-700 hover:underline font-semibold ml-1">📞 {{
+                  insp.technician_phone }}</a>
                 {% endif %}
               </div>
 
               {% if insp.address %}
               <div class="flex items-start gap-1.5 text-slate-500">
-                <svg class="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                <svg class="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2">
+                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                  <circle cx="12" cy="10" r="3" />
+                </svg>
                 <span class="truncate">{{ insp.address }}</span>
               </div>
               {% endif %}
@@ -151,7 +209,8 @@
 
             <div class="pt-2 border-t border-slate-100 flex items-center justify-between">
               <span class="text-[11px] text-slate-500">Track progress & live updates</span>
-              <a href="{{ insp.link }}" class="text-xs font-bold text-sky-700 hover:text-sky-900 inline-flex items-center gap-1">
+              <a href="{{ insp.link }}"
+                class="text-xs font-bold text-sky-700 hover:text-sky-900 inline-flex items-center gap-1">
                 View AMC Requests →
               </a>
             </div>
@@ -167,22 +226,30 @@
   {% if negotiation_replied_quotes %}
   <div class="mt-6 bg-emerald-50 border border-emerald-300 rounded-xl p-4 shadow-sm">
     <div class="flex items-start gap-3">
-      <div class="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center flex-shrink-0 mt-0.5 font-bold">
-        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 10h.01M12 10h.01M16 10h.01"/></svg>
+      <div
+        class="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center flex-shrink-0 mt-0.5 font-bold">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+          <path d="M8 10h.01M12 10h.01M16 10h.01" />
+        </svg>
       </div>
       <div class="flex-1">
         <div class="flex items-center justify-between flex-wrap gap-2">
           <h3 class="font-bold text-emerald-950 text-base">
-            {% if negotiation_replied_quotes|length == 1 %}Reply received on quotation negotiation{% else %}{{ negotiation_replied_quotes|length }} replies received on quotation negotiation{% endif %}
+            {% if negotiation_replied_quotes|length == 1 %}Reply received on quotation negotiation{% else %}{{
+            negotiation_replied_quotes|length }} replies received on quotation negotiation{% endif %}
           </h3>
-          <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+          <span
+            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
             Team Responded
           </span>
         </div>
-        <p class="text-sm text-emerald-800 mt-0.5">Our sales team has responded to your price negotiation. Please review the updated offer and proceed.</p>
+        <p class="text-sm text-emerald-800 mt-0.5">Our sales team has responded to your price negotiation. Please review
+          the updated offer and proceed.</p>
         <div class="mt-3.5 grid gap-2.5 sm:grid-cols-2">
           {% for q in negotiation_replied_quotes %}
-          <div class="bg-white border border-emerald-200 rounded-xl p-3.5 shadow-2xs flex items-center justify-between gap-3 hover:border-emerald-300 transition">
+          <div
+            class="bg-white border border-emerald-200 rounded-xl p-3.5 shadow-2xs flex items-center justify-between gap-3 hover:border-emerald-300 transition">
             <div class="min-w-0">
               <div class="flex items-center gap-2">
                 <span class="font-mono font-bold text-navy-900 text-sm">{{ q.reference }}</span>
@@ -193,7 +260,7 @@
               {% endif %}
             </div>
             <a href="{{ url_for('portal.service_quotation', sq_id=q.id) }}"
-               class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition shrink-0 shadow-2xs">
+              class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition shrink-0 shadow-2xs">
               Review Offer →
             </a>
           </div>
@@ -209,25 +276,32 @@
   <div class="mt-6 bg-amber-50 border border-amber-300 rounded-xl p-4 shadow-sm">
     <div class="flex items-start gap-3">
       <div class="w-9 h-9 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center flex-shrink-0 mt-0.5">
-        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10" />
+          <polyline points="12 6 12 12 16 14" />
+        </svg>
       </div>
       <div class="flex-1">
         <div class="flex items-center justify-between flex-wrap gap-2">
           <h3 class="font-bold text-amber-950 text-base">
-            {% if negotiation_in_progress_quotes|length == 1 %}Negotiation initiated for 1 quotation{% else %}Negotiation initiated for {{ negotiation_in_progress_quotes|length }} quotations{% endif %}
+            {% if negotiation_in_progress_quotes|length == 1 %}Negotiation initiated for 1 quotation{% else
+            %}Negotiation initiated for {{ negotiation_in_progress_quotes|length }} quotations{% endif %}
           </h3>
-          <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200">
+          <span
+            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200">
             Under Pricing Review
           </span>
         </div>
-        <p class="text-sm text-amber-800 mt-0.5">You requested a price negotiation. Our sales team is reviewing your counter-offer and will contact you or update the quotation shortly.</p>
+        <p class="text-sm text-amber-800 mt-0.5">You requested a price negotiation. Our sales team is reviewing your
+          counter-offer and will contact you or update the quotation shortly.</p>
         <div class="mt-3 flex flex-wrap gap-2">
           {% for q in negotiation_in_progress_quotes %}
           <a href="{{ url_for('portal.service_quotation', sq_id=q.id) }}"
-             class="inline-flex items-center gap-2 bg-white border border-amber-300 rounded-lg px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 transition shadow-2xs">
+            class="inline-flex items-center gap-2 bg-white border border-amber-300 rounded-lg px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 transition shadow-2xs">
             <span class="font-mono">{{ q.reference }}</span>
             <span class="text-amber-700 font-bold">{{ q.grand_total|rupees }}</span>
-            {% if q.negotiation_note %}<span class="text-[11px] text-slate-500 max-w-[160px] truncate">({{ q.negotiation_note }})</span>{% endif %}
+            {% if q.negotiation_note %}<span class="text-[11px] text-slate-500 max-w-[160px] truncate">({{
+              q.negotiation_note }})</span>{% endif %}
             <span class="text-amber-600">View Quote →</span>
           </a>
           {% endfor %}
@@ -242,14 +316,20 @@
   <div class="mt-6 bg-slate-50 border border-slate-300 rounded-xl p-4 shadow-sm">
     <div class="flex items-start gap-3">
       <div class="w-9 h-9 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center flex-shrink-0 mt-0.5">
-        <svg class="w-5 h-5 text-blue-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 12h6M9 16h4"/></svg>
+        <svg class="w-5 h-5 text-blue-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <path d="M14 2v6h6M9 12h6M9 16h4" />
+        </svg>
       </div>
       <div class="flex-1">
         <div class="flex items-center justify-between flex-wrap gap-2">
           <h3 class="font-bold text-navy-900 text-base">
-            {% if pending_quotes|length == 1 %}1 quotation is waiting for your response{% else %}{{ pending_quotes|length }} quotations are waiting for your response{% endif %}
+            {% if pending_quotes|length == 1 %}1 quotation is waiting for your response{% else %}{{
+            pending_quotes|length }} quotations are waiting for your response{% endif %}
           </h3>
-          <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 border border-blue-200">
+          <span
+            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 border border-blue-200">
             Action Required
           </span>
         </div>
@@ -257,7 +337,7 @@
         <div class="mt-3 flex flex-wrap gap-2">
           {% for q in pending_quotes %}
           <a href="{{ url_for('portal.service_quotation', sq_id=q.id) }}"
-             class="inline-flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-semibold hover:border-primary transition shadow-2xs">
+            class="inline-flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-semibold hover:border-primary transition shadow-2xs">
             <span class="font-mono text-navy-900">{{ q.reference }}</span>
             <span class="text-emerald-700 font-bold">{{ q.grand_total|rupees }}</span>
             <span class="text-primary font-bold">Review →</span>
@@ -274,13 +354,15 @@
   {% if contracts %}
   <div class="grid md:grid-cols-2 gap-5">
     {% for c in contracts %}
-    <a href="{{ url_for('portal.contract', contract_id=c.id) }}" class="block priority-card p-5
+    <a href="{{ url_for('portal.contract', contract_id=c.id) }}"
+      class="block priority-card p-5
       {% if c.status == 'active' %}p-low{% elif c.status == 'pending' %}p-medium{% elif c.status == 'expired' %}p-info{% else %}p-info{% endif %}">
       <div class="flex items-center justify-between">
         <span class="font-bold text-navy-800">{{ c.reference }}</span>
         {{ status_badge(c.status) }}
       </div>
-      <p class="text-sm text-slate-600 mt-1">{{ c.plan.name if c.plan else 'Custom plan' }}{% if c.site_name %} · {{ c.site_name }}{% endif %}</p>
+      <p class="text-sm text-slate-600 mt-1">{{ c.plan.name if c.plan else 'Custom plan' }}{% if c.site_name %} · {{
+        c.site_name }}{% endif %}</p>
 
       <!-- Status timeline: Applied → Active → In Progress → Done -->
       <div class="mt-4 px-1">
@@ -288,13 +370,17 @@
           {# step 0: Applied #}
           <div class="status-track-step">
             <div class="status-track-dot {% if c.status == 'pending' %}active{% else %}done{% endif %}"></div>
-            <span class="status-track-label {% if c.status == 'pending' %}active{% else %}done{% endif %}">Applied</span>
+            <span
+              class="status-track-label {% if c.status == 'pending' %}active{% else %}done{% endif %}">Applied</span>
           </div>
           <div class="status-track-line {% if c.status in ('active','expired') %}done{% endif %}"></div>
           {# step 1: Active #}
           <div class="status-track-step">
-            <div class="status-track-dot {% if c.status == 'active' %}active{% elif c.status == 'expired' %}done{% endif %}"></div>
-            <span class="status-track-label {% if c.status == 'active' %}active{% elif c.status == 'expired' %}done{% endif %}">Active</span>
+            <div
+              class="status-track-dot {% if c.status == 'active' %}active{% elif c.status == 'expired' %}done{% endif %}">
+            </div>
+            <span
+              class="status-track-label {% if c.status == 'active' %}active{% elif c.status == 'expired' %}done{% endif %}">Active</span>
           </div>
           <div class="status-track-line {% if c.status == 'expired' %}done{% endif %}"></div>
           {# step 2: Done #}
@@ -311,20 +397,29 @@
           <span>Visits completed</span><span>{{ c.completed_visits }}/{{ c.total_visits }}</span>
         </div>
         <div class="w-full bg-slate-100 rounded-full h-1.5">
-          <div class="h-1.5 rounded-full" style="width: {{ (c.completed_visits / c.total_visits * 100) if c.total_visits else 0 }}%; background:var(--amber)"></div>
+          <div class="h-1.5 rounded-full"
+            style="width: {{ (c.completed_visits / c.total_visits * 100) if c.total_visits else 0 }}%; background:var(--amber)">
+          </div>
         </div>
         {% if c.next_visit %}
-        <p class="text-xs text-slate-500 mt-2">Next visit: <span class="font-medium text-navy-700">{{ c.next_visit.scheduled_date|datefmt }}</span></p>
+        <p class="text-xs text-slate-500 mt-2">Next visit: <span class="font-medium text-navy-700">{{
+            c.next_visit.scheduled_date|datefmt }}</span></p>
         {% endif %}
       </div>
       {% elif c.status == 'pending' %}
       {% if c.inspection_scheduled_date %}
       <div class="mt-3 p-2.5 bg-sky-50 border border-sky-200 rounded-lg flex items-center justify-between text-xs">
         <span class="text-sky-900 font-semibold flex items-center gap-1.5">
-          <svg class="w-3.5 h-3.5 text-sky-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          <svg class="w-3.5 h-3.5 text-sky-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+            <line x1="16" y1="2" x2="16" y2="6" />
+            <line x1="8" y1="2" x2="8" y2="6" />
+            <line x1="3" y1="10" x2="21" y2="10" />
+          </svg>
           Inspection: {{ c.inspection_scheduled_date|datefmt }}
         </span>
-        <span class="text-sky-700 font-medium">{{ c.inspection_technician.name if c.inspection_technician else 'Technician Assigned' }}</span>
+        <span class="text-sky-700 font-medium">{{ c.inspection_technician.name if c.inspection_technician else
+          'Technician Assigned' }}</span>
       </div>
       {% else %}
       <p class="text-xs text-amber-700 mt-3">Application under review — we'll call you to confirm.</p>
@@ -335,7 +430,8 @@
   </div>
   {% else %}
   <div class="bg-white border border-dashed border-slate-300 rounded-2xl p-8 text-center text-slate-500">
-    No active enquiries or contracts yet. <a href="{{ url_for('public.apply') }}" class="text-navy-700 font-semibold underline">Request New AMC →</a>
+    No active enquiries or contracts yet. <a href="{{ url_for('public.apply') }}"
+      class="text-navy-700 font-semibold underline">Request New AMC →</a>
   </div>
   {% endif %}
 
@@ -345,10 +441,16 @@
   <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
     <table class="w-full text-sm">
       <thead class="bg-slate-50 text-slate-500 text-left text-xs uppercase">
-        <tr><th class="px-4 py-2">Ref</th><th class="px-4 py-2">Type</th><th class="px-4 py-2">Status</th><th class="px-4 py-2">ETA</th><th class="px-4 py-2">Raised</th></tr>
+        <tr>
+          <th class="px-4 py-2">Ref</th>
+          <th class="px-4 py-2">Type</th>
+          <th class="px-4 py-2">Status</th>
+          <th class="px-4 py-2">ETA</th>
+          <th class="px-4 py-2">Raised</th>
+        </tr>
       </thead>
       <tbody>
-      {% for r in requests %}
+        {% for r in requests %}
         <tr class="border-t border-slate-100">
           <td class="px-4 py-2 font-medium">{{ r.reference }}</td>
           <td class="px-4 py-2">{{ 'NOC' if r.request_type=='noc' else 'Emergency' }}</td>
@@ -356,7 +458,7 @@
           <td class="px-4 py-2 text-slate-600">{{ r.team_eta or '—' }}</td>
           <td class="px-4 py-2 text-slate-500">{{ r.created_at|datefmt }}</td>
         </tr>
-      {% endfor %}
+        {% endfor %}
       </tbody>
     </table>
   </div>
@@ -368,10 +470,16 @@
   <div class="bg-white rounded-2xl border border-slate-200 overflow-x-auto">
     <table class="w-full text-sm min-w-[560px]">
       <thead class="bg-slate-50 text-slate-500 text-left text-xs uppercase">
-        <tr><th class="px-4 py-2">Ref</th><th class="px-4 py-2">Items</th><th class="px-4 py-2">Status</th><th class="px-4 py-2">ETA</th><th class="px-4 py-2">Booked</th></tr>
+        <tr>
+          <th class="px-4 py-2">Ref</th>
+          <th class="px-4 py-2">Items</th>
+          <th class="px-4 py-2">Status</th>
+          <th class="px-4 py-2">ETA</th>
+          <th class="px-4 py-2">Booked</th>
+        </tr>
       </thead>
       <tbody>
-      {% for o in refills %}
+        {% for o in refills %}
         <tr class="border-t border-slate-100">
           <td class="px-4 py-2 font-medium">{{ o.reference }}</td>
           <td class="px-4 py-2 text-slate-600">{{ o.summary }}</td>
@@ -379,7 +487,7 @@
           <td class="px-4 py-2 text-slate-600">{{ o.team_eta or '—' }}</td>
           <td class="px-4 py-2 text-slate-500">{{ o.created_at|datefmt }}</td>
         </tr>
-      {% endfor %}
+        {% endfor %}
       </tbody>
     </table>
   </div>
@@ -389,8 +497,11 @@
   <!-- Customer Inquiries & Inspection Visits (Visible ONLY after contract is finalised) -->
   <div class="flex items-center justify-between mt-10 mb-3">
     <h2 class="text-lg font-bold text-navy-800">Service Inquiries & Site Inspections</h2>
-    <a href="{{ url_for('public.enquiry') }}" class="text-xs text-primary font-semibold hover:underline flex items-center gap-1">
-      <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+    <a href="{{ url_for('public.enquiry') }}"
+      class="text-xs text-primary font-semibold hover:underline flex items-center gap-1">
+      <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 5v14M5 12h14" />
+      </svg>
       New Inquiry / Site Visit
     </a>
   </div>
@@ -408,44 +519,52 @@
         </tr>
       </thead>
       <tbody>
-      {% for inq in inquiries %}
+        {% for inq in inquiries %}
         <tr class="border-t border-slate-100 hover:bg-slate-50/50 transition">
           <td class="px-4 py-2.5 font-bold text-navy-700">{{ inq.ref_code }}</td>
           <td class="px-4 py-2.5 text-slate-700 font-medium">{{ inq.service_requirement }}</td>
           <td class="px-4 py-2.5">{{ status_badge(inq.status) }}</td>
           <td class="px-4 py-2.5 text-slate-600">
             {% if inq.visit_scheduled_date %}
-              {{ inq.visit_scheduled_date|datefmt }}
-              {% if inq.visit_time_slot %}<span class="text-xs text-slate-400 block">{{ inq.visit_time_slot }}</span>{% endif %}
+            {{ inq.visit_scheduled_date|datefmt }}
+            {% if inq.visit_time_slot %}<span class="text-xs text-slate-400 block">{{ inq.visit_time_slot }}</span>{%
+            endif %}
             {% else %}
-              <span class="text-slate-400">Scheduling...</span>
+            <span class="text-slate-400">Scheduling...</span>
             {% endif %}
           </td>
           <td class="px-4 py-2.5 text-slate-600">{{ inq.assigned_to.name if inq.assigned_to else 'Pending' }}</td>
-          <td class="px-4 py-2.5 text-slate-500"><a href="{{ url_for('portal.amc_requests') }}" class="text-primary hover:underline text-xs font-semibold">Track →</a></td>
+          <td class="px-4 py-2.5 text-slate-500"><a href="{{ url_for('portal.amc_requests') }}"
+              class="text-primary hover:underline text-xs font-semibold">Track →</a></td>
         </tr>
-      {% endfor %}
-      {% for insp in scheduled_inspections if insp.type == 'amc_request' %}
+        {% endfor %}
+        {% for insp in scheduled_inspections if insp.type == 'amc_request' %}
         <tr class="border-t border-slate-100 hover:bg-slate-50/50 transition bg-sky-50/30">
           <td class="px-4 py-2.5 font-bold text-navy-700">{{ insp.reference }}</td>
           <td class="px-4 py-2.5 text-slate-700 font-medium">{{ insp.service_name }}</td>
-          <td class="px-4 py-2.5"><span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-sky-100 text-sky-800">{{ insp.badge }}</span></td>
+          <td class="px-4 py-2.5"><span
+              class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-sky-100 text-sky-800">{{
+              insp.badge }}</span></td>
           <td class="px-4 py-2.5 text-slate-600 font-medium">
             {{ insp.scheduled_date|datefmt }}
             <span class="text-xs text-slate-400 block">{{ insp.time_slot }}</span>
           </td>
           <td class="px-4 py-2.5 text-slate-600">{{ insp.technician_name }}</td>
-          <td class="px-4 py-2.5 text-slate-500"><a href="{{ insp.link }}" class="text-primary hover:underline text-xs font-semibold">Track →</a></td>
+          <td class="px-4 py-2.5 text-slate-500"><a href="{{ insp.link }}"
+              class="text-primary hover:underline text-xs font-semibold">Track →</a></td>
         </tr>
-      {% endfor %}
+        {% endfor %}
       </tbody>
     </table>
   </div>
   {% else %}
-  <div class="bg-white border border-dashed border-slate-300 rounded-2xl p-6 text-center text-slate-500 text-sm shadow-sm">
+  <div
+    class="bg-white border border-dashed border-slate-300 rounded-2xl p-6 text-center text-slate-500 text-sm shadow-sm">
     <p class="font-medium text-slate-700">No active site inspection inquiries</p>
-    <p class="text-xs text-slate-500 mt-1">Need an on-site survey, fire safety inspection, or new equipment installation?</p>
-    <a href="{{ url_for('public.enquiry') }}" class="inline-flex items-center gap-1.5 mt-3 text-xs bg-primary text-white font-semibold px-3 py-1.5 rounded-lg hover:bg-primary-hover transition">
+    <p class="text-xs text-slate-500 mt-1">Need an on-site survey, fire safety inspection, or new equipment
+      installation?</p>
+    <a href="{{ url_for('public.enquiry') }}"
+      class="inline-flex items-center gap-1.5 mt-3 text-xs bg-primary text-white font-semibold px-3 py-1.5 rounded-lg hover:bg-primary-hover transition">
       Request Site Visit / Submit Inquiry →
     </a>
   </div>
