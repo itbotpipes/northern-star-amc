@@ -91,41 +91,75 @@
 
   <!-- Filter & Search Card -->
   <div class="card overflow-hidden shadow-xs border border-slate-200">
-    <div class="p-4 bg-slate-50/80 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-3">
-      <!-- Search Input -->
-      <div class="relative flex-1 max-w-md">
-        <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+    <div class="p-4 bg-slate-50/80 border-b border-slate-200 space-y-3">
+      <!-- Search Input & Stage Segregation Header -->
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div class="relative flex-1 max-w-md">
+          <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+          </div>
+          <input type="text" id="leadSearchInput" placeholder="Search by client, reference, phone, site..."
+                 value="{{ search_query or '' }}"
+                 class="w-full pl-9 pr-8 py-2 text-sm bg-white rounded-xl border border-slate-200 focus:outline-none focus:border-primary shadow-2xs transition">
+          <button type="button" id="clearSearchBtn" onclick="clearSearch()"
+                  class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 {% if not search_query %}hidden{% endif %}">✕</button>
         </div>
-        <input type="text" id="leadSearchInput" placeholder="Search by client, reference, phone, site..."
-               value="{{ search_query or '' }}"
-               class="w-full pl-9 pr-8 py-2 text-sm bg-white rounded-xl border border-slate-200 focus:outline-none focus:border-primary shadow-2xs transition">
-        <button type="button" id="clearSearchBtn" onclick="clearSearch()"
-                class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 {% if not search_query %}hidden{% endif %}">✕</button>
+
+        <!-- Category Filter Tabs -->
+        <div class="flex items-center gap-1.5 flex-wrap" id="categoryTabs">
+          <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider mr-1 hidden sm:inline">Category:</span>
+          <button type="button" onclick="setCategory('all')" data-cat="all"
+                  class="cat-btn px-2.5 py-1 rounded-lg text-xs font-bold transition {{ 'bg-navy-900 text-white shadow-xs' if selected_category == 'all' else 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100' }}">
+            All <span class="ml-1 opacity-75 font-normal">({{ stats.all }})</span>
+          </button>
+          <button type="button" onclick="setCategory('amc')" data-cat="amc"
+                  class="cat-btn px-2.5 py-1 rounded-lg text-xs font-bold transition {{ 'bg-blue-600 text-white shadow-xs' if selected_category == 'amc' else 'bg-white text-slate-700 border border-slate-200 hover:border-blue-300 hover:text-blue-700' }}">
+            + Request New AMC <span class="ml-1 opacity-75 font-normal">({{ stats.amc }})</span>
+          </button>
+          <button type="button" onclick="setCategory('enquiry')" data-cat="enquiry"
+                  class="cat-btn px-2.5 py-1 rounded-lg text-xs font-bold transition {{ 'bg-purple-600 text-white shadow-xs' if selected_category == 'enquiry' else 'bg-white text-slate-700 border border-slate-200 hover:border-purple-300 hover:text-purple-700' }}">
+            New Enquiry <span class="ml-1 opacity-75 font-normal">({{ stats.enquiry }})</span>
+          </button>
+          <button type="button" onclick="setCategory('inspection')" data-cat="inspection"
+                  class="cat-btn px-2.5 py-1 rounded-lg text-xs font-bold transition {{ 'bg-amber-600 text-white shadow-xs' if selected_category == 'inspection' else 'bg-white text-slate-700 border border-slate-200 hover:border-amber-300 hover:text-amber-800' }}">
+            Site Inspections <span class="ml-1 opacity-75 font-normal">({{ stats.inspection }})</span>
+          </button>
+          {% if stats.handover %}
+          <button type="button" onclick="setCategory('handover')" data-cat="handover"
+                  class="cat-btn px-2.5 py-1 rounded-lg text-xs font-bold transition {{ 'bg-slate-800 text-white shadow-xs' if selected_category == 'handover' else 'bg-white text-slate-700 border border-slate-200 hover:border-slate-300' }}">
+            Handover <span class="ml-1 opacity-75 font-normal">({{ stats.handover }})</span>
+          </button>
+          {% endif %}
+        </div>
       </div>
 
-      <!-- Category Filter Tabs -->
-      <div class="flex items-center gap-1.5 flex-wrap" id="categoryTabs">
-        <button type="button" onclick="setCategory('all')" data-cat="all"
-                class="cat-btn px-3 py-1.5 rounded-lg text-xs font-bold transition {{ 'bg-navy-900 text-white shadow-xs' if selected_category == 'all' else 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100' }}">
-          All <span class="ml-1 opacity-75 font-normal">({{ stats.all }})</span>
+      <!-- Stage Segregation Bar -->
+      <div class="pt-2.5 border-t border-slate-200/80 flex items-center gap-1.5 flex-wrap" id="stageTabs">
+        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider mr-1">Stage:</span>
+        <button type="button" onclick="setStage('all')" data-stage="all"
+                class="stage-btn px-3 py-1.5 rounded-lg text-xs font-bold transition {{ 'bg-slate-900 text-white shadow-xs' if selected_stage == 'all' else 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100' }}">
+          All Stages <span class="ml-1 opacity-75 font-normal">({{ stage_stats.all }})</span>
         </button>
-        <button type="button" onclick="setCategory('amc')" data-cat="amc"
-                class="cat-btn px-3 py-1.5 rounded-lg text-xs font-bold transition {{ 'bg-blue-600 text-white shadow-xs' if selected_category == 'amc' else 'bg-white text-slate-700 border border-slate-200 hover:border-blue-300 hover:text-blue-700' }}">
-          + Request New AMC <span class="ml-1 opacity-75 font-normal">({{ stats.amc }})</span>
+        <button type="button" onclick="setStage('new')" data-stage="new"
+                class="stage-btn px-3 py-1.5 rounded-lg text-xs font-bold transition {{ 'bg-sky-600 text-white shadow-xs' if selected_stage == 'new' else 'bg-white text-slate-700 border border-slate-200 hover:border-sky-300 hover:text-sky-700' }}">
+          New Requests <span class="ml-1 opacity-75 font-normal">({{ stage_stats.new }})</span>
         </button>
-        <button type="button" onclick="setCategory('enquiry')" data-cat="enquiry"
-                class="cat-btn px-3 py-1.5 rounded-lg text-xs font-bold transition {{ 'bg-purple-600 text-white shadow-xs' if selected_category == 'enquiry' else 'bg-white text-slate-700 border border-slate-200 hover:border-purple-300 hover:text-purple-700' }}">
-          New Enquiry <span class="ml-1 opacity-75 font-normal">({{ stats.enquiry }})</span>
+        <button type="button" onclick="setStage('scheduled')" data-stage="scheduled"
+                class="stage-btn px-3 py-1.5 rounded-lg text-xs font-bold transition {{ 'bg-amber-600 text-white shadow-xs' if selected_stage == 'scheduled' else 'bg-white text-slate-700 border border-slate-200 hover:border-amber-300 hover:text-amber-800' }}">
+          Inspection Scheduled <span class="ml-1 opacity-75 font-normal">({{ stage_stats.scheduled }})</span>
         </button>
-        <button type="button" onclick="setCategory('inspection')" data-cat="inspection"
-                class="cat-btn px-3 py-1.5 rounded-lg text-xs font-bold transition {{ 'bg-amber-600 text-white shadow-xs' if selected_category == 'inspection' else 'bg-white text-slate-700 border border-slate-200 hover:border-amber-300 hover:text-amber-800' }}">
-          Site Inspections <span class="ml-1 opacity-75 font-normal">({{ stats.inspection }})</span>
+        <button type="button" onclick="setStage('inspection_done')" data-stage="inspection_done"
+                class="stage-btn px-3 py-1.5 rounded-lg text-xs font-bold transition {{ 'bg-indigo-600 text-white shadow-xs' if selected_stage == 'inspection_done' else 'bg-white text-slate-700 border border-slate-200 hover:border-indigo-300 hover:text-indigo-800' }}">
+          Inspection Done · Waiting Quote <span class="ml-1 opacity-75 font-normal">({{ stage_stats.inspection_done }})</span>
         </button>
-        {% if stats.handover %}
-        <button type="button" onclick="setCategory('handover')" data-cat="handover"
-                class="cat-btn px-3 py-1.5 rounded-lg text-xs font-bold transition {{ 'bg-slate-800 text-white shadow-xs' if selected_category == 'handover' else 'bg-white text-slate-700 border border-slate-200 hover:border-slate-300' }}">
-          Handover <span class="ml-1 opacity-75 font-normal">({{ stats.handover }})</span>
+        <button type="button" onclick="setStage('quote_sent')" data-stage="quote_sent"
+                class="stage-btn px-3 py-1.5 rounded-lg text-xs font-bold transition {{ 'bg-emerald-600 text-white shadow-xs' if selected_stage == 'quote_sent' else 'bg-white text-slate-700 border border-slate-200 hover:border-emerald-300 hover:text-emerald-800' }}">
+          Quotation Sent <span class="ml-1 opacity-75 font-normal">({{ stage_stats.quote_sent }})</span>
+        </button>
+        {% if stage_stats.rework %}
+        <button type="button" onclick="setStage('rework')" data-stage="rework"
+                class="stage-btn px-3 py-1.5 rounded-lg text-xs font-bold transition {{ 'bg-rose-600 text-white shadow-xs' if selected_stage == 'rework' else 'bg-white text-slate-700 border border-slate-200 hover:border-rose-300 hover:text-rose-800' }}">
+          Rework / Closed <span class="ml-1 opacity-75 font-normal">({{ stage_stats.rework }})</span>
         </button>
         {% endif %}
       </div>
@@ -148,7 +182,8 @@
           {% for l in leads %}
           <tr class="border-t border-hairline hover:bg-slate-50/80 transition lead-row"
               data-category="{{ l.category }}"
-              data-search="{{ l.reference }} {{ l.client_name }} {{ l.phone }} {{ l.email }} {{ l.site_desc }} {{ l.category_label }} {{ l.stage_label }}">
+              data-stage="{{ l.stage_group }}"
+              data-search="{{ l.reference }} {{ l.client_name }} {{ l.phone }} {{ l.email }} {{ l.site_desc }} {{ l.category_label }} {{ l.stage_group_label }} {{ l.stage_label }}">
             <td class="px-4 py-3 mono font-bold text-xs text-navy-900">
               {{ l.reference }}
               {% if l.is_enquiry %}
@@ -191,10 +226,31 @@
               {% endif %}
             </td>
             <td class="px-4 py-3">
-              <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold"
-                style="background:{{ '#fdecea' if l.lead_stage in ('rework','closed') else '#fbf0dc' if l.lead_stage in ('new','assigned','inspection_scheduled','site_visit_scheduled') else '#eef1fb' }};color:{{ '#d23f3f' if l.lead_stage in ('rework','closed') else '#b45309' if l.lead_stage in ('new','assigned','inspection_scheduled','site_visit_scheduled') else '#2f6fed' }}">
+              {% if l.stage_group == 'new' %}
+              <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-200">
+                ● New Request
+              </span>
+              {% elif l.stage_group == 'scheduled' %}
+              <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                📅 Inspection Scheduled
+              </span>
+              {% elif l.stage_group == 'inspection_done' %}
+              <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                ✓ Inspection Done · Waiting Quote
+              </span>
+              {% elif l.stage_group == 'quote_sent' %}
+              <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                📄 Quotation Sent
+              </span>
+              {% elif l.stage_group == 'rework' %}
+              <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+                ⚠ {{ l.stage_label }}
+              </span>
+              {% else %}
+              <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700">
                 {{ l.stage_label }}
               </span>
+              {% endif %}
             </td>
             <td class="px-4 py-3 text-xs text-slate-600">
               {% if l.scheduled_date %}
@@ -235,6 +291,7 @@
 
 <script>
 var activeCategory = '{{ selected_category or "all" }}';
+var activeStage = '{{ selected_stage or "all" }}';
 var activeQuery = '{{ search_query or "" }}';
 
 function handleCategoryChange() {
@@ -270,13 +327,34 @@ function setCategory(cat) {
   document.querySelectorAll('.cat-btn').forEach(function(btn) {
     var c = btn.getAttribute('data-cat');
     if (c === cat) {
-      if (c === 'amc') btn.className = 'cat-btn px-3 py-1.5 rounded-lg text-xs font-bold transition bg-blue-600 text-white shadow-xs';
-      else if (c === 'enquiry') btn.className = 'cat-btn px-3 py-1.5 rounded-lg text-xs font-bold transition bg-purple-600 text-white shadow-xs';
-      else if (c === 'inspection') btn.className = 'cat-btn px-3 py-1.5 rounded-lg text-xs font-bold transition bg-amber-600 text-white shadow-xs';
-      else if (c === 'handover') btn.className = 'cat-btn px-3 py-1.5 rounded-lg text-xs font-bold transition bg-slate-800 text-white shadow-xs';
-      else btn.className = 'cat-btn px-3 py-1.5 rounded-lg text-xs font-bold transition bg-navy-900 text-white shadow-xs';
+      if (c === 'amc') btn.className = 'cat-btn px-2.5 py-1 rounded-lg text-xs font-bold transition bg-blue-600 text-white shadow-xs';
+      else if (c === 'enquiry') btn.className = 'cat-btn px-2.5 py-1 rounded-lg text-xs font-bold transition bg-purple-600 text-white shadow-xs';
+      else if (c === 'inspection') btn.className = 'cat-btn px-2.5 py-1 rounded-lg text-xs font-bold transition bg-amber-600 text-white shadow-xs';
+      else if (c === 'handover') btn.className = 'cat-btn px-2.5 py-1 rounded-lg text-xs font-bold transition bg-slate-800 text-white shadow-xs';
+      else btn.className = 'cat-btn px-2.5 py-1 rounded-lg text-xs font-bold transition bg-navy-900 text-white shadow-xs';
     } else {
-      btn.className = 'cat-btn px-3 py-1.5 rounded-lg text-xs font-bold transition bg-white text-slate-700 border border-slate-200 hover:bg-slate-100';
+      btn.className = 'cat-btn px-2.5 py-1 rounded-lg text-xs font-bold transition bg-white text-slate-700 border border-slate-200 hover:bg-slate-100';
+    }
+  });
+
+  applyFilters();
+}
+
+function setStage(stage) {
+  activeStage = stage;
+
+  // Update stage button active states
+  document.querySelectorAll('.stage-btn').forEach(function(btn) {
+    var s = btn.getAttribute('data-stage');
+    if (s === stage) {
+      if (s === 'new') btn.className = 'stage-btn px-3 py-1.5 rounded-lg text-xs font-bold transition bg-sky-600 text-white shadow-xs';
+      else if (s === 'scheduled') btn.className = 'stage-btn px-3 py-1.5 rounded-lg text-xs font-bold transition bg-amber-600 text-white shadow-xs';
+      else if (s === 'inspection_done') btn.className = 'stage-btn px-3 py-1.5 rounded-lg text-xs font-bold transition bg-indigo-600 text-white shadow-xs';
+      else if (s === 'quote_sent') btn.className = 'stage-btn px-3 py-1.5 rounded-lg text-xs font-bold transition bg-emerald-600 text-white shadow-xs';
+      else if (s === 'rework') btn.className = 'stage-btn px-3 py-1.5 rounded-lg text-xs font-bold transition bg-rose-600 text-white shadow-xs';
+      else btn.className = 'stage-btn px-3 py-1.5 rounded-lg text-xs font-bold transition bg-slate-900 text-white shadow-xs';
+    } else {
+      btn.className = 'stage-btn px-3 py-1.5 rounded-lg text-xs font-bold transition bg-white text-slate-700 border border-slate-200 hover:bg-slate-100';
     }
   });
 
@@ -298,12 +376,14 @@ function applyFilters() {
 
   rows.forEach(function(row) {
     var rowCat = row.getAttribute('data-category');
+    var rowStage = row.getAttribute('data-stage');
     var rowSearch = (row.getAttribute('data-search') || '').toLowerCase();
 
     var matchesCat = (activeCategory === 'all' || rowCat === activeCategory);
+    var matchesStage = (activeStage === 'all' || rowStage === activeStage);
     var matchesSearch = (!q || rowSearch.indexOf(q) !== -1);
 
-    if (matchesCat && matchesSearch) {
+    if (matchesCat && matchesStage && matchesSearch) {
       row.style.display = '';
       visibleCount++;
     } else {
@@ -334,9 +414,13 @@ document.addEventListener('DOMContentLoaded', function() {
   // Handle URL params if present
   var params = new URLSearchParams(window.location.search);
   var catParam = params.get('category');
+  var stageParam = params.get('stage');
   var qParam = params.get('q');
   if (catParam) {
     setCategory(catParam);
+  }
+  if (stageParam) {
+    setStage(stageParam);
   }
   if (qParam && searchInput) {
     searchInput.value = qParam;

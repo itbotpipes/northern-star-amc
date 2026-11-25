@@ -254,9 +254,28 @@ def leads():
         flash(f"Lead created ({c.reference}). Schedule the inspection next.", "success")
         return redirect(url_for("admin.lead_detail", lead_id=c.id))
 
+    def classify_stage(lead_stage, has_hr_completed=False, has_quote=False):
+        s = (lead_stage or "new").lower()
+        if has_hr_completed or s in ("inspection_done", "needs_quote", "visit_completed"):
+            if has_quote or s in ("agreement_pending", "pending_agreement", "quote_sent"):
+                return "quote_sent", "Quotation Sent"
+            return "inspection_done", "Inspection Done"
+        if s in ("inspection_scheduled", "site_visit_scheduled"):
+            return "scheduled", "Inspection Scheduled"
+        if s in ("agreement_pending", "pending_agreement", "quote_sent"):
+            return "quote_sent", "Quotation Sent"
+        if s in ("rework", "audit_only", "closed"):
+            return "rework", "Rework / Closed"
+        return "new", "New Request"
+
+    completed_report_cids = set(
+        r[0] for r in db.session.query(HealthCheckReport.contract_id).filter_by(status="completed").all()
+    )
+
     # Fetch all Contract leads
     contract_leads = (Contract.query
                       .filter(Contract.lead_stage.isnot(None))
+                      .options(selectinload(Contract.service_quotations), joinedload(Contract.customer), joinedload(Contract.inspection_technician))
                       .order_by(Contract.created_at.desc())
                       .all())
 
@@ -269,6 +288,10 @@ def leads():
     unified_leads = []
     for c in contract_leads:
         cat = c.lead_category
+        has_quote = len(getattr(c, "service_quotations", [])) > 0
+        hr_completed = c.id in completed_report_cids
+        s_group, s_group_label = classify_stage(c.lead_stage, hr_completed, has_quote)
+
         unified_leads.append({
             "id": c.id,
             "is_enquiry": False,
@@ -279,6 +302,8 @@ def leads():
             "site_desc": c.site_name or c.site_address or c.area or "",
             "category": cat,
             "category_label": c.lead_category_label,
+            "stage_group": s_group,
+            "stage_group_label": s_group_label,
             "stage_label": (c.lead_stage or "new").replace("_", " ").title(),
             "lead_stage": c.lead_stage,
             "scheduled_date": c.inspection_scheduled_date,
@@ -293,6 +318,7 @@ def leads():
 
     for e in enquiry_records:
         cat = e.lead_category
+        s_group, s_group_label = classify_stage(e.status, False, False)
         unified_leads.append({
             "id": e.id,
             "is_enquiry": True,
@@ -303,6 +329,8 @@ def leads():
             "site_desc": e.subject or e.address or e.area or e.city or "",
             "category": cat,
             "category_label": e.lead_category_label,
+            "stage_group": s_group,
+            "stage_group_label": s_group_label,
             "stage_label": (e.status or "new").replace("_", " ").title(),
             "lead_stage": e.status,
             "scheduled_date": e.visit_scheduled_date,
@@ -325,14 +353,26 @@ def leads():
         "handover": sum(1 for l in unified_leads if l["category"] == "handover"),
     }
 
+    stage_stats = {
+        "all": len(unified_leads),
+        "new": sum(1 for l in unified_leads if l["stage_group"] == "new"),
+        "scheduled": sum(1 for l in unified_leads if l["stage_group"] == "scheduled"),
+        "inspection_done": sum(1 for l in unified_leads if l["stage_group"] == "inspection_done"),
+        "quote_sent": sum(1 for l in unified_leads if l["stage_group"] == "quote_sent"),
+        "rework": sum(1 for l in unified_leads if l["stage_group"] == "rework"),
+    }
+
     selected_category = request.args.get("category", "all")
+    selected_stage = request.args.get("stage", "all")
     search_q = request.args.get("q", "").strip()
 
     return render_template(
         "admin/leads.html",
         leads=unified_leads,
         stats=stats,
+        stage_stats=stage_stats,
         selected_category=selected_category,
+        selected_stage=selected_stage,
         search_query=search_q,
     )
 
