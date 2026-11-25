@@ -341,6 +341,25 @@ class Contract(db.Model):
             return "New Enquiry"
         return "+ Request New AMC"
 
+    @property
+    def lead_stage_label(self):
+        has_quote = len(self.service_quotations) > 0
+        from .models import HealthCheckReport
+        hr_completed = HealthCheckReport.query.filter_by(contract_id=self.id, status="completed").first() is not None
+        if hr_completed or self.lead_stage in ("inspection_done", "needs_quote"):
+            if not has_quote:
+                return "Inspection Done · Waiting for Quotation"
+            return "Inspection Completed · Quotation Shared"
+        labels = {
+            "new": "Request Received",
+            "inspection_scheduled": "Inspection Scheduled",
+            "audit_only": "Audit Completed",
+            "rework": "Rework Required",
+            "agreement_pending": "Agreement Pending",
+            "pending_agreement": "Agreement Pending",
+        }
+        return labels.get(self.lead_stage, (self.lead_stage or "").replace("_", " ").title())
+
 
 
     @property

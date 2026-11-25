@@ -94,36 +94,76 @@ def dashboard():
             inquiry_filters.append(Enquiry.phone.ilike(f"%{phone_last10}%"))
     inquiries = Enquiry.query.filter(or_(*inquiry_filters)).order_by(Enquiry.created_at.desc()).all()
 
-    # Scheduled inspections (visible on customer dashboard like quotations)
+    # Scheduled inspections & inspections waiting for quotation
     scheduled_inspections = []
+    inspections_waiting_for_quote = []
+
     for c in contracts:
-        if c.inspection_scheduled_date and c.status not in ("active", "completed", "cancelled", "expired"):
-            hr_completed = any(hr.status == "completed" for hr in getattr(c, "health_reports", []))
-            if not hr_completed:
-                scheduled_inspections.append({
-                    "id": c.id,
-                    "type": "amc_request",
-                    "reference": c.reference,
-                    "service_name": "Fire Safety Site Inspection & Survey",
-                    "site_name": c.site_name or c.applicant_name or f"AMC Application #{c.reference}",
-                    "scheduled_date": c.inspection_scheduled_date,
-                    "time_slot": "Standard Hours (10:00 AM – 06:00 PM)",
-                    "technician": c.inspection_technician,
-                    "technician_name": c.inspection_technician.name if c.inspection_technician else "Technician Assigned",
-                    "technician_phone": c.inspection_technician.phone if c.inspection_technician else None,
-                    "address": c.site_address or c.area or "On-Site",
-                    "link": url_for("portal.inspections"),
-                    "badge": "Inspection Scheduled",
-                })
+        if c.status in ("active", "completed", "cancelled", "expired"):
+            continue
+
+        hr_completed = HealthCheckReport.query.filter_by(contract_id=c.id, status="completed").first() is not None
+        insp_done = hr_completed or c.lead_stage in ("inspection_done", "needs_quote", "audit_only", "rework")
+        has_quote = len(c.service_quotations) > 0
+
+        if insp_done and not has_quote:
+            inspections_waiting_for_quote.append({
+                "id": c.id,
+                "type": "amc_request",
+                "reference": c.reference,
+                "service_name": "Fire Safety Site Inspection & Survey",
+                "site_name": c.site_name or c.applicant_name or f"AMC Application #{c.reference}",
+                "scheduled_date": c.inspection_scheduled_date,
+                "technician": c.inspection_technician,
+                "technician_name": c.inspection_technician.name if c.inspection_technician else "Certified Engineer",
+                "technician_phone": c.inspection_technician.phone if c.inspection_technician else None,
+                "address": c.site_address or c.area or "On-Site",
+                "link": url_for("portal.inspections"),
+                "badge": "Inspection Done · Waiting for Quotation",
+            })
+        elif c.inspection_scheduled_date and not insp_done and not has_quote:
+            scheduled_inspections.append({
+                "id": c.id,
+                "type": "amc_request",
+                "reference": c.reference,
+                "service_name": "Fire Safety Site Inspection & Survey",
+                "site_name": c.site_name or c.applicant_name or f"AMC Application #{c.reference}",
+                "scheduled_date": c.inspection_scheduled_date,
+                "time_slot": "Standard Hours (10:00 AM – 06:00 PM)",
+                "technician": c.inspection_technician,
+                "technician_name": c.inspection_technician.name if c.inspection_technician else "Technician Assigned",
+                "technician_phone": c.inspection_technician.phone if c.inspection_technician else None,
+                "address": c.site_address or c.area or "On-Site",
+                "link": url_for("portal.inspections"),
+                "badge": "Inspection Scheduled",
+            })
 
     for inq in inquiries:
-        if inq.visit_scheduled_date and inq.status in ("site_visit_scheduled", "assigned") and not inq.visit_completed_at:
-            scheduled_inspections.append({
+        inq_done = bool(inq.visit_completed_at or inq.status in ("checklist_submitted", "quotation_generated", "closed"))
+        inq_has_quote = bool(inq.quotation_id or inq.status in ("quotation_generated", "closed"))
+
+        if inq_done and not inq_has_quote:
+            inspections_waiting_for_quote.append({
                 "id": inq.id,
-                "type": "inquiry",
+                "type": "enquiry",
                 "reference": inq.ref_code,
                 "service_name": inq.service_requirement or "On-Site Fire Safety Inspection",
-                "site_name": inq.name or f"Inquiry #{inq.ref_code}",
+                "site_name": inq.name or f"Enquiry #{inq.ref_code}",
+                "scheduled_date": inq.visit_completed_at.date() if inq.visit_completed_at else inq.visit_scheduled_date,
+                "technician": inq.assigned_to,
+                "technician_name": inq.assigned_to.name if inq.assigned_to else "Certified Engineer",
+                "technician_phone": inq.assigned_to.phone if inq.assigned_to else None,
+                "address": inq.address or inq.city or "On-Site",
+                "link": url_for("portal.inspections"),
+                "badge": "Inspection Done · Waiting for Quotation",
+            })
+        elif inq.visit_scheduled_date and inq.status in ("site_visit_scheduled", "assigned") and not inq_done and not inq_has_quote:
+            scheduled_inspections.append({
+                "id": inq.id,
+                "type": "enquiry",
+                "reference": inq.ref_code,
+                "service_name": inq.service_requirement or "On-Site Fire Safety Inspection",
+                "site_name": inq.name or f"Enquiry #{inq.ref_code}",
                 "scheduled_date": inq.visit_scheduled_date,
                 "time_slot": inq.visit_time_slot or "Standard Hours (10:00 AM – 06:00 PM)",
                 "technician": inq.assigned_to,
@@ -163,6 +203,7 @@ def dashboard():
                            negotiation_replied_quotes=negotiation_replied_quotes,
                            negotiation_in_progress_quotes=negotiation_in_progress_quotes,
                            scheduled_inspections=scheduled_inspections,
+                           inspections_waiting_for_quote=inspections_waiting_for_quote,
                            unsigned_agreements=unsigned_agreements,
                            refills=refills, inquiries=inquiries,
                            has_emergencies=has_emergencies, has_refills=has_refills,
@@ -1020,7 +1061,11 @@ def inspections():
 
     for c in contracts:
         if c.inspection_scheduled_date:
-            hr_completed = any(hr.status == "completed" for hr in getattr(c, "health_reports", []))
+            hr_completed = HealthCheckReport.query.filter_by(contract_id=c.id, status="completed").first() is not None
+            insp_done = hr_completed or c.lead_stage in ("inspection_done", "needs_quote", "audit_only", "rework")
+            has_quote = len(c.service_quotations) > 0
+            badge = "Inspection Completed · Quotation Shared" if has_quote else "Inspection Done · Waiting for Quotation" if insp_done else "Inspection Scheduled"
+
             insp_data = {
                 "id": c.id,
                 "type": "amc_request",
@@ -1033,25 +1078,29 @@ def inspections():
                 "technician_name": c.inspection_technician.name if c.inspection_technician else "Technician Assigned",
                 "technician_phone": c.inspection_technician.phone if c.inspection_technician else None,
                 "address": c.site_address or c.area or "On-Site",
-                "status": "completed" if hr_completed else (c.lead_stage or "inspection_scheduled"),
-                "badge": "Inspection Completed" if hr_completed else "Inspection Scheduled",
+                "status": "completed" if insp_done else (c.lead_stage or "inspection_scheduled"),
+                "badge": badge,
+                "has_quote": has_quote,
                 "contract_id": c.id,
-                "health_reports": getattr(c, "health_reports", []),
+                "health_reports": HealthCheckReport.query.filter_by(contract_id=c.id).all(),
             }
-            if hr_completed:
+            if insp_done:
                 completed_inspections.append(insp_data)
-            elif c.status not in ("cancelled", "rejected", "expired"):
+            elif c.status not in ("cancelled", "rejected", "expired") and not has_quote:
                 scheduled_inspections.append(insp_data)
 
     for inq in inquiries:
         if inq.visit_scheduled_date:
             is_done = bool(inq.visit_completed_at or inq.status in ("checklist_submitted", "quotation_generated", "closed"))
+            has_quote = bool(inq.quotation_id or inq.status in ("quotation_generated", "closed"))
+            badge = "Inspection Completed · Quotation Shared" if has_quote else "Inspection Done · Waiting for Quotation" if is_done else "Site Visit Scheduled"
+
             insp_data = {
                 "id": inq.id,
-                "type": "inquiry",
+                "type": "enquiry",
                 "reference": inq.ref_code,
                 "service_name": inq.service_requirement or "On-Site Fire Safety Inspection",
-                "site_name": inq.name or f"Inquiry #{inq.ref_code}",
+                "site_name": inq.name or f"Enquiry #{inq.ref_code}",
                 "scheduled_date": inq.visit_scheduled_date,
                 "completed_date": inq.visit_completed_at,
                 "time_slot": inq.visit_time_slot or "Standard Hours (10:00 AM – 06:00 PM)",
@@ -1060,12 +1109,13 @@ def inspections():
                 "technician_phone": inq.assigned_to.phone if inq.assigned_to else None,
                 "address": inq.address or inq.city or "On-Site",
                 "status": "completed" if is_done else inq.status,
-                "badge": "Visit Completed" if is_done else "Site Visit Scheduled",
+                "badge": badge,
+                "has_quote": has_quote,
                 "quotation_id": inq.quotation_id,
             }
             if is_done:
                 completed_inspections.append(insp_data)
-            else:
+            elif not has_quote:
                 scheduled_inspections.append(insp_data)
 
     scheduled_inspections.sort(key=lambda x: x["scheduled_date"])
