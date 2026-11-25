@@ -7,7 +7,7 @@ from flask_login import current_user, login_user
 from ..extensions import db
 from ..models import (AMCPlan, Contract, ServiceRequest, Enquiry, User,
                       RefillOrder, RefillItem, FormAttachment, VisitFeedback,
-                      CustomerJourneyEvent, ServiceQuotation, InquiryHistory)
+                      CustomerJourneyEvent, ServiceQuotation, InquiryHistory, InquiryPhoto)
 from ..utils import notify, notify_staff, notify_managers, notify_team_leaders, save_upload, upi_qr_data_uri
 
 public_bp = Blueprint("public", __name__)
@@ -347,21 +347,53 @@ def refill():
 
 @public_bp.route("/enquiry", methods=["GET", "POST"])
 def enquiry():
+    cu = db.session.get(User, current_user.id) if (current_user.is_authenticated and getattr(current_user, "role", None) == "customer") else None
+    my_sites = (Contract.query.filter_by(customer_id=cu.id).order_by(Contract.created_at.desc()).all()) if cu else []
+
     if request.method == "POST":
         f = request.form
-        name = f.get("name", "").strip()
-        phone = f.get("phone", "").strip()
-        email = f.get("email", "").strip()
-        address = f.get("address", "").strip()
-        area = f.get("area", "").strip()
-        city = f.get("city", "Surat, Gujarat").strip()
+        voice = (f.get("voice_note") or "").strip()
+        lat = (f.get("latitude") or "").strip()
+        lng = (f.get("longitude") or "").strip()
+
+        raw_site_id = f.get("existing_site_id")
+        try:
+            related_id = int(raw_site_id) if raw_site_id else None
+        except (ValueError, TypeError):
+            related_id = None
+        related = db.session.get(Contract, related_id) if related_id else None
+        if related and cu and related.customer_id == cu.id:
+            site_name = (f.get("site_name") or "").strip() or related.site_name
+            site_address = (f.get("site_address") or f.get("address") or "").strip() or related.site_address
+            area = (f.get("area") or "").strip() or related.area
+        else:
+            related = None
+            site_name = (f.get("site_name") or "").strip()
+            site_address = (f.get("site_address") or f.get("address") or "").strip()
+            area = (f.get("area") or "").strip()
+
+        name = (f.get("name") or "").strip() or (cu.name if cu else "")
+        phone = (f.get("phone") or "").strip() or (cu.phone if cu else "")
+        email = (f.get("email") or "").strip() or (cu.email if cu else "")
         service_requirement = f.get("service_requirement", "Fire Safety Inspection & AMC").strip()
         subject = f.get("subject", "").strip() or f"{service_requirement} Inquiry"
-        message = f.get("message", "").strip()
+        if site_name:
+            subject = f"{service_requirement} — {site_name}"
+        message = (f.get("message") or f.get("problem_description") or "").strip()
 
         cu_id = None
-        if current_user and current_user.is_authenticated:
-            cu_id = current_user.id
+        if cu:
+            cu_id = cu.id
+            if name and cu.name != name:
+                cu.name = name
+            if email and cu.email != email:
+                dup = User.query.filter(User.email == email, User.id != cu.id).first()
+                if not dup:
+                    cu.email = email
+            if site_address and not cu.address:
+                cu.address = site_address
+            if area and not cu.area:
+                cu.area = area
         elif phone:
             existing = User.query.filter_by(phone=phone).first()
             if existing:
@@ -369,9 +401,10 @@ def enquiry():
 
         e = Enquiry(
             name=name, phone=phone, email=email,
-            address=address, area=area, city=city,
+            address=site_address, area=area, city=f.get("city", "Surat, Gujarat").strip(),
+            latitude=lat or None, longitude=lng or None,
             service_requirement=service_requirement,
-            subject=subject, message=message,
+            subject=subject, message=message or "Site inspection & AMC inquiry submitted.",
             customer_id=cu_id,
             status="new"
         )
@@ -380,21 +413,51 @@ def enquiry():
 
         e.reference = f"INQ-{e.id:04d}"
 
+        # Save voice note if recorded
+        voice_file = request.files.get("voice_audio")
+        if voice_file and voice_file.filename:
+            audio_path = save_upload(voice_file, f"form/enquiry/{e.id}",
+                                     {"webm", "wav", "mp3", "ogg", "m4a", "aac", "mp4"})
+            if audio_path:
+                db.session.add(FormAttachment(
+                    ref_type="enquiry", ref_id=e.id,
+                    file_path=audio_path, attachment_type="audio",
+                    caption="Customer Recorded Voice Note"
+                ))
+        elif voice:
+            db.session.add(FormAttachment(
+                ref_type="enquiry", ref_id=e.id,
+                file_path=voice, attachment_type="audio",
+                caption="Customer Voice Note URL"
+            ))
+
+        # Save photos / videos
+        _save_attachments(request.files.getlist("site_photos"), "enquiry", e.id, "photo")
+        db.session.commit()
+
         # Log initial history
         history = InquiryHistory(
             inquiry_id=e.id,
             action="Inquiry Created",
             actor_name=name or "Customer",
-            details=f"Inquiry generated via public portal. Service requirement: {service_requirement}."
+            details=f"Inquiry generated via public portal. Service requirement: {service_requirement} at {site_name or area or 'Surat'}."
         )
         db.session.add(history)
+        if cu_id:
+            db.session.add(CustomerJourneyEvent(
+                customer_id=cu_id,
+                event_type="enquiry_submitted",
+                description=f"Inquiry {e.reference} submitted for {site_name or area or 'site'}.",
+                ref_type="enquiry",
+                ref_id=e.id
+            ))
         db.session.commit()
 
         # Notify Team Leader
         try:
             notify_team_leaders(
                 title=f"New Inquiry — {e.reference}",
-                body=f"{name} requested {service_requirement} at {area or city or 'Surat'}. Forwarded to Team Leader for technician assignment.",
+                body=f"{name} requested {service_requirement} at {site_name or area or 'Surat'}. Forwarded to Team Leader for technician assignment.",
                 link=url_for("admin.enquiry_detail", enq_id=e.id)
             )
         except Exception:
@@ -408,8 +471,8 @@ def enquiry():
             pass
 
         flash(f"Thank you, {name}! Your inquiry ({e.reference}) has been received and forwarded to our Team Leader. An engineer will be assigned for your site inspection.", "success")
-        return redirect(url_for("public.enquiry"))
-    return render_template("site/enquiry.html")
+        return redirect(url_for("portal.dashboard" if cu else "public.enquiry"))
+    return render_template("site/enquiry.html", my_sites=my_sites)
 
 
 @public_bp.route("/faq")
