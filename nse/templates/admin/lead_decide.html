@@ -141,16 +141,15 @@
     </div>
     {% endif %}
 
-    <!-- BRANCH 1: OK RESULT -->
-    <div class="card p-6 border-2 {% if fshcr and fshcr.outcome == 'ok' %}border-green-500 shadow-md bg-green-50/20{% else %}border-hairline{% endif %}">
+    <!-- BRANCH 1: OK RESULT (Only visible when safety score >= 85 and outcome is OK) -->
+    {% if fshcr and (fshcr.score or 0) >= 85 and fshcr.outcome == 'ok' %}
+    <div class="card p-6 border-2 border-green-500 shadow-md bg-green-50/20">
       <div class="flex items-center justify-between gap-2 mb-2">
         <h2 class="text-lg font-bold text-ink flex items-center gap-2">
           <span class="w-6 h-6 rounded-full bg-green-100 text-green-700 flex items-center justify-center text-xs font-bold">1</span>
           BRANCH: Result is OK (Postpone AMC)
         </h2>
-        {% if fshcr and fshcr.outcome == 'ok' %}
         <span class="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full font-bold">Recommended Outcome</span>
-        {% endif %}
       </div>
       <p class="text-sm text-ink-subtle mb-4">
         Everything is safe and functional. Manager decision: Charge a small audit fee or <strong>₹0 (No fees)</strong>, postpone AMC, and schedule a reminder to follow up in <strong>4–6 months</strong>.
@@ -197,6 +196,7 @@
         <button type="submit" class="btn btn-primary w-full sm:w-auto">Confirm OK Decision &amp; Postpone AMC</button>
       </form>
     </div>
+    {% endif %}
 
 
     <!-- BRANCH 2: PROBLEMS FOUND -->
