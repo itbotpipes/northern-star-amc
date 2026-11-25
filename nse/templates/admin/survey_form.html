@@ -23,10 +23,13 @@
           <input name="site_address" value="{{ s.site_address if s else '' }}" class="w-full mt-1 px-3 py-2 rounded-lg border border-hairline"></label>
         <label class="block"><span class="text-ink-muted">Client name</span>
           <input name="client_name" value="{{ s.client_name if s else '' }}" class="w-full mt-1 px-3 py-2 rounded-lg border border-hairline"></label>
+        {% set is_pure_tech = current_user.is_technician and not (current_user.is_manager or current_user.is_admin) %}
+        {% if not is_pure_tech %}
         <label class="block"><span class="text-ink-muted">Client mobile</span>
           <input name="client_phone" value="{{ s.client_phone if s else '' }}" class="w-full mt-1 px-3 py-2 rounded-lg border border-hairline"></label>
         <label class="block"><span class="text-ink-muted">Client email</span>
           <input name="client_email" value="{{ s.client_email if s else '' }}" class="w-full mt-1 px-3 py-2 rounded-lg border border-hairline"></label>
+        {% endif %}
         <label class="block"><span class="text-ink-muted">Link to contract (optional)</span>
           <select name="contract_id" class="w-full mt-1 px-3 py-2 rounded-lg border border-hairline">
             <option value="">— none —</option>

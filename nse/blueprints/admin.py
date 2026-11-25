@@ -1410,6 +1410,8 @@ def _collect_health_payload(f):
         payload[key] = f.get(key, "")
     payload["ex_other"] = f.get("ex_other", "")
     payload["remarks"] = f.get("remarks", "")
+    payload["recommended_service"] = f.get("recommended_service", "").strip()
+    payload["recommended_service_notes"] = f.get("recommended_service_notes", "").strip()
     # Floor-wise table — JSON string built client-side
     floors_raw = f.get("floors_json", "")
     try:
