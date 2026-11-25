@@ -918,7 +918,33 @@ def enquiries():
 @login_required
 @customer_required
 def journey():
-    """Customer journey timeline — all milestones, quotes, visits, payments."""
+    """Customer journey timeline — all milestones, quotes, visits, payments, complaints."""
+    # Ensure any tickets filed by this customer have a corresponding journey event
+    tickets = SupportTicket.query.filter_by(customer_id=current_user.id).all()
+    created_any = False
+    for tkt in tickets:
+        exists = CustomerJourneyEvent.query.filter_by(
+            customer_id=current_user.id,
+            ref_type="ticket",
+            ref_id=tkt.id,
+        ).first()
+        if not exists:
+            db.session.add(CustomerJourneyEvent(
+                customer_id=current_user.id,
+                event_type="complaint_filed",
+                description=f"Complaint filed: {tkt.reference} — {tkt.title}",
+                ref_type="ticket",
+                ref_id=tkt.id,
+                created_at=tkt.created_at,
+            ))
+            created_any = True
+    if created_any:
+        try:
+            db.session.commit()
+        except Exception as e:
+            current_app.logger.warning("Could not sync ticket journey events: %s", e)
+            db.session.rollback()
+
     events = (CustomerJourneyEvent.query
               .filter_by(customer_id=current_user.id)
               .order_by(CustomerJourneyEvent.created_at.desc())
@@ -1198,6 +1224,15 @@ def raise_ticket():
             path = save_upload(f, subdir="tickets")
             db.session.add(TicketAttachment(
                 ticket_id=ticket.id, file_path=path, attachment_type=atype))
+
+    db.session.add(CustomerJourneyEvent(
+        customer_id=current_user.id,
+        event_type="complaint_filed",
+        description=f"Complaint filed: {ticket.reference} — {ticket.title}",
+        ref_type="ticket",
+        ref_id=ticket.id,
+        created_at=ticket.created_at,
+    ))
 
     db.session.commit()
 

@@ -1044,6 +1044,15 @@ def raise_ticket():
         priority=(body.get("priority") or "normal"),
     )
     db.session.add(t)
+    db.session.flush()
+    db.session.add(CustomerJourneyEvent(
+        customer_id=g.current_user.id,
+        event_type="complaint_filed",
+        description=f"Complaint filed: {t.reference} — {t.title}",
+        ref_type="ticket",
+        ref_id=t.id,
+        created_at=t.created_at,
+    ))
     db.session.commit()
     notify_staff("New complaint raised",
                  f"{g.current_user.name}: {title}", link=f"/ops/ticket/{t.id}")
@@ -1081,6 +1090,32 @@ def retrigger_ticket(ticket_id):
 @api_bp.route("/journey")
 @customer_only
 def journey():
+    # Ensure any tickets filed by this customer have a corresponding journey event
+    tickets = SupportTicket.query.filter_by(customer_id=g.current_user.id).all()
+    created_any = False
+    for tkt in tickets:
+        exists = CustomerJourneyEvent.query.filter_by(
+            customer_id=g.current_user.id,
+            ref_type="ticket",
+            ref_id=tkt.id,
+        ).first()
+        if not exists:
+            db.session.add(CustomerJourneyEvent(
+                customer_id=g.current_user.id,
+                event_type="complaint_filed",
+                description=f"Complaint filed: {tkt.reference} — {tkt.title}",
+                ref_type="ticket",
+                ref_id=tkt.id,
+                created_at=tkt.created_at,
+            ))
+            created_any = True
+    if created_any:
+        try:
+            db.session.commit()
+        except Exception as e:
+            current_app.logger.warning("Could not sync ticket journey events: %s", e)
+            db.session.rollback()
+
     rows = (CustomerJourneyEvent.query
             .filter_by(customer_id=g.current_user.id)
             .order_by(CustomerJourneyEvent.created_at.desc()).limit(100).all())

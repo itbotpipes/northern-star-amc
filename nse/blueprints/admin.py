@@ -2739,6 +2739,17 @@ def ticket_create():
         status="open"
     )
     db.session.add(t)
+    if customer_id:
+        db.session.flush()
+        db.session.add(CustomerJourneyEvent(
+            customer_id=customer_id,
+            event_type="complaint_filed",
+            description=f"Complaint registered: {t.reference} — {t.title}",
+            ref_type="ticket",
+            ref_id=t.id,
+            created_by_id=current_user.id,
+            created_at=t.created_at,
+        ))
     db.session.commit()
 
     if tech_id and sched_date:
@@ -2785,6 +2796,15 @@ def ticket_detail(ticket_id):
             t.replied_at = t.replied_at or datetime.utcnow()
             t.resolved_at = datetime.utcnow()
             t.resolved_by_id = current_user.id
+            if t.customer_id:
+                db.session.add(CustomerJourneyEvent(
+                    customer_id=t.customer_id,
+                    event_type="complaint_resolved",
+                    description=f"Complaint resolved: {t.reference} — {t.title}",
+                    ref_type="ticket",
+                    ref_id=t.id,
+                    created_by_id=current_user.id,
+                ))
             db.session.commit()
             if t.customer_id:
                 notify(t.customer_id,

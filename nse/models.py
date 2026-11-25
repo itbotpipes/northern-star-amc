@@ -1458,6 +1458,8 @@ class CustomerJourneyEvent(db.Model):
         "payment_received":      ("coin",     "green"),
         "feedback_given":        ("star",     "amber"),
         "referral_submitted":    ("users",    "blue"),
+        "complaint_filed":       ("alert",    "red"),
+        "complaint_resolved":    ("check",    "green"),
     }
 
     @property

@@ -12,7 +12,7 @@ const ICONS = {
   doc: "document-text", send: "paper-plane", eye: "eye", chat: "chatbubble-ellipses",
   check: "checkmark-circle", x: "close-circle", shield: "shield-checkmark",
   sign: "create", calendar: "calendar", coin: "cash", star: "star",
-  users: "people", dot: "ellipse",
+  users: "people", dot: "ellipse", alert: "alert-circle",
 };
 
 export default function JourneyScreen() {

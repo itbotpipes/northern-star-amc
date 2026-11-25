@@ -28,6 +28,8 @@
 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
 {% elif key == 'users' %}
 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+{% elif key == 'alert' %}
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
 {% else %}
 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>
 {% endif %}
@@ -62,7 +64,18 @@
           <span class="w-3.5 h-3.5 block">{{ journey_icon(icon_key) }}</span>
         </div>
         <div class="card p-4">
-          <div class="text-ink font-medium text-sm leading-snug">{{ ev.description }}</div>
+          <div class="text-ink font-medium text-sm leading-snug flex items-center justify-between flex-wrap gap-2">
+            <span>{{ ev.description }}</span>
+            {% if ev.ref_type == 'ticket' and ev.ref_id %}
+            <a href="{{ url_for('portal.ticket_detail', ticket_id=ev.ref_id) }}" class="text-xs text-primary font-semibold hover:underline">View complaint →</a>
+            {% elif ev.ref_type == 'contract' and ev.ref_id %}
+            <a href="{{ url_for('portal.contract', contract_id=ev.ref_id) }}" class="text-xs text-primary font-semibold hover:underline">View contract →</a>
+            {% elif ev.ref_type == 'visit' and ev.ref_id %}
+            <a href="{{ url_for('portal.visit', visit_id=ev.ref_id) }}" class="text-xs text-primary font-semibold hover:underline">View visit →</a>
+            {% elif ev.ref_type == 'service_quotation' and ev.ref_id %}
+            <a href="{{ url_for('portal.quotation', quote_id=ev.ref_id) }}" class="text-xs text-primary font-semibold hover:underline">View quotation →</a>
+            {% endif %}
+          </div>
           <div class="text-xs text-ink-subtle mt-1">{{ ev.created_at.strftime('%d %b %Y at %H:%M') }}</div>
         </div>
       </div>
