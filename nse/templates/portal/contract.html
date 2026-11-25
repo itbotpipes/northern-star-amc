@@ -143,6 +143,7 @@
   <!-- Service roadmap -->
   <div class="mt-6">{{ workflow_track(c) }}</div>
 
+  {% if c.status in ('active', 'completed') or c.agreement_accepted %}
   <!-- Visits timeline -->
   <h2 class="text-lg font-bold text-navy-800 mt-8 mb-3">Service visits</h2>
   {% if c.visits %}
@@ -238,6 +239,7 @@
   <div class="bg-white border border-dashed border-slate-300 rounded-xl p-5 text-center">
     <p class="text-slate-500 text-sm">No equipment logged on this contract yet. Equipment is logged during initial site survey.</p>
   </div>
+  {% endif %}
   {% endif %}
 
   <!-- AMC Fire Safety Certificate -->

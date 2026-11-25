@@ -124,6 +124,7 @@ export default function ContractScreen({ route, navigation }) {
       </Card>
 
       {/* Equipment & Safety Devices */}
+      {(c.status === "active" || c.status === "completed" || !!c.agreement_accepted) && (
       <Card>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
           <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: theme.navy + "12", justifyContent: "center", alignItems: "center" }}>
@@ -141,6 +142,7 @@ export default function ContractScreen({ route, navigation }) {
           onPress={() => navigation.navigate("Equipment")}
         />
       </Card>
+      )}
 
       {/* Roadmap */}
       {c.workflow_steps && c.workflow_steps.length ? (
@@ -158,36 +160,40 @@ export default function ContractScreen({ route, navigation }) {
       ) : null}
 
       {/* Visits */}
-      <SectionTitle style={{ marginTop: 4 }}>Service visits</SectionTitle>
-      {visits.map((v) => {
-        const c2 = pillFor(v.status);
-        return (
-          <TouchableOpacity key={v.id} activeOpacity={0.85}
-            onPress={() => navigation.navigate("Visit", { id: v.id })}>
-            <Card style={{ marginBottom: 10 }}>
-              <View style={styles.visitRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.visitLabel}>{v.label}</Text>
-                  <Text style={styles.visitDate}>
-                    {v.status === "completed"
-                      ? `Completed ${fmtDate(v.completed_date)}`
-                      : `Scheduled ${fmtDate(v.scheduled_date)}`}
-                  </Text>
-                </View>
-                <View style={{ alignItems: "flex-end", gap: 6 }}>
-                  <Pill status={v.status} tone={c2} />
-                  {v.status !== "completed" && typeof v.days_until === "number" ? (
-                    <DaysPill days={v.days_until} />
+      {(c.status === "active" || c.status === "completed" || !!c.agreement_accepted) && visits.length > 0 && (
+        <>
+          <SectionTitle style={{ marginTop: 4 }}>Service visits</SectionTitle>
+          {visits.map((v) => {
+            const c2 = pillFor(v.status);
+            return (
+              <TouchableOpacity key={v.id} activeOpacity={0.85}
+                onPress={() => navigation.navigate("Visit", { id: v.id })}>
+                <Card style={{ marginBottom: 10 }}>
+                  <View style={styles.visitRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.visitLabel}>{v.label}</Text>
+                      <Text style={styles.visitDate}>
+                        {v.status === "completed"
+                          ? `Completed ${fmtDate(v.completed_date)}`
+                          : `Scheduled ${fmtDate(v.scheduled_date)}`}
+                      </Text>
+                    </View>
+                    <View style={{ alignItems: "flex-end", gap: 6 }}>
+                      <Pill status={v.status} tone={c2} />
+                      {v.status !== "completed" && typeof v.days_until === "number" ? (
+                        <DaysPill days={v.days_until} />
+                      ) : null}
+                    </View>
+                  </View>
+                  {v.status === "completed" && !v.rated ? (
+                    <Text style={styles.rateHint}>Tap to rate this visit →</Text>
                   ) : null}
-                </View>
-              </View>
-              {v.status === "completed" && !v.rated ? (
-                <Text style={styles.rateHint}>Tap to rate this visit →</Text>
-              ) : null}
-            </Card>
-          </TouchableOpacity>
-        );
-      })}
+                </Card>
+              </TouchableOpacity>
+            );
+          })}
+        </>
+      )}
 
       {/* Actions */}
       <SectionTitle style={{ marginTop: 10 }}>Actions</SectionTitle>
