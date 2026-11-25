@@ -146,6 +146,7 @@ def user_json(u):
         "address": u.address,
         "company_name": u.company_name,
         "gst_number": u.gst_number,
+        "photo_url": upload_url(u.photo_path) if getattr(u, "photo_path", None) else None,
     }
 
 

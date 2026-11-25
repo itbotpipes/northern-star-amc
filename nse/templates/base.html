@@ -186,9 +186,19 @@
             </div>
           </details>
           {% if current_user.is_staff %}
-          <a href="{{ url_for('admin.dashboard') }}" class="ml-1 px-3.5 py-2 rounded-md bg-surface-2 border border-hairline text-ink font-medium text-sm hover:border-hairline-strong transition">Ops Console</a>
+          <a href="{{ url_for('admin.dashboard') }}" class="ml-1 px-3 py-1.5 rounded-md bg-surface-2 border border-hairline text-ink font-medium text-sm hover:border-hairline-strong transition flex items-center gap-2">
+            {% if current_user.photo_path %}
+            <img src="{{ current_user.photo_path|upload_url }}" alt="{{ current_user.name }}" class="w-5 h-5 rounded-md object-cover border border-hairline">
+            {% endif %}
+            <span>Ops Console</span>
+          </a>
           {% else %}
-          <a href="{{ url_for('portal.dashboard') }}" class="ml-1 px-3.5 py-2 rounded-md bg-primary text-white font-semibold text-sm hover:bg-primary-hover transition">My Portal</a>
+          <a href="{{ url_for('portal.dashboard') }}" class="ml-1 px-3 py-1.5 rounded-md bg-primary text-white font-semibold text-sm hover:bg-primary-hover transition flex items-center gap-2">
+            {% if current_user.photo_path %}
+            <img src="{{ current_user.photo_path|upload_url }}" alt="{{ current_user.name }}" class="w-5 h-5 rounded-md object-cover border border-white/30">
+            {% endif %}
+            <span>My Portal</span>
+          </a>
           {% endif %}
           <a href="{{ url_for('auth.logout') }}" class="px-3 py-2 rounded-md text-ink-subtle hover:text-ink text-sm transition">Logout</a>
         {% else %}

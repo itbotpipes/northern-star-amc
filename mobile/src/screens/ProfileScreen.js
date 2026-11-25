@@ -1,6 +1,6 @@
 // Profile: view + edit the customer's details, plus sign out.
 import React, { useState, useEffect } from "react";
-import { View, Text, ScrollView, StyleSheet, Alert, Platform } from "react-native";
+import { View, Text, ScrollView, StyleSheet, Alert, Platform, Image } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "../api/client";
 import { useAuth } from "../context/AuthContext";
@@ -78,7 +78,11 @@ export default function ProfileScreen({ navigation }) {
   return (
     <ScrollView style={styles.wrap} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
       <View style={styles.header}>
-        <View style={styles.avatar}><Text style={styles.avatarText}>{initials}</Text></View>
+        {user?.photo_url ? (
+          <Image source={{ uri: user.photo_url }} style={styles.avatarImage} />
+        ) : (
+          <View style={styles.avatar}><Text style={styles.avatarText}>{initials}</Text></View>
+        )}
         <Text style={styles.name}>{user?.name}</Text>
         <Text style={styles.phone}>+91 {user?.phone}</Text>
       </View>
@@ -115,6 +119,10 @@ const styles = StyleSheet.create({
   avatar: {
     width: 72, height: 72, borderRadius: 36, backgroundColor: theme.navy,
     alignItems: "center", justifyContent: "center", marginBottom: 10,
+  },
+  avatarImage: {
+    width: 72, height: 72, borderRadius: 36, marginBottom: 10,
+    borderWidth: 2, borderColor: theme.hairline,
   },
   avatarText: { color: "#fff", fontSize: 26, fontWeight: "800" },
   name: { fontSize: 20, fontWeight: "800", color: theme.ink },
