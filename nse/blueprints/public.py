@@ -391,6 +391,9 @@ def enquiry():
         subject = f.get("subject", "").strip() or f"{service_requirement} Inquiry"
         if site_name:
             subject = f"{service_requirement} — {site_name}"
+        lead_cat = (f.get("lead_category") or request.args.get("category") or "").strip()
+        if lead_cat == "inspection" and "inspection" not in subject.lower():
+            subject = f"Site Inspection — {site_name or service_requirement}"
         message = (f.get("message") or f.get("problem_description") or "").strip()
 
         cu_id = None

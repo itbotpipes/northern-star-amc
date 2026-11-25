@@ -311,10 +311,35 @@ class Contract(db.Model):
         return max(qs, key=lambda q: q.created_at or datetime.min)
 
     @property
-
     def is_handover(self):
-
         return (self.project_type or "").lower() in ("existing", "handover")
+
+    @property
+    def lead_category(self):
+        if self.is_handover:
+            return "handover"
+        notes = (self.application_notes or "").lower()
+        if "category:inspection" in notes:
+            return "inspection"
+        if "category:enquiry" in notes or "category:inquiry" in notes:
+            return "enquiry"
+        if "category:amc" in notes:
+            return "amc"
+        desc = (self.problem_description or "").lower()
+        if "site inspection" in desc or "inspection request" in desc or "inspection only" in desc:
+            return "inspection"
+        return "amc"
+
+    @property
+    def lead_category_label(self):
+        cat = self.lead_category
+        if cat == "handover":
+            return "Project Handover"
+        if cat == "inspection":
+            return "Site Inspection"
+        if cat in ("enquiry", "inquiry"):
+            return "New Enquiry"
+        return "+ Request New AMC"
 
 
 
@@ -1083,9 +1108,30 @@ class Enquiry(db.Model):
         return self.reference or f"INQ-{self.id:04d}"
 
     @property
+    def lead_category(self):
+        req = (self.service_requirement or "").lower()
+        subj = (self.subject or "").lower()
+        msg = (self.message or "").lower()
+        combined = f"{req} {subj} {msg}"
+        if "site inspection" in combined or "inspection" in req or "audit" in req or "survey" in req or "inspection" in subj:
+            return "inspection"
+        if "new amc" in combined or "request new amc" in combined:
+            return "amc"
+        return "enquiry"
+
+    @property
+    def lead_category_label(self):
+        cat = self.lead_category
+        if cat == "inspection":
+            return "Site Inspection"
+        if cat == "amc":
+            return "+ Request New AMC"
+        return "New Enquiry"
+
+    @property
     def status_label(self):
         labels = {
-            "new": "New Inquiry",
+            "new": "New Enquiry",
             "assigned": "Technician Assigned",
             "site_visit_scheduled": "Visit Scheduled",
             "site_visit_in_progress": "Visit in Progress",

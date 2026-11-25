@@ -221,8 +221,12 @@ def leads():
     if request.method == "POST":
         f = request.form
         project_type = f.get("project_type", "new")   # new / existing
+        category_choice = f.get("lead_category", "amc")
         phone = (f.get("phone") or "").strip()
         customer = User.query.filter_by(phone=phone, role="customer").first() if phone else None
+
+        if category_choice == "handover":
+            project_type = "existing"
 
         c = Contract(
             status="pending", lead_stage="new", project_type=project_type,
@@ -231,6 +235,7 @@ def leads():
             applicant_name=f.get("name"), applicant_phone=phone,
             applicant_email=f.get("email"), property_type=f.get("property_type"),
             problem_description=(f.get("problem_description") or "").strip() or None,
+            application_notes=f"category:{category_choice}",
             latitude=(f.get("latitude") or "").strip() or None,
             longitude=(f.get("longitude") or "").strip() or None,
             customer_id=customer.id if customer else None,
@@ -244,9 +249,87 @@ def leads():
         flash(f"Lead created ({c.reference}). Schedule the inspection next.", "success")
         return redirect(url_for("admin.lead_detail", lead_id=c.id))
 
-    open_leads = (Contract.query.filter(Contract.lead_stage.isnot(None))
-                  .order_by(Contract.created_at.desc()).all())
-    return render_template("admin/leads.html", leads=open_leads)
+    # Fetch all Contract leads
+    contract_leads = (Contract.query
+                      .filter(Contract.lead_stage.isnot(None))
+                      .order_by(Contract.created_at.desc())
+                      .all())
+
+    # Fetch all Enquiries
+    enquiry_records = (Enquiry.query
+                       .order_by(Enquiry.created_at.desc())
+                       .all())
+
+    # Unify leads
+    unified_leads = []
+    for c in contract_leads:
+        cat = c.lead_category
+        unified_leads.append({
+            "id": c.id,
+            "is_enquiry": False,
+            "reference": c.reference,
+            "client_name": c.applicant_name or (c.customer.name if c.customer else "Unnamed Client"),
+            "phone": c.applicant_phone or (c.customer.phone if c.customer else ""),
+            "email": c.applicant_email or (c.customer.email if c.customer else ""),
+            "site_desc": c.site_name or c.site_address or c.area or "",
+            "category": cat,
+            "category_label": c.lead_category_label,
+            "stage_label": (c.lead_stage or "new").replace("_", " ").title(),
+            "lead_stage": c.lead_stage,
+            "scheduled_date": c.inspection_scheduled_date,
+            "technician": c.inspection_technician,
+            "spoc_name": c.spoc_name,
+            "spoc_role": c.spoc_role,
+            "spoc_phone": c.spoc_phone,
+            "is_handover": (c.project_type in ("existing", "handover") or getattr(c, "is_handover", False)),
+            "detail_url": url_for("admin.lead_detail", lead_id=c.id),
+            "created_at": c.created_at,
+        })
+
+    for e in enquiry_records:
+        cat = e.lead_category
+        unified_leads.append({
+            "id": e.id,
+            "is_enquiry": True,
+            "reference": e.reference or f"INQ-{e.id:04d}",
+            "client_name": e.name or "Unnamed Client",
+            "phone": e.phone or "",
+            "email": e.email or "",
+            "site_desc": e.subject or e.address or e.area or e.city or "",
+            "category": cat,
+            "category_label": e.lead_category_label,
+            "stage_label": (e.status or "new").replace("_", " ").title(),
+            "lead_stage": e.status,
+            "scheduled_date": e.visit_scheduled_date,
+            "technician": e.assigned_to,
+            "spoc_name": None,
+            "spoc_role": None,
+            "spoc_phone": None,
+            "is_handover": False,
+            "detail_url": url_for("admin.enquiry_detail", enq_id=e.id),
+            "created_at": e.created_at,
+        })
+
+    unified_leads.sort(key=lambda x: x["created_at"] or datetime.min, reverse=True)
+
+    stats = {
+        "all": len(unified_leads),
+        "amc": sum(1 for l in unified_leads if l["category"] == "amc"),
+        "enquiry": sum(1 for l in unified_leads if l["category"] in ("enquiry", "inquiry")),
+        "inspection": sum(1 for l in unified_leads if l["category"] == "inspection"),
+        "handover": sum(1 for l in unified_leads if l["category"] == "handover"),
+    }
+
+    selected_category = request.args.get("category", "all")
+    search_q = request.args.get("q", "").strip()
+
+    return render_template(
+        "admin/leads.html",
+        leads=unified_leads,
+        stats=stats,
+        selected_category=selected_category,
+        search_query=search_q,
+    )
 
 
 @admin_bp.route("/lead/<int:lead_id>")

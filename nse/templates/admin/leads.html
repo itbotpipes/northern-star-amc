@@ -1,37 +1,54 @@
 {% extends "base_ops.html" %}
 {% block title %}Leads — Ops{% endblock %}
 {% block content %}
-<section class="max-w-5xl mx-auto px-4 py-8">
+<section class="max-w-6xl mx-auto px-4 py-8">
   <div class="flex items-center justify-between flex-wrap gap-3 mb-6">
     <div>
-      <h1 class="text-2xl font-extrabold text-ink">Leads</h1>
-      <p class="text-sm text-ink-subtle">Customer enquiries and engineering maintenance handovers awaiting inspection or quotation.</p>
+      <h1 class="text-2xl font-extrabold text-ink">Inbound Leads</h1>
+      <p class="text-sm text-ink-subtle">Customer AMC requests, general inquiries, site inspection requests &amp; project handovers.</p>
     </div>
     <div class="flex items-center gap-2">
-      <button type="button" onclick="openNewLead('new')" class="btn btn-secondary text-sm">+ New Enquiry</button>
-      <button type="button" onclick="openNewLead('existing')" class="btn btn-primary text-sm flex items-center gap-1.5 shadow-sm">
+      <button type="button" onclick="openNewLead('amc')" class="btn btn-secondary text-sm shadow-2xs">+ Request New AMC</button>
+      <button type="button" onclick="openNewLead('enquiry')" class="btn btn-secondary text-sm shadow-2xs">+ New Enquiry</button>
+      <button type="button" onclick="openNewLead('inspection')" class="btn btn-secondary text-sm shadow-2xs">+ Site Inspection</button>
+      <button type="button" onclick="openNewLead('handover')" class="btn btn-primary text-sm flex items-center gap-1.5 shadow-sm">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-        + New Handover
+        + Handover
       </button>
     </div>
   </div>
 
-  <!-- Manual intake (phone-in enquiry, or a staff-created handover) -->
-  <form method="post" id="newLeadForm" class="card p-6 space-y-4 mb-8 hidden border-2 border-primary/30">
+  <!-- Manual intake (phone-in enquiry, site inspection, or staff-created handover) -->
+  <form method="post" id="newLeadForm" class="card p-6 space-y-4 mb-8 hidden border-2 border-primary/30 shadow-sm">
     <div class="flex items-center justify-between">
       <h2 class="font-bold text-ink text-base" id="formHeading">New Lead</h2>
-      <button type="button" onclick="document.getElementById('newLeadForm').classList.add('hidden')" class="text-ink-subtle hover:text-ink text-sm">✕ Close</button>
+      <button type="button" onclick="document.getElementById('newLeadForm').classList.add('hidden')" class="text-ink-subtle hover:text-ink text-sm font-semibold">✕ Close</button>
     </div>
-    <div class="grid sm:grid-cols-2 gap-3">
-      <label class="flex items-start gap-2 border border-hairline-strong rounded-lg px-4 py-3 cursor-pointer hover:bg-slate-50 transition">
-        <input type="radio" name="project_type" value="new" checked onchange="toggleSpoc()">
-        <span><span class="font-semibold text-ink block text-sm">New customer enquiry</span><span class="text-xs text-ink-subtle">Phone-in lead — treat like a fresh site.</span></span>
-      </label>
-      <label class="flex items-start gap-2 border border-hairline-strong rounded-lg px-4 py-3 cursor-pointer hover:bg-slate-50 transition">
-        <input type="radio" name="project_type" value="existing" onchange="toggleSpoc()">
-        <span><span class="font-semibold text-ink block text-sm">Project handover</span><span class="text-xs text-ink-subtle">Engineering team handing completed site to maintenance.</span></span>
-      </label>
+    
+    <div>
+      <span class="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-2">Lead Category</span>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+        <label class="flex items-center gap-2 border border-hairline-strong rounded-xl px-3 py-2.5 cursor-pointer hover:bg-slate-50 transition has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50/50">
+          <input type="radio" name="lead_category" value="amc" checked onchange="handleCategoryChange()">
+          <span class="font-semibold text-xs text-ink">+ Request New AMC</span>
+        </label>
+        <label class="flex items-center gap-2 border border-hairline-strong rounded-xl px-3 py-2.5 cursor-pointer hover:bg-slate-50 transition has-[:checked]:border-purple-600 has-[:checked]:bg-purple-50/50">
+          <input type="radio" name="lead_category" value="enquiry" onchange="handleCategoryChange()">
+          <span class="font-semibold text-xs text-ink">+ New Enquiry</span>
+        </label>
+        <label class="flex items-center gap-2 border border-hairline-strong rounded-xl px-3 py-2.5 cursor-pointer hover:bg-slate-50 transition has-[:checked]:border-amber-600 has-[:checked]:bg-amber-50/50">
+          <input type="radio" name="lead_category" value="inspection" onchange="handleCategoryChange()">
+          <span class="font-semibold text-xs text-ink">Site Inspection</span>
+        </label>
+        <label class="flex items-center gap-2 border border-hairline-strong rounded-xl px-3 py-2.5 cursor-pointer hover:bg-slate-50 transition has-[:checked]:border-navy-600 has-[:checked]:bg-navy-50/50">
+          <input type="radio" name="lead_category" value="handover" onchange="handleCategoryChange()">
+          <span class="font-semibold text-xs text-ink">Project Handover</span>
+        </label>
+      </div>
     </div>
+
+    <input type="hidden" name="project_type" id="projectTypeInput" value="new">
+
     <div class="grid sm:grid-cols-2 gap-4">
       <label class="block"><span class="text-sm font-medium text-ink-muted">Client / Organisation name <span class="text-danger">*</span></span>
         <input name="name" required class="mt-1.5 w-full px-3 py-2.5 rounded-lg border border-hairline"></label>
@@ -72,80 +89,261 @@
     <button class="btn btn-primary">Create Lead Record →</button>
   </form>
 
-  <!-- Lead list -->
-  <div class="card overflow-hidden">
-    <table class="w-full text-sm">
-      <thead class="bg-slate-50 text-xs uppercase text-ink-subtle">
-        <tr>
-          <th class="px-4 py-2 text-left">Reference</th>
-          <th class="px-4 py-2 text-left">Client / Site</th>
-          <th class="px-4 py-2 text-left">Type</th>
-          <th class="px-4 py-2 text-left">Stage</th>
-          <th class="px-4 py-2 text-left">Inspection</th>
-          <th class="px-4 py-2"></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for c in leads %}
-        <tr class="border-t border-hairline hover:bg-slate-50">
-          <td class="px-4 py-2 mono font-bold text-xs">{{ c.reference }}</td>
-          <td class="px-4 py-2">
-            <div class="font-semibold text-ink">{{ c.applicant_name or (c.customer.name if c.customer) }}</div>
-            <div class="text-xs text-ink-subtle">{{ c.site_name or c.site_address or '' }}</div>
-            {% if (c.project_type in ('existing', 'handover') or c.is_handover) and c.spoc_name %}
-            <div class="text-[11px] text-blue-700 font-medium mt-0.5">SPOC: {{ c.spoc_name }}{% if c.spoc_role %} ({{ c.spoc_role }}){% endif %}{% if c.spoc_phone and can_see_customer_contact %} · {{ c.spoc_phone }}{% endif %}</div>
-            {% endif %}
-          </td>
-          <td class="px-4 py-2">
-            {% if c.project_type in ('existing', 'handover') or c.is_handover %}
-            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-blue-100 text-blue-800 border border-blue-200">Handover</span>
-            {% else %}
-            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-slate-100 text-slate-700">Enquiry</span>
-            {% endif %}
-          </td>
-          <td class="px-4 py-2">
-            <span class="px-2 py-0.5 rounded-full text-xs font-semibold"
-              style="background:{{ '#fdecea' if c.lead_stage=='rework' else '#fbf0dc' if c.lead_stage in ('new','inspection_scheduled') else '#eef1fb' }};color:{{ '#d23f3f' if c.lead_stage=='rework' else '#b45309' if c.lead_stage in ('new','inspection_scheduled') else '#2f6fed' }}">
-              {{ c.lead_stage|replace('_',' ')|title }}
-            </span>
-          </td>
-          <td class="px-4 py-2">
-            {% if c.inspection_scheduled_date %}{{ c.inspection_scheduled_date|datefmt }}{% if c.inspection_technician %} · {{ c.inspection_technician.name }}{% endif %}{% else %}—{% endif %}
-          </td>
-          <td class="px-4 py-2 text-right"><a href="{{ url_for('admin.lead_detail', lead_id=c.id) }}" class="text-primary font-semibold hover:underline">Open →</a></td>
-        </tr>
-        {% else %}
-        <tr><td colspan="6" class="px-4 py-8 text-center text-ink-subtle">No open leads. New enquiries from the customer portal or staff handovers will appear here.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  <!-- Filter & Search Card -->
+  <div class="card overflow-hidden shadow-xs border border-slate-200">
+    <div class="p-4 bg-slate-50/80 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-3">
+      <!-- Search Input -->
+      <div class="relative flex-1 max-w-md">
+        <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        </div>
+        <input type="text" id="leadSearchInput" placeholder="Search by client, reference, phone, site..."
+               value="{{ search_query or '' }}"
+               class="w-full pl-9 pr-8 py-2 text-sm bg-white rounded-xl border border-slate-200 focus:outline-none focus:border-primary shadow-2xs transition">
+        <button type="button" id="clearSearchBtn" onclick="clearSearch()"
+                class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 {% if not search_query %}hidden{% endif %}">✕</button>
+      </div>
+
+      <!-- Category Filter Tabs -->
+      <div class="flex items-center gap-1.5 flex-wrap" id="categoryTabs">
+        <button type="button" onclick="setCategory('all')" data-cat="all"
+                class="cat-btn px-3 py-1.5 rounded-lg text-xs font-bold transition {{ 'bg-navy-900 text-white shadow-xs' if selected_category == 'all' else 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100' }}">
+          All <span class="ml-1 opacity-75 font-normal">({{ stats.all }})</span>
+        </button>
+        <button type="button" onclick="setCategory('amc')" data-cat="amc"
+                class="cat-btn px-3 py-1.5 rounded-lg text-xs font-bold transition {{ 'bg-blue-600 text-white shadow-xs' if selected_category == 'amc' else 'bg-white text-slate-700 border border-slate-200 hover:border-blue-300 hover:text-blue-700' }}">
+          + Request New AMC <span class="ml-1 opacity-75 font-normal">({{ stats.amc }})</span>
+        </button>
+        <button type="button" onclick="setCategory('enquiry')" data-cat="enquiry"
+                class="cat-btn px-3 py-1.5 rounded-lg text-xs font-bold transition {{ 'bg-purple-600 text-white shadow-xs' if selected_category == 'enquiry' else 'bg-white text-slate-700 border border-slate-200 hover:border-purple-300 hover:text-purple-700' }}">
+          New Enquiry <span class="ml-1 opacity-75 font-normal">({{ stats.enquiry }})</span>
+        </button>
+        <button type="button" onclick="setCategory('inspection')" data-cat="inspection"
+                class="cat-btn px-3 py-1.5 rounded-lg text-xs font-bold transition {{ 'bg-amber-600 text-white shadow-xs' if selected_category == 'inspection' else 'bg-white text-slate-700 border border-slate-200 hover:border-amber-300 hover:text-amber-800' }}">
+          Site Inspections <span class="ml-1 opacity-75 font-normal">({{ stats.inspection }})</span>
+        </button>
+        {% if stats.handover %}
+        <button type="button" onclick="setCategory('handover')" data-cat="handover"
+                class="cat-btn px-3 py-1.5 rounded-lg text-xs font-bold transition {{ 'bg-slate-800 text-white shadow-xs' if selected_category == 'handover' else 'bg-white text-slate-700 border border-slate-200 hover:border-slate-300' }}">
+          Handover <span class="ml-1 opacity-75 font-normal">({{ stats.handover }})</span>
+        </button>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Lead table -->
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-50 text-xs uppercase text-ink-subtle border-b border-hairline font-semibold">
+          <tr>
+            <th class="px-4 py-2.5 text-left">Reference</th>
+            <th class="px-4 py-2.5 text-left">Client / Site</th>
+            <th class="px-4 py-2.5 text-left">Category</th>
+            <th class="px-4 py-2.5 text-left">Stage</th>
+            <th class="px-4 py-2.5 text-left">Inspection / Visit</th>
+            <th class="px-4 py-2.5 text-right">Action</th>
+          </tr>
+        </thead>
+        <tbody id="leadsTableBody">
+          {% for l in leads %}
+          <tr class="border-t border-hairline hover:bg-slate-50/80 transition lead-row"
+              data-category="{{ l.category }}"
+              data-search="{{ l.reference }} {{ l.client_name }} {{ l.phone }} {{ l.email }} {{ l.site_desc }} {{ l.category_label }} {{ l.stage_label }}">
+            <td class="px-4 py-3 mono font-bold text-xs text-navy-900">
+              {{ l.reference }}
+              {% if l.is_enquiry %}
+              <span class="block text-[10px] text-slate-400 font-sans font-normal">Web Enquiry</span>
+              {% else %}
+              <span class="block text-[10px] text-slate-400 font-sans font-normal">AMC Contract</span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-3">
+              <div class="font-semibold text-ink">{{ l.client_name }}</div>
+              <div class="text-xs text-ink-subtle truncate max-w-xs">{{ l.site_desc }}</div>
+              {% if l.phone %}
+              <div class="text-[11px] text-slate-500 font-mono mt-0.5">{{ l.phone }}</div>
+              {% endif %}
+              {% if l.is_handover and l.spoc_name %}
+              <div class="text-[11px] text-blue-700 font-medium mt-0.5">SPOC: {{ l.spoc_name }}{% if l.spoc_role %} ({{ l.spoc_role }}){% endif %}{% if l.spoc_phone %} · {{ l.spoc_phone }}{% endif %}</div>
+              {% endif %}
+            </td>
+            <td class="px-4 py-3">
+              {% if l.category == 'amc' %}
+              <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                + Request New AMC
+              </span>
+              {% elif l.category in ('enquiry', 'inquiry') %}
+              <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                New Enquiry
+              </span>
+              {% elif l.category == 'inspection' %}
+              <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                Site Inspection
+              </span>
+              {% elif l.category == 'handover' %}
+              <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-300">
+                Project Handover
+              </span>
+              {% else %}
+              <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700">
+                {{ l.category_label }}
+              </span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-3">
+              <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold"
+                style="background:{{ '#fdecea' if l.lead_stage in ('rework','closed') else '#fbf0dc' if l.lead_stage in ('new','assigned','inspection_scheduled','site_visit_scheduled') else '#eef1fb' }};color:{{ '#d23f3f' if l.lead_stage in ('rework','closed') else '#b45309' if l.lead_stage in ('new','assigned','inspection_scheduled','site_visit_scheduled') else '#2f6fed' }}">
+                {{ l.stage_label }}
+              </span>
+            </td>
+            <td class="px-4 py-3 text-xs text-slate-600">
+              {% if l.scheduled_date %}
+                <span class="font-medium text-navy-800">{{ l.scheduled_date|datefmt }}</span>
+                {% if l.technician %}
+                <span class="block text-[11px] text-slate-500 font-normal">· {{ l.technician.name }}</span>
+                {% endif %}
+              {% else %}
+                <span class="text-slate-400">—</span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-3 text-right">
+              <a href="{{ l.detail_url }}" class="inline-flex items-center gap-1 text-primary font-bold hover:underline text-xs">
+                Open →
+              </a>
+            </td>
+          </tr>
+          {% endfor %}
+          <tr id="noResultsRow" style="display:none;">
+            <td colspan="6" class="px-4 py-12 text-center text-ink-subtle">
+              <svg class="w-8 h-8 mx-auto text-slate-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              <p class="font-semibold text-slate-600">No leads match your search / filter.</p>
+              <p class="text-xs text-slate-400 mt-1">Try clearing your search query or selecting "All".</p>
+            </td>
+          </tr>
+          {% if not leads %}
+          <tr>
+            <td colspan="6" class="px-4 py-12 text-center text-ink-subtle">
+              No inbound leads found.
+            </td>
+          </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
   </div>
 </section>
+
 <script>
-function toggleSpoc() {
-  var existing = document.querySelector('input[name=project_type]:checked').value === 'existing';
-  document.getElementById('spocPanel').classList.toggle('hidden', !existing);
-  document.getElementById('formHeading').innerText = existing ? 'New Project Handover' : 'New Customer Enquiry';
+var activeCategory = '{{ selected_category or "all" }}';
+var activeQuery = '{{ search_query or "" }}';
+
+function handleCategoryChange() {
+  var selected = document.querySelector('input[name=lead_category]:checked').value;
+  var isHandover = (selected === 'handover');
+  document.getElementById('projectTypeInput').value = isHandover ? 'existing' : 'new';
+  document.getElementById('spocPanel').classList.toggle('hidden', !isHandover);
+  
+  var headingMap = {
+    'amc': 'New AMC Application Lead',
+    'enquiry': 'New Customer Enquiry',
+    'inspection': 'New Site Inspection Request',
+    'handover': 'New Project Handover'
+  };
+  document.getElementById('formHeading').innerText = headingMap[selected] || 'New Lead';
 }
 
-function openNewLead(type) {
+function openNewLead(category) {
   var f = document.getElementById('newLeadForm');
   f.classList.remove('hidden');
-  var radios = f.querySelectorAll('input[name=project_type]');
+  var radios = f.querySelectorAll('input[name=lead_category]');
   radios.forEach(function(r) {
-    r.checked = (r.value === type);
+    r.checked = (r.value === category);
   });
-  toggleSpoc();
+  handleCategoryChange();
   f.scrollIntoView({ behavior: 'smooth' });
 }
 
-// Auto-open handover form if query parameter ?type=handover
-document.addEventListener('DOMContentLoaded', function() {
-  var params = new URLSearchParams(window.location.search);
-  var t = params.get('type');
-  if (t === 'handover' || t === 'existing') {
-    openNewLead('existing');
+function setCategory(cat) {
+  activeCategory = cat;
+  
+  // Update button active states
+  document.querySelectorAll('.cat-btn').forEach(function(btn) {
+    var c = btn.getAttribute('data-cat');
+    if (c === cat) {
+      if (c === 'amc') btn.className = 'cat-btn px-3 py-1.5 rounded-lg text-xs font-bold transition bg-blue-600 text-white shadow-xs';
+      else if (c === 'enquiry') btn.className = 'cat-btn px-3 py-1.5 rounded-lg text-xs font-bold transition bg-purple-600 text-white shadow-xs';
+      else if (c === 'inspection') btn.className = 'cat-btn px-3 py-1.5 rounded-lg text-xs font-bold transition bg-amber-600 text-white shadow-xs';
+      else if (c === 'handover') btn.className = 'cat-btn px-3 py-1.5 rounded-lg text-xs font-bold transition bg-slate-800 text-white shadow-xs';
+      else btn.className = 'cat-btn px-3 py-1.5 rounded-lg text-xs font-bold transition bg-navy-900 text-white shadow-xs';
+    } else {
+      btn.className = 'cat-btn px-3 py-1.5 rounded-lg text-xs font-bold transition bg-white text-slate-700 border border-slate-200 hover:bg-slate-100';
+    }
+  });
+
+  applyFilters();
+}
+
+function clearSearch() {
+  var input = document.getElementById('leadSearchInput');
+  input.value = '';
+  activeQuery = '';
+  document.getElementById('clearSearchBtn').classList.add('hidden');
+  applyFilters();
+}
+
+function applyFilters() {
+  var rows = document.querySelectorAll('#leadsTableBody tr.lead-row');
+  var visibleCount = 0;
+  var q = (activeQuery || '').toLowerCase().trim();
+
+  rows.forEach(function(row) {
+    var rowCat = row.getAttribute('data-category');
+    var rowSearch = (row.getAttribute('data-search') || '').toLowerCase();
+
+    var matchesCat = (activeCategory === 'all' || rowCat === activeCategory);
+    var matchesSearch = (!q || rowSearch.indexOf(q) !== -1);
+
+    if (matchesCat && matchesSearch) {
+      row.style.display = '';
+      visibleCount++;
+    } else {
+      row.style.display = 'none';
+    }
+  });
+
+  var noRes = document.getElementById('noResultsRow');
+  if (noRes) {
+    noRes.style.display = (visibleCount === 0 && rows.length > 0) ? '' : 'none';
   }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  var searchInput = document.getElementById('leadSearchInput');
+  var clearBtn = document.getElementById('clearSearchBtn');
+
+  if (searchInput) {
+    searchInput.addEventListener('input', function() {
+      activeQuery = searchInput.value;
+      if (clearBtn) {
+        clearBtn.classList.toggle('hidden', !activeQuery);
+      }
+      applyFilters();
+    });
+  }
+
+  // Handle URL params if present
+  var params = new URLSearchParams(window.location.search);
+  var catParam = params.get('category');
+  var qParam = params.get('q');
+  if (catParam) {
+    setCategory(catParam);
+  }
+  if (qParam && searchInput) {
+    searchInput.value = qParam;
+    activeQuery = qParam;
+    if (clearBtn) clearBtn.classList.remove('hidden');
+  }
+  applyFilters();
 });
 </script>
 {% endblock %}
