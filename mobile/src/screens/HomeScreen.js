@@ -128,12 +128,21 @@ export default function HomeScreen({ navigation }) {
         </TouchableOpacity>
 
         <TouchableOpacity
+          style={styles.portalPill}
+          activeOpacity={0.7}
+          onPress={() => navigation.navigate("NewAMC")}
+        >
+          <Ionicons name="chatbubbles-outline" size={14} color={theme.navy} />
+          <Text style={styles.portalPillText}>+ New Inquiry</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
           style={[styles.portalPill, styles.portalPillPrimary]}
           activeOpacity={0.8}
           onPress={() => navigation.navigate("NewAMC")}
         >
           <Ionicons name="add-circle" size={14} color="#FFFFFF" />
-          <Text style={[styles.portalPillText, { color: "#FFFFFF", fontWeight: "700" }]}>+ New AMC</Text>
+          <Text style={[styles.portalPillText, { color: "#FFFFFF", fontWeight: "700" }]}>+ Request New AMC</Text>
         </TouchableOpacity>
       </ScrollView>
 
@@ -218,7 +227,7 @@ export default function HomeScreen({ navigation }) {
       {/* Quick actions */}
       <SectionTitle>Quick actions</SectionTitle>
       <View style={styles.actions}>
-        <Action icon="add-circle-outline" label="+ New AMC" onPress={() => navigation.navigate("NewAMC")} />
+        <Action icon="add-circle-outline" label="+ Request New AMC" onPress={() => navigation.navigate("NewAMC")} />
         <Action icon="clipboard-outline" label="Inspections" onPress={() => navigation.navigate("Inspections")} />
         <Action icon="shield-outline" label="Equipment" onPress={() => navigation.navigate("Equipment")} />
         <Action icon="flame-outline" label="Refill order" onPress={() => navigation.navigate("RequestRefill")} />
@@ -256,7 +265,7 @@ export default function HomeScreen({ navigation }) {
       </TouchableOpacity>
 
       {/* Contracts */}
-      <SectionTitle style={{ marginTop: 8 }}>My AMC contracts</SectionTitle>
+      <SectionTitle style={{ marginTop: 8 }}>New Enquiry</SectionTitle>
       {contracts.length === 0 ? (
         <Card>
           <Text style={styles.muted}>No contracts yet. Protect your building with an Annual Maintenance Contract.</Text>
