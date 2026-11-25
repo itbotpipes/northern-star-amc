@@ -132,8 +132,8 @@ export default function HomeScreen({ navigation }) {
           activeOpacity={0.7}
           onPress={() => navigation.navigate("NewAMC")}
         >
-          <Ionicons name="chatbubbles-outline" size={14} color={theme.navy} />
-          <Text style={styles.portalPillText}>+ New Inquiry</Text>
+          <Ionicons name="add-circle-outline" size={14} color={theme.navy} />
+          <Text style={styles.portalPillText}>+ Request New AMC</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -141,8 +141,8 @@ export default function HomeScreen({ navigation }) {
           activeOpacity={0.8}
           onPress={() => navigation.navigate("NewAMC")}
         >
-          <Ionicons name="add-circle" size={14} color="#FFFFFF" />
-          <Text style={[styles.portalPillText, { color: "#FFFFFF", fontWeight: "700" }]}>+ Request New AMC</Text>
+          <Ionicons name="chatbubbles" size={14} color="#FFFFFF" />
+          <Text style={[styles.portalPillText, { color: "#FFFFFF", fontWeight: "700" }]}>+ New Inquiry</Text>
         </TouchableOpacity>
       </ScrollView>
 
