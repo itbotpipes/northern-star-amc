@@ -735,6 +735,52 @@ def service_quotation_accept(sq_id):
 
     sq.status = "accepted"
     sq.responded_at = datetime.utcnow()
+    start_amc = request.form.get("start_amc") == "1"
+
+    # If accepting an enquiry quotation and opting into AMC (or AMC service type without a contract),
+    # create the AMC Contract so the full AMC flow (agreement, payment, visits) proceeds seamlessly.
+    created_contract = None
+    if not sq.contract_id and (start_amc or sq.service_type == "amc"):
+        from ..models import InquiryHistory
+        enq = Enquiry.query.filter_by(quotation_id=sq.id).first()
+        if not enq and getattr(sq, "inquiry_id", None):
+            enq = db.session.get(Enquiry, sq.inquiry_id)
+        created_contract = Contract(
+            status="pending",
+            lead_stage="pending_agreement",
+            project_type="new",
+            customer_id=current_user.id,
+            applicant_name=sq.customer_name or current_user.name,
+            applicant_phone=sq.customer_phone or current_user.phone,
+            applicant_email=sq.customer_email or current_user.email,
+            site_name=sq.project_name or (enq.subject if enq else "AMC Site"),
+            site_address=sq.customer_address or (enq.address if enq else current_user.address),
+            area=(enq.area if enq else current_user.area),
+            latitude=(enq.latitude if enq else None),
+            longitude=(enq.longitude if enq else None),
+            price=sq.grand_total,
+            total_visits=4,
+            payment_status="unpaid",
+        )
+        db.session.add(created_contract)
+        db.session.flush()
+        sq.contract_id = created_contract.id
+        if enq:
+            enq.status = "closed"
+            db.session.add(InquiryHistory(
+                inquiry_id=enq.id,
+                action="Converted to AMC",
+                actor_id=current_user.id,
+                actor_name=current_user.name,
+                details=f"Client accepted quotation {sq.reference} and initiated AMC contract {created_contract.reference}."
+            ))
+        db.session.add(CustomerJourneyEvent(
+            customer_id=current_user.id,
+            event_type="amc_started",
+            description=f"Started AMC {created_contract.reference} from quotation {sq.reference}",
+            ref_type="contract", ref_id=created_contract.id,
+        ))
+
     db.session.add(CustomerJourneyEvent(
         customer_id=current_user.id,
         event_type="quote_accepted",
@@ -746,9 +792,12 @@ def service_quotation_accept(sq_id):
     notify_staff(
         f"Quotation {sq.reference} ACCEPTED",
         f"{sq.customer_name} accepted ₹{sq.grand_total:,.0f}. "
-        f"{'Contract ' + sq.contract.reference + ' can now be activated.' if sq.contract else ''}".strip(),
+        f"{'AMC ' + sq.contract.reference + ' started — ready for agreement & activation.' if sq.contract else ''}".strip(),
         link=url_for("sq.detail_quotation", sq_id=sq.id) + "?chime=1")
-    flash("Quotation accepted! Our team will contact you shortly to proceed.", "success_chime")
+    if created_contract:
+        flash(f"Quotation accepted & AMC {created_contract.reference} started! Please complete payment and sign your AMC agreement below.", "success_chime")
+    else:
+        flash("Quotation accepted! Our team will contact you shortly to proceed.", "success_chime")
     return redirect(url_for("portal.service_quotation", sq_id=sq_id))
 
 
