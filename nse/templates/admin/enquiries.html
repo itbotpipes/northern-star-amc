@@ -269,7 +269,7 @@
                    class="px-2.5 py-1 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition">
                   Checklist
                 </a>
-                {% elif e.status == 'checklist_submitted' and not e.quotation_id %}
+                {% elif e.status == 'checklist_submitted' and not e.quotation_id and not (current_user.is_technician and not (current_user.is_manager or current_user.is_admin)) %}
                 <a href="{{ url_for('sq.new_quotation', inquiry_id=e.id) }}"
                    class="px-2.5 py-1 text-xs font-semibold rounded-lg bg-green-600 hover:bg-green-700 text-white transition">
                   Quote

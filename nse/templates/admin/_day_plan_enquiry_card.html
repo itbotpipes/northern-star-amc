@@ -41,6 +41,7 @@
       {% endif %}
     </div>
 
+    {% set is_pure_tech = current_user.is_technician and not (current_user.is_manager or current_user.is_admin) %}
     <div class="flex items-center gap-2 flex-shrink-0 flex-wrap">
       {% if e.status in ('assigned', 'site_visit_scheduled', 'site_visit_in_progress') %}
       <a href="{{ url_for('admin.enquiry_checklist', enq_id=e.id) }}"
@@ -48,18 +49,20 @@
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
         Start Checklist / Survey
       </a>
-      {% elif e.status == 'checklist_submitted' and not e.quotation_id %}
+      {% elif e.status == 'checklist_submitted' and not e.quotation_id and not is_pure_tech %}
       <a href="{{ url_for('sq.new_quotation', inquiry_id=e.id) }}"
          class="btn text-xs px-3.5 py-1.5 bg-green-600 hover:bg-green-700 text-white font-semibold shadow-sm rounded-xl transition">
         + Make Quotation
       </a>
       {% endif %}
 
+      {% if not is_pure_tech %}
       <a href="{{ url_for('sq.new_quotation', inquiry_id=e.id) }}"
          class="btn btn-ghost text-xs px-2.5 py-1.5 text-ink-muted hover:text-ink rounded-xl border border-slate-200"
          title="Create on-site material quotation">
         Material Quote
       </a>
+      {% endif %}
 
       <a href="{{ url_for('admin.enquiry_detail', enq_id=e.id) }}"
          class="btn btn-ghost text-xs px-2.5 py-1.5 flex-shrink-0 rounded-xl border border-slate-200">

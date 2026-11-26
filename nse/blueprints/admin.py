@@ -2314,7 +2314,7 @@ def enquiry_checklist(enq_id):
 
 @admin_bp.route("/enquiry/<int:enq_id>/generate-quotation", methods=["GET", "POST"])
 @login_required
-@staff_required
+@manager_required
 def enquiry_generate_quotation(enq_id):
     """Generate a ServiceQuotation based on the inspection checklist findings."""
     e = db.session.get(Enquiry, enq_id) or abort(404)

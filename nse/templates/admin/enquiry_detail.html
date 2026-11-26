@@ -55,7 +55,8 @@
           Assigned to {{ inquiry.assigned_to.name if inquiry.assigned_to else 'Technician' }}
         </span>
         {% endif %}
-        {% elif inquiry.status == 'checklist_submitted' and not inquiry.quotation_id %}
+        {% set is_pure_tech = current_user.is_technician and not (current_user.is_manager or current_user.is_admin) %}
+        {% elif inquiry.status == 'checklist_submitted' and not inquiry.quotation_id and not is_pure_tech %}
         <form method="post" action="{{ url_for('admin.enquiry_generate_quotation', enq_id=inquiry.id) }}">
           <button type="submit"
                   class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-green-600 hover:bg-green-700 text-white shadow-sm transition flex items-center gap-1.5">
@@ -63,7 +64,7 @@
             Generate Quotation from Checklist
           </button>
         </form>
-        {% elif inquiry.quotation_id %}
+        {% elif inquiry.quotation_id and not is_pure_tech %}
         <a href="{{ url_for('sq.detail_quotation', sq_id=inquiry.quotation_id) }}"
            class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-green-700 hover:bg-green-800 text-white shadow-sm transition flex items-center gap-1.5">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>
@@ -462,7 +463,18 @@
           </div>
         </div>
 
-        {% if inquiry.quotation %}
+        {% set is_pure_tech = current_user.is_technician and not (current_user.is_manager or current_user.is_admin) %}
+        {% if is_pure_tech %}
+        <p class="text-xs text-slate-500">
+          {% if inquiry.quotation %}
+          Quotation {{ inquiry.quotation.reference }} ({{ inquiry.quotation.status_label }}) is managed by sales/operations.
+          {% elif inquiry.status == 'checklist_submitted' %}
+          Checklist complete — operations will generate and send the quotation.
+          {% else %}
+          Submit the on-site inspection checklist so operations can prepare the quotation.
+          {% endif %}
+        </p>
+        {% elif inquiry.quotation %}
         <div class="bg-green-50/60 border border-green-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div class="flex items-center gap-2">

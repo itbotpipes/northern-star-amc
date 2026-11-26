@@ -259,7 +259,8 @@
   {% endif %}
 
   <!-- Outcome quotation/audit -->
-  {% if quote %}
+  {% set is_pure_tech = current_user.is_technician and not (current_user.is_manager or current_user.is_admin) %}
+  {% if quote and not is_pure_tech %}
   <div class="card p-6">
     <h2 class="font-bold text-ink mb-2">Quotation</h2>
     <div class="flex items-center justify-between text-sm">
@@ -339,7 +340,7 @@
         <div class="absolute -left-6 top-1 w-4 h-4 rounded-full bg-emerald-500 border-2 border-white ring-2 ring-emerald-100"></div>
         <div class="text-sm font-semibold text-ink">Sales Quotation Generated</div>
         <div class="text-xs text-ink-subtle mt-0.5">
-          Quote Ref: {{ quote.reference }} · Value: {{ quote.grand_total|rupees }}
+          Quote Ref: {{ quote.reference }}{% if not is_pure_tech %} · Value: {{ quote.grand_total|rupees }}{% endif %}
         </div>
         <p class="text-xs text-ink-muted mt-1">
           Status: <strong>{{ quote.status_label }}</strong>
