@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 {% from "_macros.html" import field, voice_note_widget, photo_upload_widget %}
-{% block title %}Customer Inquiry — {{ COMPANY_NAME }}{% endblock %}
+{% block title %}Customer Enquiry — {{ COMPANY_NAME }}{% endblock %}
 {% block content %}
 {% set cu = current_user if current_user.is_authenticated and current_user.role == 'customer' else None %}
 <section class="max-w-3xl mx-auto px-4 py-16">
-  <span class="eyebrow">Customer Inquiry</span>
+  <span class="eyebrow">Customer Enquiry</span>
   <h1 class="text-3xl md:text-4xl font-extrabold text-ink mt-3">Send an enquiry</h1>
   <p class="text-ink-subtle mt-3 text-lg">Tell us about your site and service requirements. Our Team Leader will schedule an on-site inspection, share a full audit report, and follow up with a quotation — no need to pick a plan yourself. You can also use the voice button if you find it easier to speak than type.</p>
 
@@ -93,10 +93,10 @@
       </div>
     </div>
 
-    <!-- The problem / inquiry: text or voice -->
+    <!-- The problem / enquiry: text or voice -->
     <div class="space-y-3">
       <label class="block">
-        <span class="text-sm font-medium text-ink-muted">Inquiry details & site requirements <span class="text-danger">*</span></span>
+        <span class="text-sm font-medium text-ink-muted">Enquiry details & site requirements <span class="text-danger">*</span></span>
         <textarea name="message" rows="3" required class="mt-1.5 w-full px-3 py-2.5"
                   placeholder="Tell us about your fire safety equipment, current condition, issues observed, or timing preferences…"></textarea>
       </label>
@@ -107,7 +107,7 @@
     <!-- Site photos / videos -->
     {{ photo_upload_widget('site_photos', 'Upload site photos or videos for reference (optional)') }}
 
-    <button class="btn btn-primary w-full text-base py-3">Submit Inquiry & Forward to Team Leader</button>
+    <button class="btn btn-primary w-full text-base py-3">Submit Enquiry & Forward to Team Leader</button>
     <p class="text-sm text-ink-muted text-center mt-2">
       Our technician will visit, inspect and share a quotation — no payment now.
     </p>

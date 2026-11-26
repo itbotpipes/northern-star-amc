@@ -390,7 +390,7 @@ def enquiry(lead_category="enquiry"):
         phone = (f.get("phone") or "").strip() or (cu.phone if cu else "")
         email = (f.get("email") or "").strip() or (cu.email if cu else "")
         service_requirement = f.get("service_requirement", "Fire Safety Inspection & AMC").strip()
-        subject = f.get("subject", "").strip() or f"{service_requirement} Inquiry"
+        subject = f.get("subject", "").strip() or f"{service_requirement} Enquiry"
         if site_name:
             subject = f"{service_requirement} — {site_name}"
         if lead_cat == "inspection" and "inspection" not in subject.lower():
@@ -420,7 +420,7 @@ def enquiry(lead_category="enquiry"):
             address=site_address, area=area, city=f.get("city", "Surat, Gujarat").strip(),
             latitude=lat or None, longitude=lng or None,
             service_requirement=service_requirement,
-            subject=subject, message=message or "Site inspection & AMC inquiry submitted.",
+            subject=subject, message=message or "Site inspection & AMC enquiry submitted.",
             customer_id=cu_id,
             status="new"
         )
@@ -462,16 +462,16 @@ def enquiry(lead_category="enquiry"):
         try:
             history = InquiryHistory(
                 inquiry_id=e.id,
-                action="Inquiry Created",
+                action="Enquiry Created",
                 actor_name=name or "Customer",
-                details=f"Inquiry generated via public portal. Service requirement: {service_requirement} at {site_name or area or 'Surat'}."
+                details=f"Enquiry generated via public portal. Service requirement: {service_requirement} at {site_name or area or 'Surat'}."
             )
             db.session.add(history)
             if cu_id:
                 db.session.add(CustomerJourneyEvent(
                     customer_id=cu_id,
                     event_type="enquiry_submitted",
-                    description=f"Inquiry {e.reference} submitted for {site_name or area or 'site'}.",
+                    description=f"Enquiry {e.reference} submitted for {site_name or area or 'site'}.",
                     ref_type="enquiry",
                     ref_id=e.id
                 ))
@@ -482,7 +482,7 @@ def enquiry(lead_category="enquiry"):
         # Notify Team Leader
         try:
             notify_team_leaders(
-                title=f"New Inquiry — {e.reference}",
+                title=f"New Enquiry — {e.reference}",
                 body=f"{name} requested {service_requirement} at {site_name or area or 'Surat'}. Forwarded to Team Leader for technician assignment.",
                 link=url_for("admin.enquiry_detail", enq_id=e.id)
             )
@@ -496,7 +496,7 @@ def enquiry(lead_category="enquiry"):
         except Exception:
             pass
 
-        flash(f"Thank you, {name}! Your inquiry ({e.reference}) has been received and forwarded to our Team Leader. An engineer will be assigned for your site inspection.", "success")
+        flash(f"Thank you, {name}! Your enquiry ({e.reference}) has been received and forwarded to our Team Leader. An engineer will be assigned for your site inspection.", "success")
         return redirect(url_for("portal.dashboard" if cu else "public.enquiry"))
     return render_template("site/enquiry.html", my_sites=my_sites, lead_category=lead_cat)
 
@@ -628,7 +628,7 @@ def custom_plan():
         db.session.commit()
         notify_managers(
             title=f"New Custom Plan Enquiry — {e.reference}",
-            body=f"{name} submitted custom AMC inquiry. Tap to review lead.",
+            body=f"{name} submitted custom AMC enquiry. Tap to review lead.",
             link=url_for("admin.enquiry_detail", enq_id=e.id)
         )
         flash("Thank you! Our team will contact you within 24 hours with a tailored plan.", "success")

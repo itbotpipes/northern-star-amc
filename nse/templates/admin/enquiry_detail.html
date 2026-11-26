@@ -1,6 +1,6 @@
 {% extends "base_ops.html" %}
 {% from "_macros.html" import status_badge %}
-{% block title %}{{ inquiry.ref_code }} — Inquiry Detail — Ops Console{% endblock %}
+{% block title %}{{ inquiry.ref_code }} — Enquiry Detail — Ops Console{% endblock %}
 
 {% block content %}
 <div class="space-y-6 max-w-6xl mx-auto">
@@ -9,7 +9,7 @@
   <div class="flex items-center justify-between text-xs text-ink-subtle">
     <a href="{{ url_for('admin.enquiries') }}" class="hover:text-primary transition flex items-center gap-1 font-medium">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-      Back to Inquiries
+      Back to Enquiries
     </a>
     <span class="mono">{{ inquiry.created_at.strftime('%d %b %Y, %I:%M %p') }}</span>
   </div>
@@ -72,9 +72,9 @@
         {% endif %}
 
         {% if inquiry.status != 'closed' %}
-        <form method="post" action="{{ url_for('admin.enquiry_close', enq_id=inquiry.id) }}" onsubmit="return confirm('Close this inquiry?');">
+        <form method="post" action="{{ url_for('admin.enquiry_close', enq_id=inquiry.id) }}" onsubmit="return confirm('Close this enquiry?');">
           <button type="submit" class="px-3 py-2 rounded-xl text-xs font-medium text-slate-500 hover:bg-slate-100 transition">
-            Close Inquiry
+            Close Enquiry
           </button>
         </form>
         {% endif %}
@@ -83,7 +83,7 @@
 
     <!-- Workflow Progression Roadmap -->
     <div class="mt-6 pt-5 border-t border-slate-100">
-      <div class="text-[11px] font-bold uppercase tracking-wider text-ink-subtle mb-3">Inquiry Lifecycle</div>
+      <div class="text-[11px] font-bold uppercase tracking-wider text-ink-subtle mb-3">Enquiry Lifecycle</div>
       <div class="grid grid-cols-1 sm:grid-cols-5 gap-2">
         {% for step in inquiry.workflow_steps %}
         <div class="relative p-3 rounded-xl border {{ 'border-green-300 bg-green-50/60' if step.done else ('border-amber-400 bg-amber-50 ring-2 ring-amber-200' if step.active else 'border-slate-200 bg-slate-50/60') }} transition">
@@ -164,7 +164,7 @@
           </div>
           {% if inquiry.message %}
           <div class="sm:col-span-2 pt-2 border-t border-slate-100">
-            <span class="text-ink-subtle">Inquiry Details / Customer Notes</span>
+            <span class="text-ink-subtle">Enquiry Details / Customer Notes</span>
             <p class="text-xs text-ink bg-slate-50 rounded-xl p-3 mt-1 whitespace-pre-line border border-slate-100">
               {{ inquiry.message }}
             </p>
@@ -407,7 +407,7 @@
           {% endfor %}
         </div>
         {% else %}
-        <p class="text-xs text-slate-500">No photos uploaded for this inquiry yet.</p>
+        <p class="text-xs text-slate-500">No photos uploaded for this enquiry yet.</p>
         {% endif %}
       </div>
 
@@ -463,13 +463,13 @@
 
     </div>
 
-    <!-- Right Column: Audit Trail & Complete Inquiry History -->
+    <!-- Right Column: Audit Trail & Complete Enquiry History -->
     <div class="space-y-6">
 
-      <!-- Complete Inquiry History / Timeline -->
+      <!-- Complete Enquiry History / Timeline -->
       <div class="card p-5 space-y-4">
         <div class="flex items-center justify-between">
-          <h2 class="text-sm font-bold text-ink uppercase tracking-wider">Inquiry Audit Trail</h2>
+          <h2 class="text-sm font-bold text-ink uppercase tracking-wider">Enquiry Audit Trail</h2>
           <span class="text-[10px] font-semibold text-slate-500">{{ inquiry.history_logs|length }} events</span>
         </div>
 

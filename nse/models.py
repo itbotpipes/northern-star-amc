@@ -1206,7 +1206,7 @@ class Enquiry(db.Model):
         quote_desc = self.quotation.quotation_number if self.quotation else "Generation"
 
         return [
-            {"num": 1, "label": "New Inquiry", "desc": "Submitted", "done": s1_done, "active": s1_active},
+            {"num": 1, "label": "New Enquiry", "desc": "Submitted", "done": s1_done, "active": s1_active},
             {"num": 2, "label": "Assignment", "desc": tech_desc, "done": s2_done, "active": s2_active},
             {"num": 3, "label": "Site Visit", "desc": visit_desc, "done": s3_done, "active": s3_active},
             {"num": 4, "label": "Checklist", "desc": "Inspection Form", "done": s4_done, "active": s4_active},

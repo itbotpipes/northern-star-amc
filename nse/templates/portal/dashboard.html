@@ -409,7 +409,7 @@
   </div>
   {% endif %}
 
-  <!-- Contracts & Inquiries -->
+  <!-- Contracts & Enquiries -->
   <h2 class="text-lg font-bold text-navy-800 mt-8 mb-3">New Enquiry</h2>
   {% if contracts %}
   <div class="grid md:grid-cols-2 gap-5">
@@ -554,15 +554,15 @@
   {% endif %}
 
   {% if has_finalised_contract %}
-  <!-- Customer Inquiries & Inspection Visits (Visible ONLY after contract is finalised) -->
+  <!-- Customer Enquiries & Inspection Visits (Visible ONLY after contract is finalised) -->
   <div class="flex items-center justify-between mt-10 mb-3">
-    <h2 class="text-lg font-bold text-navy-800">Service Inquiries & Site Inspections</h2>
+    <h2 class="text-lg font-bold text-navy-800">Service Enquiries & Site Inspections</h2>
     <a href="{{ url_for('public.enquiry') }}"
       class="text-xs text-primary font-semibold hover:underline flex items-center gap-1">
       <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M12 5v14M5 12h14" />
       </svg>
-      New Inquiry / Site Visit
+      New Enquiry / Site Visit
     </a>
   </div>
   {% if inquiries or scheduled_inspections %}
@@ -620,12 +620,12 @@
   {% else %}
   <div
     class="bg-white border border-dashed border-slate-300 rounded-2xl p-6 text-center text-slate-500 text-sm shadow-sm">
-    <p class="font-medium text-slate-700">No active site inspection inquiries</p>
+    <p class="font-medium text-slate-700">No active site inspection enquiries</p>
     <p class="text-xs text-slate-500 mt-1">Need an on-site survey, fire safety inspection, or new equipment
       installation?</p>
     <a href="{{ url_for('public.enquiry') }}"
       class="inline-flex items-center gap-1.5 mt-3 text-xs bg-primary text-white font-semibold px-3 py-1.5 rounded-lg hover:bg-primary-hover transition">
-      Request Site Visit / Submit Inquiry →
+      Request Site Visit / Submit Enquiry →
     </a>
   </div>
   {% endif %}

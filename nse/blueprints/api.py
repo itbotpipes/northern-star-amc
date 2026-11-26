@@ -1506,7 +1506,7 @@ def api_customer_inspections():
                 "type": "inquiry",
                 "reference": inq.ref_code,
                 "service_name": inq.service_requirement or "On-Site Fire Safety Inspection",
-                "site_name": inq.name or f"Inquiry #{inq.ref_code}",
+                "site_name": inq.name or f"Enquiry #{inq.ref_code}",
                 "scheduled_date": _d(inq.visit_scheduled_date),
                 "completed_date": _d(inq.visit_completed_at),
                 "time_slot": inq.visit_time_slot or "Standard Hours (10:00 AM – 06:00 PM)",
@@ -2022,7 +2022,7 @@ def tech_inventory_search():
 @api_bp.route("/tech/inquiries")
 @technician_only
 def tech_inquiries():
-    """List inquiries assigned to the logged-in technician."""
+    """List enquiries assigned to the logged-in technician."""
     t = g.current_user
     rows = Enquiry.query.filter_by(assigned_to_id=t.id)\
         .order_by(Enquiry.visit_scheduled_date.asc(), Enquiry.created_at.desc()).all()
@@ -2049,10 +2049,10 @@ def tech_inquiries():
 @api_bp.route("/tech/inquiries/<int:inq_id>")
 @technician_only
 def tech_inquiry_detail(inq_id):
-    """Get full details of an inquiry including checklist and history."""
+    """Get full details of an enquiry including checklist and history."""
     e = db.session.get(Enquiry, inq_id)
     if not e or (e.assigned_to_id != g.current_user.id and not g.current_user.is_admin):
-        return jsonify(error="Inquiry not found or access denied"), 404
+        return jsonify(error="Enquiry not found or access denied"), 404
 
     return jsonify(inquiry={
         "id": e.id,
@@ -2099,7 +2099,7 @@ def tech_submit_inquiry_checklist(inq_id):
     """Submit checklist from mobile app. Only assigned technician or Team Leader can submit."""
     e = db.session.get(Enquiry, inq_id)
     if not e:
-        return jsonify(error="Inquiry not found"), 404
+        return jsonify(error="Enquiry not found"), 404
 
     is_assigned_tech = bool(e.assigned_to_id and g.current_user.id == e.assigned_to_id)
     is_tl_or_admin = bool(g.current_user.is_team_leader or g.current_user.is_admin or g.current_user.is_manager)
@@ -2171,10 +2171,10 @@ def tech_submit_inquiry_checklist(inq_id):
 @api_bp.route("/tech/inquiries/<int:inq_id>/visit-status", methods=["POST"])
 @technician_only
 def tech_update_inquiry_status(inq_id):
-    """Update inquiry visit status from mobile app."""
+    """Update enquiry visit status from mobile app."""
     e = db.session.get(Enquiry, inq_id)
     if not e:
-        return jsonify(error="Inquiry not found"), 404
+        return jsonify(error="Enquiry not found"), 404
 
     is_assigned_tech = bool(e.assigned_to_id and g.current_user.id == e.assigned_to_id)
     is_tl_or_admin = bool(g.current_user.is_team_leader or g.current_user.is_admin or g.current_user.is_manager)

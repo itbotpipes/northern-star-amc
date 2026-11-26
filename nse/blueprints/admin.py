@@ -1854,7 +1854,7 @@ DEFAULT_INQUIRY_CHECKLIST = [
 @login_required
 @staff_required
 def enquiries():
-    """Inquiry Management Dashboard: view, search, filter and track inquiries."""
+    """Enquiry Management Dashboard: view, search, filter and track enquiries."""
     default_tab = "my" if (current_user.is_authenticated and not current_user.is_manager) else "all"
     tab = request.args.get("tab", default_tab)
     q = request.args.get("q", "").strip()
@@ -1925,7 +1925,7 @@ def enquiries():
 @login_required
 @manager_required
 def enquiry_new():
-    """Staff intake: manually record incoming phone/walk-in inquiries."""
+    """Staff intake: manually record incoming phone/walk-in enquiries."""
     technicians = User.query.filter(User.role.in_(["technician", "admin"])).order_by(User.name).all()
 
     if request.method == "POST":
@@ -1937,7 +1937,7 @@ def enquiry_new():
         area = f.get("area", "").strip()
         city = f.get("city", "Surat, Gujarat").strip()
         service_requirement = f.get("service_requirement", "Fire Safety Inspection & AMC").strip()
-        subject = f.get("subject", "").strip() or f"{service_requirement} Inquiry"
+        subject = f.get("subject", "").strip() or f"{service_requirement} Enquiry"
         message = f.get("message", "").strip()
         tech_id = f.get("assigned_to_id", type=int)
         visit_date_str = f.get("visit_scheduled_date")
@@ -1971,10 +1971,10 @@ def enquiry_new():
         # Initial history
         db.session.add(InquiryHistory(
             inquiry_id=e.id,
-            action="Inquiry Created",
+            action="Enquiry Created",
             actor_id=current_user.id,
             actor_name=current_user.name,
-            details=f"Inquiry logged by staff ({current_user.name}). Service: {service_requirement}."
+            details=f"Enquiry logged by staff ({current_user.name}). Service: {service_requirement}."
         ))
 
         # If technician is assigned directly on creation
@@ -2006,7 +2006,7 @@ def enquiry_new():
                 try:
                     notify(
                         assigned_tech.id,
-                        title=f"New Inquiry Assigned — {e.reference}",
+                        title=f"New Enquiry Assigned — {e.reference}",
                         body=f"Visit scheduled for {e.name} at {e.address or e.city}. Service: {service_requirement}.",
                         link=url_for("admin.enquiry_detail", enq_id=e.id)
                     )
@@ -2016,7 +2016,7 @@ def enquiry_new():
             # Notify Team Leaders
             try:
                 notify_team_leaders(
-                    title=f"New Customer Inquiry — {e.reference}",
+                    title=f"New Customer Enquiry — {e.reference}",
                     body=f"{name} requested {service_requirement} at {area or city}. Ready for technician assignment.",
                     link=url_for("admin.enquiry_detail", enq_id=e.id)
                 )
@@ -2024,7 +2024,7 @@ def enquiry_new():
                 pass
 
         db.session.commit()
-        flash(f"Inquiry {e.reference} created successfully.", "success")
+        flash(f"Enquiry {e.reference} created successfully.", "success")
         return redirect(url_for("admin.enquiry_detail", enq_id=e.id))
 
     return render_template("admin/enquiry_new.html", technicians=technicians)
@@ -2034,7 +2034,7 @@ def enquiry_new():
 @login_required
 @staff_required
 def enquiry_detail(enq_id):
-    """Complete Inquiry detail page with workflow track, assignment, checklist review, and history."""
+    """Complete Enquiry detail page with workflow track, assignment, checklist review, and history."""
     e = db.session.get(Enquiry, enq_id) or abort(404)
     if current_user.is_technician and not (current_user.is_manager or current_user.is_admin):
         if e.assigned_to_id != current_user.id:
@@ -2121,7 +2121,7 @@ def enquiry_assign(enq_id):
     try:
         notify(
             tech.id,
-            title=f"Inquiry Assigned — {e.ref_code}",
+            title=f"Enquiry Assigned — {e.ref_code}",
             body=f"Visit scheduled for {e.name} at {e.address or e.city} on {e.visit_scheduled_date or 'TBD'}. Tap to review site details.",
             link=url_for("admin.enquiry_detail", enq_id=e.id)
         )
@@ -2140,7 +2140,7 @@ def enquiry_assign(enq_id):
         except Exception:
             pass
 
-    flash(f"Inquiry {e.ref_code} assigned to {tech.name}. Notification sent.", "success")
+    flash(f"Enquiry {e.ref_code} assigned to {tech.name}. Notification sent.", "success")
     return redirect(url_for("admin.enquiry_detail", enq_id=e.id))
 
 
@@ -2163,7 +2163,7 @@ def enquiry_visit_status(enq_id):
             details=notes or f"Visit status updated to {e.status_label} by {current_user.name}."
         ))
         db.session.commit()
-        flash(f"Inquiry status updated to {e.status_label}.", "success")
+        flash(f"Enquiry status updated to {e.status_label}.", "success")
 
     return redirect(url_for("admin.enquiry_detail", enq_id=e.id))
 
@@ -2315,7 +2315,7 @@ def enquiry_generate_quotation(enq_id):
     e = db.session.get(Enquiry, enq_id) or abort(404)
 
     if e.quotation_id:
-        flash(f"Quotation {e.quotation.reference} has already been generated for this inquiry.", "info")
+        flash(f"Quotation {e.quotation.reference} has already been generated for this enquiry.", "info")
         return redirect(url_for("sq.detail_quotation", sq_id=e.quotation_id))
 
     # On POST: Create the quotation automatically from checklist findings
@@ -2405,20 +2405,20 @@ def enquiry_generate_quotation(enq_id):
 @login_required
 @manager_required
 def enquiry_close(enq_id):
-    """Mark an inquiry as closed / completed."""
+    """Mark an enquiry as closed / completed."""
     e = db.session.get(Enquiry, enq_id) or abort(404)
     reason = request.form.get("reason", "").strip() or "Closed by staff"
 
     e.status = "closed"
     db.session.add(InquiryHistory(
         inquiry_id=e.id,
-        action="Inquiry Closed",
+        action="Enquiry Closed",
         actor_id=current_user.id,
         actor_name=current_user.name,
-        details=f"Inquiry closed by {current_user.name}. Reason: {reason}"
+        details=f"Enquiry closed by {current_user.name}. Reason: {reason}"
     ))
     db.session.commit()
-    flash(f"Inquiry {e.ref_code} marked as closed.", "success")
+    flash(f"Enquiry {e.ref_code} marked as closed.", "success")
     return redirect(url_for("admin.enquiry_detail", enq_id=e.id))
 
 
@@ -2426,7 +2426,7 @@ def enquiry_close(enq_id):
 @login_required
 @staff_required
 def enquiry_add_note(enq_id):
-    """Add a manual remark or activity note to the inquiry history."""
+    """Add a manual remark or activity note to the enquiry history."""
     e = db.session.get(Enquiry, enq_id) or abort(404)
     note_text = request.form.get("note", "").strip()
 
@@ -2439,7 +2439,7 @@ def enquiry_add_note(enq_id):
             details=note_text
         ))
         db.session.commit()
-        flash("Note recorded in inquiry history.", "success")
+        flash("Note recorded in enquiry history.", "success")
 
     return redirect(url_for("admin.enquiry_detail", enq_id=e.id))
 
@@ -2456,7 +2456,7 @@ def respond_enquiry(enq_id):
         action="Marked Responded",
         actor_id=current_user.id,
         actor_name=current_user.name,
-        details=f"Inquiry marked as responded by {current_user.name}."
+        details=f"Enquiry marked as responded by {current_user.name}."
     ))
     db.session.commit()
     flash("Marked as responded.", "success")
