@@ -161,20 +161,65 @@ function toggleSite() {
 (function () {
   var btn = document.getElementById('useLocationBtn');
   if (!btn) return;
+  function applyCoords(lat, lng, status, fallbackLabel) {
+    document.getElementById('latitude').value = lat;
+    document.getElementById('longitude').value = lng;
+    status.innerHTML = 'Location captured &#10003; <a class="text-primary underline" target="_blank" href="https://maps.google.com/?q=' + lat + ',' + lng + '">view on map</a>';
+    var addr = document.querySelector('[name="site_address"]');
+    var area = document.querySelector('[name="area"]');
+    fetch('https://nominatim.openstreetmap.org/reverse?format=json&lat=' + lat + '&lon=' + lng)
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        if (data && data.display_name) {
+          if (addr) addr.value = data.display_name;
+          if (area && data.address) {
+            area.value = data.address.suburb || data.address.neighbourhood || data.address.city_district || data.address.town || area.value;
+          }
+        } else if (addr && !addr.value.trim()) {
+          addr.value = fallbackLabel || ('Near ' + lat + ', ' + lng + ' (GPS location)');
+        }
+      })
+      .catch(function () {
+        if (addr && !addr.value.trim()) addr.value = fallbackLabel || ('Near ' + lat + ', ' + lng + ' (GPS location)');
+      });
+  }
+  function ipFallback(status, reason) {
+    fetch('https://ipwho.is/')
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (d && d.success && d.latitude && d.longitude) {
+          var label = [d.city, d.region, d.country].filter(Boolean).join(', ');
+          applyCoords(Number(d.latitude).toFixed(6), Number(d.longitude).toFixed(6), status, label);
+        } else {
+          status.textContent = reason || 'Could not get location. Please type the address instead.';
+        }
+      })
+      .catch(function () {
+        status.textContent = reason || 'Could not get location. Please type the address instead.';
+      });
+  }
   btn.addEventListener('click', function () {
     var status = document.getElementById('locStatus');
-    if (!navigator.geolocation) { status.textContent = 'Location not supported on this device.'; return; }
+    if (!navigator.geolocation) {
+      status.textContent = 'Detecting approximate location…';
+      ipFallback(status, 'Location not supported on this device.');
+      return;
+    }
     status.textContent = 'Getting your location…';
     navigator.geolocation.getCurrentPosition(function (pos) {
-      var lat = pos.coords.latitude.toFixed(6), lng = pos.coords.longitude.toFixed(6);
-      document.getElementById('latitude').value = lat;
-      document.getElementById('longitude').value = lng;
-      status.innerHTML = 'Location captured &#10003; <a class="text-primary underline" target="_blank" href="https://maps.google.com/?q=' + lat + ',' + lng + '">view on map</a>';
-      var addr = document.querySelector('[name="site_address"]');
-      if (addr && !addr.value.trim()) addr.value = 'Near ' + lat + ', ' + lng + ' (GPS location)';
-    }, function () {
-      status.textContent = 'Could not get location. Please type the address instead.';
-    }, { enableHighAccuracy: true, timeout: 10000 });
+      applyCoords(pos.coords.latitude.toFixed(6), pos.coords.longitude.toFixed(6), status);
+    }, function (err) {
+      if (err && err.code === 1) {
+        status.textContent = 'Location permission denied. Trying approximate location…';
+        ipFallback(status, 'Location permission denied. Please allow location access or type your address.');
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(function (pos2) {
+        applyCoords(pos2.coords.latitude.toFixed(6), pos2.coords.longitude.toFixed(6), status);
+      }, function () {
+        ipFallback(status, 'Could not get GPS location. Please type the address instead.');
+      }, { enableHighAccuracy: false, timeout: 8000, maximumAge: 120000 });
+    }, { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 });
   });
 })();
 </script>

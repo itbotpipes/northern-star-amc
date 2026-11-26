@@ -173,6 +173,48 @@
         </div>
       </div>
 
+      {% if attachments %}
+      {% set audio_atts = attachments | selectattr('attachment_type', 'equalto', 'audio') | list %}
+      {% set media_atts = attachments | rejectattr('attachment_type', 'equalto', 'audio') | list %}
+      {% if audio_atts %}
+      <div class="card p-5 space-y-3 bg-blue-50/60 border border-blue-200">
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-blue-900 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3M8 22h8"/></svg>
+            Customer Voice Note
+          </span>
+          <span class="text-[11px] text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full font-semibold">Recorded by client</span>
+        </div>
+        {% for att in audio_atts %}
+        <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+          <audio controls preload="metadata" class="w-full sm:flex-1 h-10 rounded-lg shadow-xs" src="{{ att.file_path|upload_url }}"></audio>
+          <a href="{{ att.file_path|upload_url }}" download class="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-white border border-blue-200 text-blue-800 hover:bg-blue-50 transition shadow-2xs self-end sm:self-center flex-shrink-0">
+            Download
+          </a>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% if media_atts %}
+      <div class="card p-5 space-y-3">
+        <h2 class="text-sm font-bold text-ink uppercase tracking-wider">Attached Site Photos &amp; Videos ({{ media_atts|length }})</h2>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {% for att in media_atts %}
+          <div class="border border-hairline rounded-lg overflow-hidden bg-surface-2 p-1 text-center">
+            {% if att.attachment_type == 'video' %}
+            <video src="{{ att.file_path|upload_url }}" controls preload="metadata" class="w-full h-28 object-cover rounded"></video>
+            {% else %}
+            <a href="{{ att.file_path|upload_url }}" target="_blank">
+              <img src="{{ att.file_path|upload_url }}" alt="Site photo" class="w-full h-28 object-cover rounded hover:opacity-90 transition">
+            </a>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+      {% endif %}
+
       <!-- Team Leader Assignment Card -->
       <div id="assignment" class="card p-5 space-y-4 scroll-mt-6 {{ 'border-amber-300 ring-2 ring-amber-100' if inquiry.status == 'new' else '' }}">
         <div class="flex items-center justify-between">

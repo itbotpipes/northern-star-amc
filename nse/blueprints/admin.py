@@ -2056,11 +2056,16 @@ def enquiry_detail(enq_id):
         "na": sum(1 for i in e.checklist_items if i.status == "na"),
     }
 
+    attachments = FormAttachment.query.filter_by(
+        ref_type="enquiry", ref_id=e.id
+    ).order_by(FormAttachment.created_at.asc()).all()
+
     return render_template("admin/enquiry_detail.html",
                            inquiry=e,
                            technicians=technicians,
                            grouped_checklist=grouped_checklist,
-                           checklist_stats=checklist_stats)
+                           checklist_stats=checklist_stats,
+                           attachments=attachments)
 
 
 @admin_bp.route("/enquiry/<int:enq_id>/assign", methods=["POST"])

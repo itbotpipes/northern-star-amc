@@ -59,7 +59,28 @@ def create_app(config_class=Config, root=None):
         uf = UploadedFile.query.filter_by(path=file_path).first()
         if not uf:
             abort(404)
-        resp = Response(uf.data, mimetype=uf.mimetype or "application/octet-stream")
+        data = uf.data or b""
+        total = len(data)
+        mime = uf.mimetype or "application/octet-stream"
+        range_header = request.headers.get("Range")
+        if range_header and total > 0:
+            import re as _re
+            m = _re.match(r"bytes=(\d+)-(\d*)", range_header.strip())
+            if m:
+                start = int(m.group(1))
+                end = int(m.group(2)) if m.group(2) else total - 1
+                end = min(end, total - 1)
+                if start <= end < total:
+                    chunk = data[start:end + 1]
+                    resp = Response(chunk, status=206, mimetype=mime, direct_passthrough=True)
+                    resp.headers["Content-Range"] = f"bytes {start}-{end}/{total}"
+                    resp.headers["Accept-Ranges"] = "bytes"
+                    resp.headers["Content-Length"] = str(len(chunk))
+                    resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+                    return resp
+        resp = Response(data, mimetype=mime)
+        resp.headers["Accept-Ranges"] = "bytes"
+        resp.headers["Content-Length"] = str(total)
         resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
         return resp
 
