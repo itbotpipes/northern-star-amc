@@ -50,7 +50,9 @@ def dashboard():
         if phone_last10:
             contract_filters.append(Contract.applicant_phone.ilike(f"%{phone_last10}%"))
     contracts = Contract.query.options(
-        joinedload(Contract.customer), selectinload(Contract.visits)
+        joinedload(Contract.customer),
+        selectinload(Contract.visits),
+        selectinload(Contract.service_quotations),
     ).filter(or_(*contract_filters)).order_by(Contract.created_at.desc()).all()
 
     requests_ = ServiceRequest.query.filter_by(customer_id=current_user.id)\
@@ -106,11 +108,22 @@ def dashboard():
     scheduled_inspections = []
     inspections_waiting_for_quote = []
 
+    # Batch-fetch completed HealthCheckReports to avoid N+1 queries per contract
+    pending_contract_ids = [c.id for c in contracts if c.status not in ("active", "completed", "cancelled", "expired")]
+    completed_hr_contract_ids = set()
+    if pending_contract_ids:
+        completed_hr_contract_ids = {
+            row[0] for row in db.session.query(HealthCheckReport.contract_id).filter(
+                HealthCheckReport.contract_id.in_(pending_contract_ids),
+                HealthCheckReport.status == "completed"
+            ).all()
+        }
+
     for c in contracts:
         if c.status in ("active", "completed", "cancelled", "expired"):
             continue
 
-        hr_completed = HealthCheckReport.query.filter_by(contract_id=c.id, status="completed").first() is not None
+        hr_completed = c.id in completed_hr_contract_ids
         insp_done = hr_completed or c.lead_stage in ("inspection_done", "needs_quote", "audit_only", "rework")
         has_quote = len(c.service_quotations) > 0
 
@@ -1055,7 +1068,9 @@ def inspections():
         if phone_last10:
             contract_filters.append(Contract.applicant_phone.ilike(f"%{phone_last10}%"))
     contracts = Contract.query.options(
-        joinedload(Contract.customer), selectinload(Contract.visits)
+        joinedload(Contract.customer),
+        selectinload(Contract.visits),
+        selectinload(Contract.service_quotations),
     ).filter(or_(*contract_filters)).order_by(Contract.created_at.desc()).all()
 
     inquiry_filters = [Enquiry.customer_id == current_user.id]

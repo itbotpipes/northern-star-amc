@@ -30,6 +30,7 @@ def create_app(config_class=Config, root=None):
 
     app.config.from_object(config_class)
     app.config.setdefault("SERVER_PORT", int(os.getenv("PORT", "5055")))
+    app.config.setdefault("SEND_FILE_MAX_AGE_DEFAULT", 86400)
 
     db.init_app(app)
     login_manager.init_app(app)
@@ -111,13 +112,20 @@ def create_app(config_class=Config, root=None):
     )
 
     _last_reminders_run = 0
+    _staff_badge_cache = {}  # (user_id, is_manager) -> (timestamp, dict)
 
     @app.context_processor
     def inject_globals():
         nonlocal _last_reminders_run
         import time as _t
+        import threading as _th
         from sqlalchemy.orm import joinedload
         from .models import Notification, ServiceQuotation, SupportTicket
+
+        # Skip all DB queries for static/media asset requests
+        if request.endpoint in ("static", "serve_media"):
+            return {}
+
         unread = 0
         recent_notifications = []
         sq_action_count = 0
@@ -126,6 +134,8 @@ def create_app(config_class=Config, root=None):
         renewal_count = 0
         open_lead_count = 0
         open_rework_count = 0
+        open_enquiry_count = 0
+
         if current_user and current_user.is_authenticated:
             unread = Notification.query.filter_by(
                 user_id=current_user.id, read=False).count()
@@ -133,64 +143,90 @@ def create_app(config_class=Config, root=None):
                 .filter_by(user_id=current_user.id)
                 .order_by(Notification.created_at.desc())
                 .limit(8).all())
-            # Staff-only: quotations awaiting action + open tickets + payment reminders
+
+            # Staff-only sidebar counts: cached for 20s per user to avoid 8+ DB round-trips per page load
             if current_user.is_staff:
-                pending_sq = ServiceQuotation.query.options(
-                    joinedload(ServiceQuotation.contract)
-                ).filter(
-                    ServiceQuotation.status.in_(
-                        ["negotiation_requested", "accepted"])).all()
-                sq_action_count = sum(
-                    1 for q in pending_sq
-                    if q.status == "negotiation_requested"
-                    or q.contract is None or q.contract.status != "active")
-                try:
-                    from .reminders import payment_reminder_count
-                    reminder_count = payment_reminder_count()
-                except Exception:
-                    reminder_count = 0
-                try:
-                    open_ticket_count = SupportTicket.query.filter(
-                        SupportTicket.status.in_(["open", "acknowledged"])).count()
-                except Exception:
-                    open_ticket_count = 0
-                try:
-                    from .reminders import renewal_reminder_count
-                    renewal_count = renewal_reminder_count()
-                except Exception:
-                    renewal_count = 0
-                try:
-                    from .models import Contract, ReworkItem, Enquiry
-                    if current_user and current_user.is_authenticated and not getattr(current_user, "is_manager", False):
-                        open_lead_count = Contract.query.filter(
-                            Contract.inspection_technician_id == current_user.id,
-                            Contract.lead_stage.in_(["new", "inspection_scheduled"])
-                        ).count()
-                        open_enquiry_count = Enquiry.query.filter(
-                            Enquiry.assigned_to_id == current_user.id,
-                            Enquiry.status.notin_(["closed", "responded"])
-                        ).count()
-                    else:
-                        open_lead_count = Contract.query.filter(
-                            Contract.lead_stage.isnot(None),
-                            Contract.lead_stage != "rework").count()
-                        open_enquiry_count = Enquiry.query.filter(Enquiry.status.in_(["new", "assigned"])).count()
-                    open_rework_count = ReworkItem.query.filter_by(status="open").count()
-                except Exception:
-                    open_lead_count = 0
-                    open_rework_count = 0
-                    open_enquiry_count = 0
-                # Process visit reminders + renewal/anniversary milestones in background
-                # throttled to at most once per 30 minutes, not on every page render.
                 now = _t.time()
+                cache_key = (current_user.id, bool(getattr(current_user, "is_manager", False)))
+                cached = _staff_badge_cache.get(cache_key)
+                if cached and (now - cached[0]) < 20:
+                    counts = cached[1]
+                    sq_action_count = counts["sq"]
+                    reminder_count = counts["rem"]
+                    open_ticket_count = counts["tkt"]
+                    renewal_count = counts["ren"]
+                    open_lead_count = counts["lead"]
+                    open_rework_count = counts["rwk"]
+                    open_enquiry_count = counts["enq"]
+                else:
+                    pending_sq = ServiceQuotation.query.options(
+                        joinedload(ServiceQuotation.contract)
+                    ).filter(
+                        ServiceQuotation.status.in_(
+                            ["negotiation_requested", "accepted"])).all()
+                    sq_action_count = sum(
+                        1 for q in pending_sq
+                        if q.status == "negotiation_requested"
+                        or q.contract is None or q.contract.status != "active")
+                    try:
+                        from .reminders import payment_reminder_count
+                        reminder_count = payment_reminder_count()
+                    except Exception:
+                        reminder_count = 0
+                    try:
+                        open_ticket_count = SupportTicket.query.filter(
+                            SupportTicket.status.in_(["open", "acknowledged"])).count()
+                    except Exception:
+                        open_ticket_count = 0
+                    try:
+                        from .reminders import renewal_reminder_count
+                        renewal_count = renewal_reminder_count()
+                    except Exception:
+                        renewal_count = 0
+                    try:
+                        from .models import Contract, ReworkItem, Enquiry
+                        if not getattr(current_user, "is_manager", False):
+                            open_lead_count = Contract.query.filter(
+                                Contract.inspection_technician_id == current_user.id,
+                                Contract.lead_stage.in_(["new", "inspection_scheduled"])
+                            ).count()
+                            open_enquiry_count = Enquiry.query.filter(
+                                Enquiry.assigned_to_id == current_user.id,
+                                Enquiry.status.notin_(["closed", "responded"])
+                            ).count()
+                        else:
+                            open_lead_count = Contract.query.filter(
+                                Contract.lead_stage.isnot(None),
+                                Contract.lead_stage != "rework").count()
+                            open_enquiry_count = Enquiry.query.filter(Enquiry.status.in_(["new", "assigned"])).count()
+                        open_rework_count = ReworkItem.query.filter_by(status="open").count()
+                    except Exception:
+                        open_lead_count = 0
+                        open_rework_count = 0
+                        open_enquiry_count = 0
+
+                    _staff_badge_cache[cache_key] = (now, {
+                        "sq": sq_action_count,
+                        "rem": reminder_count,
+                        "tkt": open_ticket_count,
+                        "ren": renewal_count,
+                        "lead": open_lead_count,
+                        "rwk": open_rework_count,
+                        "enq": open_enquiry_count,
+                    })
+
+                # Run background reminders non-blocking so cold starts don't stall page load
                 if now - _last_reminders_run > 1800:
                     _last_reminders_run = now
-                    try:
-                        from .reminders import process_visit_reminders, process_milestones
-                        process_visit_reminders()
-                        process_milestones()
-                    except Exception:
-                        pass
+                    def _run_bg_reminders(flask_app):
+                        with flask_app.app_context():
+                            try:
+                                from .reminders import process_visit_reminders, process_milestones
+                                process_visit_reminders()
+                                process_milestones()
+                            except Exception:
+                                pass
+                    _th.Thread(target=_run_bg_reminders, args=(app,), daemon=True).start()
         return {
             "COMPANY_NAME": app.config["COMPANY_NAME"],
             "COMPANY_CITY": app.config["COMPANY_CITY"],

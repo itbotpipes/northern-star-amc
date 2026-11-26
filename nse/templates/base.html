@@ -6,7 +6,9 @@
   <title>{% block title %}{{ COMPANY_NAME }}{% endblock %}</title>
   <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/logo-emblem.png') }}">
 
-  <!-- Inter + JetBrains Mono -->
+  <!-- Inter + JetBrains Mono + Tailwind CDN preconnect -->
+  <link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin>
+  <link rel="dns-prefetch" href="https://cdn.tailwindcss.com">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;550;600;650;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
