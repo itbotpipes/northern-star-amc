@@ -357,8 +357,10 @@ def refill():
     return render_template("site/refill.html")
 
 
-@public_bp.route("/enquiry", methods=["GET", "POST"])
-def enquiry():
+@public_bp.route("/enquiry", methods=["GET", "POST"], defaults={"lead_category": "enquiry"})
+@public_bp.route("/site-inspection", methods=["GET", "POST"], endpoint="site_inspection", defaults={"lead_category": "inspection"})
+def enquiry(lead_category="enquiry"):
+    lead_cat = lead_category if lead_category in ("enquiry", "inspection") else "enquiry"
     cu = db.session.get(User, current_user.id) if (current_user.is_authenticated and getattr(current_user, "role", None) == "customer") else None
     my_sites = (Contract.query.filter_by(customer_id=cu.id).order_by(Contract.created_at.desc()).all()) if cu else []
 
@@ -391,7 +393,6 @@ def enquiry():
         subject = f.get("subject", "").strip() or f"{service_requirement} Inquiry"
         if site_name:
             subject = f"{service_requirement} — {site_name}"
-        lead_cat = (f.get("lead_category") or request.args.get("category") or "").strip()
         if lead_cat == "inspection" and "inspection" not in subject.lower():
             subject = f"Site Inspection — {site_name or service_requirement}"
         message = (f.get("message") or f.get("problem_description") or "").strip()
@@ -497,7 +498,7 @@ def enquiry():
 
         flash(f"Thank you, {name}! Your inquiry ({e.reference}) has been received and forwarded to our Team Leader. An engineer will be assigned for your site inspection.", "success")
         return redirect(url_for("portal.dashboard" if cu else "public.enquiry"))
-    return render_template("site/enquiry.html", my_sites=my_sites)
+    return render_template("site/enquiry.html", my_sites=my_sites, lead_category=lead_cat)
 
 
 @public_bp.route("/faq")

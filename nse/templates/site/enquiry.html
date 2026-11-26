@@ -42,7 +42,7 @@
       {{ field('Phone number', 'phone', type='tel', required=true, placeholder='10-digit mobile', value=(cu.phone if cu else '')) }}
       {{ field('Email', 'email', type='email', value=(cu.email if cu else '')) }}
 
-      <input type="hidden" name="lead_category" value="{{ request.args.get('category', '') }}">
+      <input type="hidden" name="lead_category" value="{{ lead_category|default('enquiry') }}">
 
       <!-- Service Requirement -->
       <label class="block">

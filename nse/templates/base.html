@@ -169,7 +169,7 @@
       <a href="{{ url_for('portal.enquiries') }}" class="pnav {{ 'active' if _pe in ('portal.enquiries', 'public.enquiry') }}">My Enquiry</a>
       <a href="{{ url_for('portal.amc_requests') }}" class="pnav {{ 'active' if _pe in ('portal.amc_requests', 'public.apply') }}">My AMC Requests</a>
       <a href="{{ url_for('portal.journey') }}" class="pnav {{ 'active' if _pe == 'portal.journey' }}">My Journey</a>
-      <a href="{{ url_for('portal.inspections') }}" class="pnav {{ 'active' if _pe == 'portal.inspections' }}">Inspections</a>
+      <a href="{{ url_for('portal.inspections') }}" class="pnav {{ 'active' if _pe in ('portal.inspections', 'public.site_inspection') }}">Inspections</a>
       <a href="{{ url_for('portal.service_quotations') }}" class="pnav {{ 'active' if _pe in ('portal.service_quotations','portal.service_quotation','portal.quotation','public.quote_view') }}">Quotations</a>
       <a href="{{ url_for('portal.tickets') }}" class="pnav {{ 'active' if _pe in ('portal.tickets','portal.ticket_detail') }}">Complaints</a>
       <a href="{{ url_for('portal.profile') }}" class="pnav {{ 'active' if _pe == 'portal.profile' }}">Profile</a>
