@@ -63,12 +63,20 @@ def dashboard():
         quote_filters.append(ServiceQuotation.customer_phone == current_user.phone)
         if phone_last10:
             quote_filters.append(ServiceQuotation.customer_phone.ilike(f"%{phone_last10}%"))
-    all_quotes = ServiceQuotation.query.options(
+    all_customer_quotes = ServiceQuotation.query.options(
         joinedload(ServiceQuotation.items)
     ).filter(
         or_(*quote_filters),
-        ServiceQuotation.status.in_(["sent", "viewed", "negotiation_requested"]),
+        ServiceQuotation.status != "draft",
     ).order_by(ServiceQuotation.created_at.desc()).all()
+
+    all_quotes = [
+        q for q in all_customer_quotes
+        if q.status in ("sent", "viewed", "negotiation_requested")
+    ]
+
+    tickets = SupportTicket.query.filter_by(customer_id=current_user.id)\
+        .order_by(SupportTicket.created_at.desc()).all()
 
     # Separate into negotiation replied, negotiation in progress, and regular pending
     negotiation_replied_quotes = [
@@ -200,12 +208,13 @@ def dashboard():
     )
     return render_template("portal/dashboard.html", contracts=contracts,
                            requests=requests_, pending_quotes=pending_quotes,
+                           all_customer_quotes=all_customer_quotes,
                            negotiation_replied_quotes=negotiation_replied_quotes,
                            negotiation_in_progress_quotes=negotiation_in_progress_quotes,
                            scheduled_inspections=scheduled_inspections,
                            inspections_waiting_for_quote=inspections_waiting_for_quote,
                            unsigned_agreements=unsigned_agreements,
-                           refills=refills, inquiries=inquiries,
+                           refills=refills, inquiries=inquiries, tickets=tickets,
                            has_emergencies=has_emergencies, has_refills=has_refills,
                            has_finalised_contract=has_finalised_contract)
 
