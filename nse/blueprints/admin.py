@@ -1773,75 +1773,20 @@ def refill_order(order_id):
 # Enquiries
 # --------------------------------------------------------------------------- #
 # --------------------------------------------------------------------------- #
-# Predefined Fire Safety Inspection Checklist structure
+# Predefined Fire Safety Inspection Checklist structure (aligned with HealthCheckReport)
 # --------------------------------------------------------------------------- #
 DEFAULT_INQUIRY_CHECKLIST = [
+    {"category": sec_title, "items": [label for _, label in qs]}
+    for sec_title, qs in HealthCheckReport.SECTIONS
+] + [
     {
-        "category": "Fire Extinguishers",
-        "items": [
-            "Cylinder physical condition, paint integrity & corrosion check",
-            "Pressure gauge needle located in operable green zone",
-            "Tamper seal, safety pull pin & discharge hose/nozzle intact",
-            "Hydro-static pressure test & refilling validity dates check",
-            "Extinguisher mounting height, accessibility & photoluminescent sign"
-        ]
+        "category": "Fire Hydrant & Sprinkler System",
+        "items": [label for _, label, _ in HealthCheckReport.HYDRANT_ITEMS],
     },
     {
-        "category": "Fire Alarm & Detection",
-        "items": [
-            "Main Fire Alarm Control Panel (FACP) AC power & battery backup status",
-            "Smoke and heat detectors physical cleanliness & visual inspection",
-            "Manual Call Points (MCP) glass integrity & reset key test",
-            "Electronic hooters / strobes sounder output & audibility check",
-            "Fault, open-circuit & supervisory indicators check on panel"
-        ]
+        "category": "Life Safety Extras",
+        "items": [label for _, label in HealthCheckReport.EXTRAS],
     },
-    {
-        "category": "Hydrant & Hose Reel System",
-        "items": [
-            "Landing valves operation, wheel smoothness & gland packing leakage",
-            "First-aid hose reel drum rotation, rubber hose condition & nozzle shut-off",
-            "Fire hose box integrity, canvas delivery hoses & instantaneous couplings",
-            "Riser pipeline hydrostatic pressure & booster pump auto cut-in test",
-            "Air release valves, drain valves & underground ring main isolation valves"
-        ]
-    },
-    {
-        "category": "Automatic Sprinkler System",
-        "items": [
-            "Main installation control valve (ICV) open, secured & locked",
-            "Sprinkler glass bulbs / fusible links unobstructed (minimum 0.5m clearance)",
-            "System water pressure gauge readings at riser base & alarm valve",
-            "Inspector's test & drain valve functional flow test"
-        ]
-    },
-    {
-        "category": "Fire Pumps & Reservoir Water Supply",
-        "items": [
-            "Main electrical fire pump automatic start on pressure drop",
-            "Standby diesel engine fire pump battery health, fuel level & crank test",
-            "Jockey pump automatic start/stop pressure regulation settings",
-            "Fire water underground / overhead reservoir storage capacity check"
-        ]
-    },
-    {
-        "category": "Emergency Exits & Signage",
-        "items": [
-            "Emergency fire exit staircases & doors unobstructed and unlocked",
-            "Photoluminescent exit signs & directional evacuation arrows visibility",
-            "Emergency secondary backup lighting units battery operation test",
-            "Evacuation floor plan diagram & safe assembly point identification"
-        ]
-    },
-    {
-        "category": "Electrical & Risk Observations",
-        "items": [
-            "Main electrical distribution boards clear of combustible materials",
-            "Fire-stopping seals intact on cable tray & pipe wall penetrations",
-            "Safe storage of flammable chemicals, gases or hazardous inventory",
-            "Overall site housekeeping & fire hazard risk assessment"
-        ]
-    }
 ]
 
 
