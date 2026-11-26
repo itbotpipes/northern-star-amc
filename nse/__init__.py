@@ -52,6 +52,17 @@ def create_app(config_class=Config, root=None):
     app.register_blueprint(sq_bp)
     app.register_blueprint(api_bp)
 
+    @app.route("/media/<path:file_path>")
+    def serve_media(file_path):
+        from flask import Response, abort
+        from .models import UploadedFile
+        uf = UploadedFile.query.filter_by(path=file_path).first()
+        if not uf:
+            abort(404)
+        resp = Response(uf.data, mimetype=uf.mimetype or "application/octet-stream")
+        resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return resp
+
     # Jinja helpers
     app.jinja_env.filters["rupees"] = rupees
     app.jinja_env.filters["upload_url"] = upload_url

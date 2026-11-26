@@ -2259,3 +2259,14 @@ class MilestoneLog(db.Model):
         db.UniqueConstraint("contract_id", "milestone_type",
                             name="uq_milestone"),
     )
+
+
+class UploadedFile(db.Model):
+    """Database-backed fallback storage for uploaded files on read-only serverless hosts."""
+    __tablename__ = "uploaded_files"
+
+    id         = db.Column(db.Integer, primary_key=True)
+    path       = db.Column(db.String(255), unique=True, nullable=False, index=True)
+    mimetype   = db.Column(db.String(120), default="application/octet-stream")
+    data       = db.Column(db.LargeBinary, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)

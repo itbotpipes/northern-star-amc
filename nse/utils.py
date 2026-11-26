@@ -290,7 +290,7 @@ def save_upload(file_storage, subdir="general", allowed_ext=None):
         except Exception as e:
             current_app.logger.warning("Supabase Storage upload failed, falling back: %s", e)
 
-    # 3. Local disk (dev / fallback with serverless /tmp protection)
+    # 3. Local disk (dev / fallback) — only if writable
     try:
         dest_dir = os.path.join(current_app.config["UPLOAD_FOLDER"], subdir)
         os.makedirs(dest_dir, exist_ok=True)
@@ -298,18 +298,25 @@ def save_upload(file_storage, subdir="general", allowed_ext=None):
         file_storage.save(os.path.join(dest_dir, unique))
         return f"uploads/{subdir}/{unique}"
     except (OSError, PermissionError) as e:
-        current_app.logger.warning("Local static upload folder not writable (read-only filesystem): %s. Trying /tmp...", e)
-        try:
-            tmp_dir = os.path.join("/tmp", "uploads", subdir)
-            os.makedirs(tmp_dir, exist_ok=True)
-            file_storage.seek(0)
-            file_storage.save(os.path.join(tmp_dir, unique))
-            return f"uploads/{subdir}/{unique}"
-        except Exception as e2:
-            current_app.logger.error("Failed to save upload even to /tmp: %s", e2)
-            return None
+        current_app.logger.warning("Local static upload folder not writable (%s). Falling back to DB storage.", e)
     except Exception as e:
-        current_app.logger.error("Unexpected error saving upload: %s", e)
+        current_app.logger.error("Unexpected error saving upload to disk: %s", e)
+
+    # 4. PostgreSQL database fallback (for read-only serverless hosts like Vercel
+    # when BLOB_READ_WRITE_TOKEN / SUPABASE_STORAGE_BUCKET aren't configured)
+    try:
+        from .models import UploadedFile
+        file_storage.seek(0)
+        data = file_storage.read()
+        file_storage.seek(0)
+        db_path = f"db/{subdir}/{unique}"
+        mime = getattr(file_storage, "mimetype", None) or "application/octet-stream"
+        db.session.add(UploadedFile(path=db_path, mimetype=mime, data=data))
+        db.session.commit()
+        return db_path
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error("Failed to save upload to database: %s", e)
         return None
 
 
@@ -364,13 +371,16 @@ def _save_to_supabase(file_storage, pathname, supabase_url, supabase_key, bucket
 def upload_url(path):
     """Resolve a stored upload reference to a browser URL.
 
-    Absolute (Blob) URLs are returned as-is; relative paths are served from the
+    Absolute (Blob/Supabase) URLs are returned as-is; db/-prefixed paths are
+    served from the database media route; relative paths are served from the
     Flask static folder. Registered as the `upload_url` Jinja filter.
     """
     if not path:
         return None
     if path.startswith(("http://", "https://")):
         return path
+    if path.startswith("db/"):
+        return url_for("serve_media", file_path=path)
     return url_for("static", filename=path)
 
 
