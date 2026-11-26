@@ -33,10 +33,21 @@
       <h2 class="font-bold text-ink mb-4">Photo / ID Card</h2>
       <div class="flex items-start gap-5">
         <div class="w-20 h-20 rounded-xl border-2 border-dashed border-hairline-strong overflow-hidden flex-shrink-0 grid place-items-center bg-surface-2">
-          {% if current_user.photo_path %}
-          <img src="{{ current_user.photo_path|upload_url }}" class="w-full h-full object-cover">
+          {% set _is_img = current_user.photo_path and not current_user.photo_path.lower().endswith('.pdf') %}
+          {% if _is_img %}
+          <img src="{{ current_user.photo_path|upload_url }}" alt="" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='grid';" class="w-full h-full object-cover">
+          <div style="display:none;width:100%;height:100%;background:linear-gradient(135deg,#2a336b,#1f2650);color:#fff;align-items:center;justify-content:center;font-weight:700;font-size:24px;">
+            {{ (current_user.name or 'U')[:2]|upper }}
+          </div>
+          {% elif current_user.photo_path and current_user.photo_path.lower().endswith('.pdf') %}
+          <div class="text-center p-2">
+            <svg class="w-6 h-6 text-red-500 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+            <span class="text-[10px] font-bold text-ink-subtle uppercase">PDF</span>
+          </div>
           {% else %}
-          <svg class="w-8 h-8 text-ink-subtle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <div style="width:100%;height:100%;background:linear-gradient(135deg,#2a336b,#1f2650);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:24px;">
+            {{ (current_user.name or 'U')[:2]|upper }}
+          </div>
           {% endif %}
         </div>
         <div class="flex-1 min-w-0">

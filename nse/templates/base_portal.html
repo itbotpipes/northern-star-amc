@@ -88,11 +88,15 @@
       <!-- User avatar -->
       {% if current_user.is_authenticated %}
       <a href="{{ url_for('portal.profile') }}" style="display:flex;align-items:center;gap:8px;flex:none;text-decoration:none;" title="My Profile">
-        {% if current_user.photo_path %}
-        <img src="{{ current_user.photo_path|upload_url }}" alt="{{ current_user.name }}" style="width:30px;height:30px;border-radius:8px;object-fit:cover;border:1px solid var(--hair2);flex:none;">
+        {% set _is_img = current_user.photo_path and not current_user.photo_path.lower().endswith('.pdf') %}
+        {% if _is_img %}
+        <img src="{{ current_user.photo_path|upload_url }}" alt="" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';" style="width:30px;height:30px;border-radius:8px;object-fit:cover;border:1px solid var(--hair2);flex:none;">
+        <div style="display:none;width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,#2a336b,#1f2650);color:#fff;align-items:center;justify-content:center;font-weight:650;font-size:11px;flex:none;">
+          {{ (current_user.name or 'U')[:2]|upper }}
+        </div>
         {% else %}
         <div style="width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,#2a336b,#1f2650);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:650;font-size:11px;flex:none;">
-          {{ current_user.name[:2]|upper }}
+          {{ (current_user.name or 'U')[:2]|upper }}
         </div>
         {% endif %}
         <div class="nse-user-text" style="line-height:1.15;">

@@ -136,7 +136,97 @@
 <body>
 
 {% block body %}
-{# ── PUBLIC layout (default) ── #}
+{% if current_user.is_authenticated and not current_user.is_staff %}
+{# ── CUSTOMER PORTAL UNIFIED NAV (Matches base_portal.html) ── #}
+<style>
+  .nse-portal-nav{position:sticky;top:0;z-index:40;display:flex;align-items:center;justify-content:space-between;padding:10px 28px;background:rgba(255,255,255,.96);backdrop-filter:blur(10px);border-bottom:1px solid var(--hair);gap:12px;}
+  .pnav{display:inline-flex;align-items:center;padding:7px 12px;border-radius:8px;font-size:13.5px;font-weight:500;color:var(--ink3);transition:color .1s;text-decoration:none;white-space:nowrap;flex:none;}
+  .pnav:hover{color:var(--ink);background:#f6f5f2;}
+  .pnav.active{font-weight:650;color:var(--ink);background:#f1f0ee;border:1px solid var(--hair2);}
+  .pnav-links{display:flex;gap:2px;min-width:0;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+  .pnav-links::-webkit-scrollbar{display:none;}
+  .nse-user-text{display:block;}
+  @media (max-width: 700px){
+    .nse-portal-nav{padding:9px 12px;gap:8px;}
+    .nse-user-text{display:none;}
+    .nse-logout-text{display:none;}
+  }
+</style>
+<nav class="nse-portal-nav">
+  <div style="display:flex;align-items:center;gap:26px;min-width:0;">
+    <a href="{{ url_for('portal.dashboard') }}" style="display:flex;align-items:center;gap:9px;text-decoration:none;flex:none;">
+      <div style="width:32px;height:32px;border-radius:8px;background:#072076;display:flex;align-items:center;justify-content:center;overflow:hidden;flex:none;">
+        <img src="{{ url_for('static', filename='img/logo-emblem.png') }}" style="width:26px;height:26px;object-fit:contain;">
+      </div>
+      <div class="nse-user-text" style="line-height:1.12;">
+        <div style="font-size:13px;font-weight:650;color:#072076;white-space:nowrap;">Northern Star</div>
+        <div style="font-size:10px;font-weight:600;color:var(--ink3);letter-spacing:.02em;white-space:nowrap;">Customer Portal</div>
+      </div>
+    </a>
+    <div class="pnav-links">
+      {% set _pe = request.endpoint %}
+      <a href="{{ url_for('portal.dashboard') }}" class="pnav {{ 'active' if _pe == 'portal.dashboard' }}">Dashboard</a>
+      <a href="{{ url_for('portal.enquiries') }}" class="pnav {{ 'active' if _pe in ('portal.enquiries', 'public.enquiry') }}">My Enquiry</a>
+      <a href="{{ url_for('portal.amc_requests') }}" class="pnav {{ 'active' if _pe in ('portal.amc_requests', 'public.apply') }}">My AMC Requests</a>
+      <a href="{{ url_for('portal.journey') }}" class="pnav {{ 'active' if _pe == 'portal.journey' }}">My Journey</a>
+      <a href="{{ url_for('portal.inspections') }}" class="pnav {{ 'active' if _pe == 'portal.inspections' }}">Inspections</a>
+      <a href="{{ url_for('portal.service_quotations') }}" class="pnav {{ 'active' if _pe in ('portal.service_quotations','portal.service_quotation','portal.quotation','public.quote_view') }}">Quotations</a>
+      <a href="{{ url_for('portal.tickets') }}" class="pnav {{ 'active' if _pe in ('portal.tickets','portal.ticket_detail') }}">Complaints</a>
+      <a href="{{ url_for('portal.profile') }}" class="pnav {{ 'active' if _pe == 'portal.profile' }}">Profile</a>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:12px;flex:none;">
+    <!-- Bell -->
+    <details class="nse-bell" style="position:relative;">
+      <summary style="list-style:none;cursor:pointer;width:34px;height:34px;border-radius:8px;background:#fff;border:1px solid var(--hair2);display:flex;align-items:center;justify-content:center;position:relative;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#4a4b52" stroke-width="1.9"><path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 01-3.4 0"/></svg>
+        {% if unread_notifications %}<span style="position:absolute;top:5px;right:6px;width:8px;height:8px;background:#072076;border-radius:50%;border:1.5px solid #fff;"></span>{% endif %}
+      </summary>
+      <div style="position:absolute;right:0;top:calc(100% + 6px);width:300px;background:#fff;border:1px solid var(--hair);border-radius:12px;box-shadow:0 8px 24px -8px rgba(16,24,40,.12);z-index:50;overflow:hidden;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--hair3);">
+          <span style="font-size:13px;font-weight:600;">Notifications</span>
+          {% if unread_notifications %}<a href="{{ url_for('portal.mark_read') }}" style="font-size:11.5px;color:var(--pri);">Mark all read</a>{% endif %}
+        </div>
+        <div style="max-height:300px;overflow-y:auto;">
+          {% for n in recent_notifications %}
+          <a href="{{ url_for('portal.open_notification', notif_id=n.id) if n.id else (n.link or url_for('portal.notifications')) }}" style="display:block;padding:10px 14px;font-size:12.5px;border-bottom:1px solid var(--hair3);text-decoration:none;color:var(--ink);{% if not n.read %}font-weight:600;{% endif %}">
+            <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ n.title }}</div>
+            {% if n.body %}<div style="color:var(--ink3);font-size:11.5px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ n.body[:80] }}</div>{% endif %}
+            <div style="color:var(--ink4);font-size:11px;margin-top:2px;">{{ n.created_at|datefmt }}</div>
+          </a>
+          {% else %}
+          <div style="padding:20px;text-align:center;color:var(--ink3);font-size:13px;">No notifications.</div>
+          {% endfor %}
+        </div>
+        <a href="{{ url_for('portal.notifications') }}" style="display:block;padding:10px;text-align:center;font-size:12px;color:var(--pri);border-top:1px solid var(--hair3);text-decoration:none;">View all →</a>
+      </div>
+    </details>
+    <!-- User avatar -->
+    <a href="{{ url_for('portal.profile') }}" style="display:flex;align-items:center;gap:8px;flex:none;text-decoration:none;" title="My Profile">
+      {% set _is_img = current_user.photo_path and not current_user.photo_path.lower().endswith('.pdf') %}
+      {% if _is_img %}
+      <img src="{{ current_user.photo_path|upload_url }}" alt="" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';" style="width:30px;height:30px;border-radius:8px;object-fit:cover;border:1px solid var(--hair2);flex:none;">
+      <div style="display:none;width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,#2a336b,#1f2650);color:#fff;align-items:center;justify-content:center;font-weight:650;font-size:11px;flex:none;">
+        {{ (current_user.name or 'U')[:2]|upper }}
+      </div>
+      {% else %}
+      <div style="width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,#2a336b,#1f2650);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:650;font-size:11px;flex:none;">
+        {{ (current_user.name or 'U')[:2]|upper }}
+      </div>
+      {% endif %}
+      <div class="nse-user-text" style="line-height:1.15;">
+        <div style="font-size:12px;font-weight:600;color:var(--ink);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ current_user.name }}</div>
+        <div style="font-size:10px;color:var(--ink3);">{{ current_user.city or 'Surat' }}</div>
+      </div>
+    </a>
+    <a href="{{ url_for('auth.logout') }}" title="Logout" style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--ink3);text-decoration:none;padding:6px 10px;border-radius:7px;border:1px solid var(--hair2);flex:none;">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+      <span class="nse-logout-text">Logout</span>
+    </a>
+  </div>
+</nav>
+{% else %}
+{# ── PUBLIC / GUEST layout (default) ── #}
 <header class="nse-nav sticky top-0 z-40">
   <div class="max-w-7xl mx-auto px-4">
     <nav class="flex items-center justify-between h-14">
@@ -188,16 +278,9 @@
           {% if current_user.is_staff %}
           <a href="{{ url_for('admin.dashboard') }}" class="ml-1 px-3 py-1.5 rounded-md bg-surface-2 border border-hairline text-ink font-medium text-sm hover:border-hairline-strong transition flex items-center gap-2">
             {% if current_user.photo_path %}
-            <img src="{{ current_user.photo_path|upload_url }}" alt="{{ current_user.name }}" class="w-5 h-5 rounded-md object-cover border border-hairline">
+            <img src="{{ current_user.photo_path|upload_url }}" alt="" onerror="this.style.display='none';" class="w-5 h-5 rounded-md object-cover border border-hairline">
             {% endif %}
             <span>Ops Console</span>
-          </a>
-          {% else %}
-          <a href="{{ url_for('portal.dashboard') }}" class="ml-1 px-3 py-1.5 rounded-md bg-primary text-white font-semibold text-sm hover:bg-primary-hover transition flex items-center gap-2">
-            {% if current_user.photo_path %}
-            <img src="{{ current_user.photo_path|upload_url }}" alt="{{ current_user.name }}" class="w-5 h-5 rounded-md object-cover border border-white/30">
-            {% endif %}
-            <span>My Portal</span>
           </a>
           {% endif %}
           <a href="{{ url_for('auth.logout') }}" class="px-3 py-2 rounded-md text-ink-subtle hover:text-ink text-sm transition">Logout</a>
@@ -215,8 +298,6 @@
       {% if current_user.is_authenticated %}
         {% if current_user.is_staff %}
         <a href="{{ url_for('admin.dashboard') }}" class="block px-3 py-2 rounded-md bg-surface-2 border border-hairline text-ink">Ops Console</a>
-        {% else %}
-        <a href="{{ url_for('portal.dashboard') }}" class="block px-3 py-2 rounded-md bg-primary text-white font-medium">My Portal</a>
         {% endif %}
         <a href="{{ url_for('auth.logout') }}" class="block px-3 py-2 rounded-md text-ink-subtle hover:text-ink transition">Logout</a>
       {% else %}
@@ -225,6 +306,7 @@
     </div>
   </div>
 </header>
+{% endif %}
 
 <div class="max-w-6xl mx-auto px-4 w-full">
   {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}

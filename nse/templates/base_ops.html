@@ -194,8 +194,12 @@
 
     <!-- User -->
     <div style="padding:10px 12px;border-top:1px solid rgba(255,255,255,.06);display:flex;align-items:center;gap:9px;">
-      {% if current_user.is_authenticated and current_user.photo_path %}
-      <img src="{{ current_user.photo_path|upload_url }}" alt="{{ current_user.name }}" style="width:28px;height:28px;border-radius:7px;object-fit:cover;flex:none;border:1px solid rgba(255,255,255,.2);">
+      {% set _has_img = current_user.is_authenticated and current_user.photo_path and not current_user.photo_path.lower().endswith('.pdf') %}
+      {% if _has_img %}
+      <img src="{{ current_user.photo_path|upload_url }}" alt="" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';" style="width:28px;height:28px;border-radius:7px;object-fit:cover;flex:none;border:1px solid rgba(255,255,255,.2);">
+      <div style="display:none;width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,#072076,#1f2650);color:#fff;align-items:center;justify-content:center;font-weight:700;font-size:11px;flex:none;">
+        {{ current_user.name[:2]|upper if current_user.is_authenticated else 'ST' }}
+      </div>
       {% else %}
       <div style="width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,#072076,#1f2650);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;flex:none;">
         {{ current_user.name[:2]|upper if current_user.is_authenticated else 'ST' }}
