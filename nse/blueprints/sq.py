@@ -424,10 +424,26 @@ def detail_quotation(sq_id):
         elif action == "remove_amc":
             sq.service_type = "inspection"
             for it in list(sq.items):
-                if it.unit == "Annual Contract" or it.category == "Annual Maintenance Contract":
+                if it.category == "Annual Maintenance Contract":
                     db.session.delete(it)
+                elif it.unit == "Annual Contract":
+                    it.unit = "Job"
+                    it.rate = 4500.0
+                    it.description = "Site Inspection & Fire Safety Servicing Scope"
+            db.session.flush()
+            remaining = ServiceQuotationItem.query.filter_by(quotation_id=sq.id).count()
+            if remaining == 0:
+                db.session.add(ServiceQuotationItem(
+                    quotation_id=sq.id,
+                    category="Core Service",
+                    description="Site Inspection & Fire Safety Servicing Scope",
+                    unit="Job",
+                    quantity=1,
+                    rate=4500.0,
+                    sort_order=0,
+                ))
             db.session.commit()
-            flash(f"AMC removed — {sq.reference} is now a simple quotation.", "info")
+            flash(f"AMC removed — {sq.reference} is now a simple inspection/service quotation.", "info")
             return redirect(url_for("sq.detail_quotation", sq_id=sq.id))
 
         if action == "save":
