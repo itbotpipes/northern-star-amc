@@ -36,8 +36,8 @@
         <button type="submit" name="start_amc" value="1" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-xs transition cursor-pointer">
           ✓ Accept &amp; Start AMC ({{ sq.grand_total|rupees }})
         </button>
-        <button type="submit" class="px-3.5 py-2 bg-white border border-emerald-300 text-emerald-800 hover:bg-emerald-50 font-semibold rounded-xl text-xs transition cursor-pointer">
-          Accept Only
+        <button type="button" onclick="document.getElementById('declineAmcModal').classList.remove('hidden')" class="px-3.5 py-2 bg-white border border-emerald-300 text-emerald-800 hover:bg-emerald-50 font-semibold rounded-xl text-xs transition cursor-pointer">
+          Accept Without AMC
         </button>
         {% else %}
         <button type="submit" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-xs transition cursor-pointer">
@@ -55,6 +55,41 @@
     {% else %}
     <p class="text-xs text-amber-800 mt-1">Our sales manager will call you at <strong>{{ sq.customer_phone }}</strong> shortly to discuss.</p>
     {% endif %}
+  </div>
+  {% endif %}
+
+  {% if not sq.contract_id and sq.status in ('sent', 'viewed', 'negotiation_requested') %}
+  <!-- Modal: Ask Reason When Accepting Without AMC -->
+  <div id="declineAmcModal" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-md w-full p-5 space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-bold text-ink">Accept Quotation Without AMC</h3>
+        <button type="button" onclick="document.getElementById('declineAmcModal').classList.add('hidden')" class="text-slate-400 hover:text-ink text-lg leading-none cursor-pointer">&times;</button>
+      </div>
+      <p class="text-xs text-ink-muted">Any AMC charges will be removed from your payable total. Please let us know why you're not opting for an Annual Maintenance Contract right now:</p>
+      <form method="post" action="{{ url_for('portal.service_quotation_accept', sq_id=sq.id) }}" class="space-y-3 m-0">
+        <input type="hidden" name="start_amc" value="0">
+        <div>
+          <label class="block text-xs font-semibold text-ink-muted mb-1">Reason for Not Taking AMC <span class="text-red-500">*</span></label>
+          <select name="decline_amc_reason" required class="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 bg-white">
+            <option value="">— Select reason —</option>
+            <option value="Need one-time inspection / repair only">Need one-time inspection / repair only</option>
+            <option value="Already have an existing AMC provider">Already have an existing AMC provider</option>
+            <option value="Budget / cost concern">Budget / cost concern</option>
+            <option value="Will decide on AMC later">Will decide on AMC later</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-ink-muted mb-1">Additional Comments (optional)</label>
+          <textarea name="decline_amc_notes" rows="2" placeholder="Any feedback or details..." class="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 bg-white"></textarea>
+        </div>
+        <div class="flex items-center justify-end gap-2 pt-2">
+          <button type="button" onclick="document.getElementById('declineAmcModal').classList.add('hidden')" class="px-3.5 py-2 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-100 cursor-pointer">Cancel</button>
+          <button type="submit" class="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs cursor-pointer">Confirm &amp; Accept Without AMC</button>
+        </div>
+      </form>
+    </div>
   </div>
   {% endif %}
 
@@ -152,8 +187,8 @@
             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
             Accept &amp; Start AMC ({{ sq.grand_total|rupees }})
           </button>
-          <button type="submit" class="px-4 py-2.5 bg-white border border-emerald-300 text-emerald-800 hover:bg-emerald-50 font-semibold rounded-xl text-xs transition cursor-pointer">
-            Accept Quotation Only
+          <button type="button" onclick="document.getElementById('declineAmcModal').classList.remove('hidden')" class="px-4 py-2.5 bg-white border border-emerald-300 text-emerald-800 hover:bg-emerald-50 font-semibold rounded-xl text-xs transition cursor-pointer">
+            Accept Quotation Only (No AMC)
           </button>
           {% else %}
           <button type="submit" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-sm shadow-sm transition flex items-center gap-2 cursor-pointer">
@@ -235,6 +270,9 @@
         </tbody>
         <tfoot class="border-t-2 border-hairline-strong bg-slate-50">
           <tr><td colspan="4" class="px-4 py-2 text-right text-ink-muted">Subtotal</td><td class="px-4 py-2 text-right font-semibold">{{ sq.subtotal|rupees }}</td></tr>
+          {% if sq.discount > 0 %}
+          <tr><td colspan="4" class="px-4 py-2 text-right text-emerald-700">Discount</td><td class="px-4 py-2 text-right font-semibold text-emerald-700">-{{ sq.discount|rupees }}</td></tr>
+          {% endif %}
           <tr><td colspan="4" class="px-4 py-2 text-right text-ink-muted">GST ({{ sq.gst_percent }}%)</td><td class="px-4 py-2 text-right font-semibold">{{ sq.gst_amount|rupees }}</td></tr>
           <tr class="bg-navy-50"><td colspan="4" class="px-4 py-3 text-right font-extrabold text-navy-800 text-base">Grand Total</td><td class="px-4 py-3 text-right font-extrabold text-navy-800 text-base">{{ sq.grand_total|rupees }}</td></tr>
         </tfoot>

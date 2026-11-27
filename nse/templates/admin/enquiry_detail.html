@@ -42,7 +42,7 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg>
           Assign Technician
         </a>
-        {% elif inquiry.status in ('assigned', 'site_visit_scheduled', 'site_visit_in_progress') %}
+        {% elif inquiry.status in ('assigned', 'site_visit_scheduled', 'site_visit_in_progress') and not inquiry.quotation_id %}
         {% set can_conduct = (inquiry.assigned_to_id and current_user.id == inquiry.assigned_to_id) or current_user.is_team_leader or current_user.is_admin or current_user.is_manager %}
         {% if can_conduct %}
         <a href="{{ url_for('admin.enquiry_checklist', enq_id=inquiry.id) }}"
@@ -73,11 +73,50 @@
         {% endif %}
 
         {% if inquiry.status != 'closed' and not is_pure_tech %}
-        <form method="post" action="{{ url_for('admin.enquiry_close', enq_id=inquiry.id) }}" onsubmit="return confirm('Close this enquiry?');">
-          <button type="submit" class="px-3 py-2 rounded-xl text-xs font-medium text-slate-500 hover:bg-slate-100 transition">
-            Close Enquiry
-          </button>
-        </form>
+        <button type="button" onclick="document.getElementById('closeEnquiryModal').classList.remove('hidden')"
+                class="px-3 py-2 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-100 border border-slate-200 transition cursor-pointer">
+          Close Enquiry
+        </button>
+
+        <!-- Close Enquiry Modal with Reason Dropdown -->
+        <div id="closeEnquiryModal" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div class="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-md w-full p-5 space-y-4">
+            <div class="flex items-center justify-between">
+              <h3 class="text-base font-bold text-ink">Close Enquiry {{ inquiry.ref_code }}</h3>
+              <button type="button" onclick="document.getElementById('closeEnquiryModal').classList.add('hidden')" class="text-slate-400 hover:text-ink text-lg leading-none cursor-pointer">&times;</button>
+            </div>
+            <form method="post" action="{{ url_for('admin.enquiry_close', enq_id=inquiry.id) }}" class="space-y-3 m-0">
+              <div>
+                <label class="block text-xs font-semibold text-ink-muted mb-1">Reason for Closing <span class="text-red-500">*</span></label>
+                <select name="reason" id="closeReasonSelect" required
+                        onchange="document.getElementById('customCloseReasonWrap').classList.toggle('hidden', this.value !== 'Other');"
+                        class="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 bg-white">
+                  <option value="">— Select reason —</option>
+                  <option value="Work / Repair Completed">Work / Repair Completed</option>
+                  <option value="Converted to AMC">Converted to AMC</option>
+                  <option value="Inspection Done — No Further Action Needed">Inspection Done — No Further Action Needed</option>
+                  <option value="Customer Cancelled / Not Interested">Customer Cancelled / Not Interested</option>
+                  <option value="Price / Quotation Not Approved">Price / Quotation Not Approved</option>
+                  <option value="No Response from Customer">No Response from Customer</option>
+                  <option value="Duplicate / Invalid Enquiry">Duplicate / Invalid Enquiry</option>
+                  <option value="Other">Other (specify below)</option>
+                </select>
+              </div>
+              <div id="customCloseReasonWrap" class="hidden">
+                <label class="block text-xs font-semibold text-ink-muted mb-1">Specify Reason</label>
+                <input type="text" name="custom_reason" placeholder="Enter closing reason..." class="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 bg-white">
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-ink-muted mb-1">Closing Remarks (optional)</label>
+                <textarea name="closing_notes" rows="2" placeholder="Any final notes..." class="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 bg-white"></textarea>
+              </div>
+              <div class="flex items-center justify-end gap-2 pt-2">
+                <button type="button" onclick="document.getElementById('closeEnquiryModal').classList.add('hidden')" class="px-3.5 py-2 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-100 cursor-pointer">Cancel</button>
+                <button type="submit" class="px-4 py-2 rounded-xl text-xs font-bold bg-red-600 hover:bg-red-700 text-white shadow-xs cursor-pointer">Confirm Close Enquiry</button>
+              </div>
+            </form>
+          </div>
+        </div>
         {% endif %}
       </div>
     </div>
@@ -353,13 +392,15 @@
               ✓ Submitted {{ inquiry.checklist_submitted_at|datefmt }}
             </span>
             {% set can_conduct = (inquiry.assigned_to_id and current_user.id == inquiry.assigned_to_id) or current_user.is_team_leader or current_user.is_admin or current_user.is_manager %}
-            {% if can_conduct %}
+            {% if can_conduct and not inquiry.quotation_id %}
             <a href="{{ url_for('admin.enquiry_checklist', enq_id=inquiry.id) }}" class="text-xs font-semibold text-primary hover:underline">
               Edit Checklist
             </a>
+            {% elif inquiry.quotation_id %}
+            <span class="text-[11px] font-medium text-slate-400">Locked (Quotation Generated)</span>
             {% endif %}
           </div>
-          {% elif inquiry.assigned_to %}
+          {% elif inquiry.assigned_to and not inquiry.quotation_id %}
             {% set can_conduct = (inquiry.assigned_to_id and current_user.id == inquiry.assigned_to_id) or current_user.is_team_leader or current_user.is_admin or current_user.is_manager %}
             {% if can_conduct %}
             <a href="{{ url_for('admin.enquiry_checklist', enq_id=inquiry.id) }}" class="btn btn-primary text-xs">
@@ -515,7 +556,7 @@
         {% endif %}
       </div>
 
-      {% if inquiry.repair_visits or (inquiry.quotation and inquiry.quotation.status == 'accepted') %}
+      {% if inquiry.repair_visits or (needs_repair and inquiry.quotation and inquiry.quotation.status == 'accepted') %}
       <!-- Repair / Execution Visits (Post-Quotation Acceptance) -->
       <div class="card p-5 space-y-4 border-2 border-emerald-200 bg-emerald-50/20">
         <div class="flex items-center justify-between flex-wrap gap-2">

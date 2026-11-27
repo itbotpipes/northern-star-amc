@@ -2067,13 +2067,18 @@ def enquiry_detail(enq_id):
     attachments = FormAttachment.query.filter_by(
         ref_type="enquiry", ref_id=e.id
     ).order_by(FormAttachment.id.asc()).all()
+    needs_repair = bool(
+        any(it.status in ("fail", "attention") for it in e.checklist_items)
+        or e.repair_visits
+    )
 
     return render_template("admin/enquiry_detail.html",
                            inquiry=e,
                            technicians=technicians,
                            grouped_checklist=grouped_checklist,
                            checklist_stats=checklist_stats,
-                           attachments=attachments)
+                           attachments=attachments,
+                           needs_repair=needs_repair)
 
 
 @admin_bp.route("/enquiry/<int:enq_id>/assign", methods=["POST"])
@@ -2196,6 +2201,10 @@ def enquiry_checklist(enq_id):
     if not (is_assigned_tech or is_tl_or_admin):
         assigned_name = e.assigned_to.name if e.assigned_to else "another technician"
         flash(f"Access restricted: This inspection is assigned to {assigned_name}. Only the assigned technician or Team Leader can conduct this checklist.", "danger")
+        return redirect(url_for("admin.enquiry_detail", enq_id=e.id))
+
+    if e.quotation_id:
+        flash(f"Inspection checklist is locked because quotation {e.quotation.reference} has already been generated.", "warning")
         return redirect(url_for("admin.enquiry_detail", enq_id=e.id))
 
     if request.method == "POST":
@@ -2436,7 +2445,16 @@ def enquiry_generate_quotation(enq_id):
 def enquiry_close(enq_id):
     """Mark an enquiry as closed / completed."""
     e = db.session.get(Enquiry, enq_id) or abort(404)
-    reason = request.form.get("reason", "").strip() or "Closed by staff"
+    reason = request.form.get("reason", "").strip()
+    custom_reason = request.form.get("custom_reason", "").strip()
+    closing_notes = request.form.get("closing_notes", "").strip()
+    if reason == "Other" and custom_reason:
+        reason = custom_reason
+    elif not reason:
+        reason = custom_reason or "Closed by staff"
+    details = f"Enquiry closed by {current_user.name}. Reason: {reason}"
+    if closing_notes:
+        details += f"\nNotes: {closing_notes}"
 
     e.status = "closed"
     db.session.add(InquiryHistory(
@@ -2444,10 +2462,10 @@ def enquiry_close(enq_id):
         action="Enquiry Closed",
         actor_id=current_user.id,
         actor_name=current_user.name,
-        details=f"Enquiry closed by {current_user.name}. Reason: {reason}"
+        details=details
     ))
     db.session.commit()
-    flash(f"Enquiry {e.ref_code} marked as closed.", "success")
+    flash(f"Enquiry {e.ref_code} marked as closed ({reason}).", "success")
     return redirect(url_for("admin.enquiry_detail", enq_id=e.id))
 
 

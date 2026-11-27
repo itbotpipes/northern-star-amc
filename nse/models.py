@@ -1306,8 +1306,9 @@ class ServiceQuotation(db.Model):
     gateway_payment_id = db.Column(db.String(120), nullable=True)
 
     # Financial
-    gst_percent = db.Column(db.Float, default=18.0)
-    valid_days  = db.Column(db.Integer, default=7)
+    gst_percent     = db.Column(db.Float, default=18.0)
+    discount_amount = db.Column(db.Float, default=0.0)
+    valid_days      = db.Column(db.Integer, default=7)
     notes       = db.Column(db.Text)          # internal / footer notes
 
     # Optional links to existing records
@@ -1350,14 +1351,22 @@ class ServiceQuotation(db.Model):
         return max(0.0, round(sum(i.total for i in self.items), 2))
 
     @property
+    def discount(self):
+        return min(self.subtotal, max(0.0, round(float(self.discount_amount or 0), 2)))
+
+    @property
+    def taxable_subtotal(self):
+        return max(0.0, round(self.subtotal - self.discount, 2))
+
+    @property
     def gst_amount(self):
         gst_pct = max(0.0, float(self.gst_percent or 0))
-        return round(self.subtotal * gst_pct / 100, 2)
+        return round(self.taxable_subtotal * gst_pct / 100, 2)
 
     @property
     def grand_total(self):
         # Grand total must never be negative
-        return max(0.0, round(self.subtotal + self.gst_amount, 2))
+        return max(0.0, round(self.taxable_subtotal + self.gst_amount, 2))
 
     @property
     def total(self):

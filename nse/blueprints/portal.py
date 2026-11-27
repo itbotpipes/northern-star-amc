@@ -736,15 +736,19 @@ def service_quotation_accept(sq_id):
     sq.status = "accepted"
     sq.responded_at = datetime.utcnow()
     start_amc = request.form.get("start_amc") == "1"
+    decline_amc_reason = (request.form.get("decline_amc_reason") or "").strip()
+    decline_amc_notes = (request.form.get("decline_amc_notes") or "").strip()
 
-    # If accepting an enquiry quotation and opting into AMC (or AMC service type without a contract),
-    # create the AMC Contract so the full AMC flow (agreement, payment, visits) proceeds seamlessly.
+    from ..models import InquiryHistory, ServiceQuotationItem
+    enq = Enquiry.query.filter_by(quotation_id=sq.id).first()
+    if not enq and getattr(sq, "inquiry_id", None):
+        enq = db.session.get(Enquiry, sq.inquiry_id)
+
+    # If accepting an enquiry quotation and opting into AMC, create the AMC Contract.
+    # If accepting WITHOUT AMC (Accept Quotation Only), remove any AMC line items so
+    # the payment total excludes AMC, and record the customer's reason for declining AMC.
     created_contract = None
-    if not sq.contract_id and (start_amc or sq.service_type == "amc"):
-        from ..models import InquiryHistory
-        enq = Enquiry.query.filter_by(quotation_id=sq.id).first()
-        if not enq and getattr(sq, "inquiry_id", None):
-            enq = db.session.get(Enquiry, sq.inquiry_id)
+    if not sq.contract_id and start_amc:
         created_contract = Contract(
             status="pending",
             lead_stage="pending_agreement",
@@ -780,24 +784,60 @@ def service_quotation_accept(sq_id):
             description=f"Started AMC {created_contract.reference} from quotation {sq.reference}",
             ref_type="contract", ref_id=created_contract.id,
         ))
+    elif not sq.contract_id and not start_amc:
+        removed_amc = False
+        for it in list(sq.items):
+            if it.category == "Annual Maintenance Contract" or it.unit == "Annual Contract":
+                db.session.delete(it)
+                removed_amc = True
+        if sq.service_type == "amc":
+            sq.service_type = "inspection"
+        db.session.flush()
+        if removed_amc and ServiceQuotationItem.query.filter_by(quotation_id=sq.id).count() == 0:
+            db.session.add(ServiceQuotationItem(
+                quotation_id=sq.id,
+                category="Core Service",
+                description="Site Inspection & Fire Safety Servicing Scope",
+                unit="Job",
+                quantity=1,
+                rate=4500.0,
+                sort_order=0,
+            ))
+            db.session.flush()
+        reason_text = decline_amc_reason or "Customer opted for one-time work without AMC"
+        if decline_amc_notes:
+            reason_text += f" — {decline_amc_notes}"
+        if enq:
+            db.session.add(InquiryHistory(
+                inquiry_id=enq.id,
+                action="Quotation Accepted (Without AMC)",
+                actor_id=current_user.id,
+                actor_name=current_user.name,
+                details=f"Client accepted {sq.reference} for ₹{sq.grand_total:,.0f} without AMC. Reason for declining AMC: {reason_text}"
+            ))
 
     db.session.add(CustomerJourneyEvent(
         customer_id=current_user.id,
         event_type="quote_accepted",
-        description=f"Customer accepted {sq.reference} (₹{sq.grand_total:,.0f})",
+        description=f"Customer accepted {sq.reference} (₹{sq.grand_total:,.0f})"
+                    + (f" without AMC ({decline_amc_reason})" if (not start_amc and not created_contract and decline_amc_reason) else ""),
         ref_type="service_quotation", ref_id=sq.id,
     ))
     db.session.commit()
     send_quote_accepted_alert(sq)
+    staff_msg = f"{sq.customer_name} accepted ₹{sq.grand_total:,.0f}. "
+    if sq.contract:
+        staff_msg += f"AMC {sq.contract.reference} started — ready for agreement & activation."
+    elif decline_amc_reason:
+        staff_msg += f"Accepted WITHOUT AMC (Reason: {decline_amc_reason})."
     notify_staff(
         f"Quotation {sq.reference} ACCEPTED",
-        f"{sq.customer_name} accepted ₹{sq.grand_total:,.0f}. "
-        f"{'AMC ' + sq.contract.reference + ' started — ready for agreement & activation.' if sq.contract else ''}".strip(),
+        staff_msg.strip(),
         link=url_for("sq.detail_quotation", sq_id=sq.id) + "?chime=1")
     if created_contract:
         flash(f"Quotation accepted & AMC {created_contract.reference} started! Please complete payment and sign your AMC agreement below.", "success_chime")
     else:
-        flash("Quotation accepted! Our team will contact you shortly to proceed.", "success_chime")
+        flash("Quotation accepted (without AMC)! Please complete payment below.", "success_chime")
     return redirect(url_for("portal.service_quotation", sq_id=sq_id))
 
 

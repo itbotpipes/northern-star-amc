@@ -88,7 +88,7 @@
       {% endif %}
     </div>
 
-    {% if not sq.contract_id and sq.status in ('draft', 'sent', 'viewed', 'negotiation_requested') %}
+    {% if not sq.contract_id and sq.status == 'draft' %}
     <div class="mt-5 p-4 rounded-xl border {% if sq.service_type == 'amc' %}bg-emerald-50/70 border-emerald-200{% else %}bg-blue-50/60 border-blue-200{% endif %}">
       {% if sq.service_type == 'amc' %}
       <div class="flex items-center justify-between flex-wrap gap-3">
@@ -111,14 +111,12 @@
           <span class="text-xs font-bold uppercase tracking-wider text-blue-900">Want to add an AMC to this quotation?</span>
           <p class="text-xs text-blue-700 mt-0.5">Add an Annual Maintenance Contract plan below, or send this as a simple inspection/service quotation.</p>
         </div>
-        {% if sq.status == 'draft' %}
         <form method="post" class="m-0">
           <input type="hidden" name="action" value="send">
           <button type="submit" class="px-3.5 py-2 rounded-lg text-xs font-semibold bg-white border border-blue-300 text-blue-900 hover:bg-blue-100 transition cursor-pointer">
             No, Send Simple Quotation →
           </button>
         </form>
-        {% endif %}
       </div>
       <form method="post" class="flex flex-wrap items-end gap-2.5 m-0">
         <input type="hidden" name="action" value="add_amc">
@@ -145,7 +143,7 @@
     </div>
     {% endif %}
 
-    {% if sq.status == 'accepted' and not sq.contract_id and linked_enquiry %}
+    {% if sq.status == 'accepted' and not sq.contract_id and linked_enquiry and needs_repair %}
     <!-- Assign Site Repair / Work Visit to Technician (post-acceptance) -->
     <div class="mt-5 p-4 rounded-xl border-2 border-emerald-200 bg-emerald-50/40">
       <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
@@ -368,6 +366,24 @@
           <td colspan="4" class="px-4 py-2 text-right text-ink-muted font-medium">Subtotal</td>
           <td class="px-4 py-2 text-right font-semibold text-ink">{{ sq.subtotal|rupees }}</td>
         </tr>
+        {% if not sq.is_paid and sq.status in ('draft', 'sent', 'viewed', 'negotiation_requested') %}
+        <tr>
+          <td colspan="4" class="px-4 py-2 text-right text-emerald-700 font-medium">Discount (₹)</td>
+          <td class="px-4 py-2 text-right">
+            <form method="post" class="inline-flex items-center justify-end gap-1.5 m-0">
+              <input type="hidden" name="action" value="update_discount">
+              <input type="number" step="0.01" min="0" name="discount_amount" value="{{ sq.discount_amount or 0 }}"
+                     class="w-24 px-2 py-1 text-right text-xs rounded-lg border border-slate-300 bg-white">
+              <button type="submit" class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer">Apply</button>
+            </form>
+          </td>
+        </tr>
+        {% elif sq.discount > 0 %}
+        <tr>
+          <td colspan="4" class="px-4 py-2 text-right text-emerald-700 font-medium">Discount</td>
+          <td class="px-4 py-2 text-right font-semibold text-emerald-700">-{{ sq.discount|rupees }}</td>
+        </tr>
+        {% endif %}
         <tr>
           <td colspan="4" class="px-4 py-2 text-right text-ink-muted font-medium">GST ({{ sq.gst_percent }}%)</td>
           <td class="px-4 py-2 text-right font-semibold text-ink">{{ sq.gst_amount|rupees }}</td>

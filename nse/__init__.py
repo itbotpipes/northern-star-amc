@@ -126,6 +126,9 @@ def create_app(config_class=Config, root=None):
         if request.endpoint in ("static", "serve_media"):
             return {}
 
+        if request.method != "GET":
+            _staff_badge_cache.clear()
+
         unread = 0
         recent_notifications = []
         sq_action_count = 0
@@ -394,5 +397,12 @@ def create_app(config_class=Config, root=None):
                 return redirect(url_for("portal.dashboard"))
         flash("Please log in to continue.", "info")
         return redirect(url_for("auth.login"))
+
+    @app.after_request
+    def _no_cache_html(resp):
+        if resp.mimetype == "text/html":
+            resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            resp.headers["Pragma"] = "no-cache"
+        return resp
 
     return app

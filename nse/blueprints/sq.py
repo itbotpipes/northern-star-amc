@@ -169,6 +169,7 @@ def new_quotation():
             project_name     = f.get("project_name", "").strip(),
             customer_address = f.get("customer_address", "").strip(),
             gst_percent      = float(f.get("gst_percent") or 18),
+            discount_amount  = max(0.0, float(f.get("discount_amount") or 0)),
             valid_days       = int(f.get("valid_days") or 7),
             notes            = f.get("notes", "").strip(),
             contract_id      = f.get("contract_id") or None,
@@ -394,6 +395,16 @@ def detail_quotation(sq_id):
     if request.method == "POST":
         action = request.form.get("action", "save")
 
+        if action == "update_discount":
+            try:
+                disc = max(0.0, float(request.form.get("discount_amount") or 0))
+            except (ValueError, TypeError):
+                disc = 0.0
+            sq.discount_amount = disc
+            db.session.commit()
+            flash(f"Discount updated to ₹{sq.discount:,.2f}.", "success")
+            return redirect(url_for("sq.detail_quotation", sq_id=sq.id))
+
         if action == "add_amc":
             plan_id = request.form.get("amc_plan_id", type=int)
             plan = db.session.get(AMCPlan, plan_id) if plan_id else None
@@ -458,6 +469,8 @@ def detail_quotation(sq_id):
             sq.project_name     = request.form.get("project_name", sq.project_name or "").strip()
             sq.customer_address = request.form.get("customer_address", sq.customer_address or "").strip()
             sq.gst_percent      = float(request.form.get("gst_percent") or sq.gst_percent)
+            if "discount_amount" in request.form:
+                sq.discount_amount = max(0.0, float(request.form.get("discount_amount") or 0))
             sq.valid_days       = int(request.form.get("valid_days") or sq.valid_days)
             sq.notes            = request.form.get("notes", sq.notes or "").strip()
 
@@ -617,12 +630,18 @@ def detail_quotation(sq_id):
     linked_enquiry = Enquiry.query.filter_by(quotation_id=sq.id).first()
     if not linked_enquiry and getattr(sq, "inquiry_id", None):
         linked_enquiry = db.session.get(Enquiry, sq.inquiry_id)
+    needs_repair = bool(
+        linked_enquiry and (
+            any(it.status in ("fail", "attention") for it in linked_enquiry.checklist_items)
+            or linked_enquiry.repair_visits
+        )
+    )
     technicians = User.query.filter(User.role.in_(["technician", "admin"])).order_by(User.name).all()
     return render_template("admin/sq_detail.html", sq=sq, journey=journey,
                            share_link=share_link, whatsapp_share=whatsapp_share,
                            share_qr=share_qr, whatsapp_creds_share=whatsapp_creds_share,
                            amc_plans=amc_plans, linked_enquiry=linked_enquiry,
-                           technicians=technicians)
+                           needs_repair=needs_repair, technicians=technicians)
 
 
 @sq_bp.route("/<int:sq_id>/qr")
@@ -660,6 +679,7 @@ def edit_quotation(sq_id):
         sq.project_name     = f.get("project_name", sq.project_name or "").strip()
         sq.customer_address = f.get("customer_address", sq.customer_address or "").strip()
         sq.gst_percent      = max(0.0, float(f.get("gst_percent") or sq.gst_percent))
+        sq.discount_amount  = max(0.0, float(f.get("discount_amount") or 0))
         sq.valid_days       = max(1, int(f.get("valid_days") or sq.valid_days))
         sq.notes            = f.get("notes", sq.notes or "").strip()
 
