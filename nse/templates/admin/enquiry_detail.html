@@ -34,6 +34,7 @@
       </div>
 
       <!-- Action Buttons -->
+      {% set is_pure_tech = current_user.is_technician and not (current_user.is_manager or current_user.is_admin) %}
       <div class="flex items-center gap-2 flex-wrap">
         {% if inquiry.status == 'new' %}
         <a href="#assignment"
@@ -55,7 +56,6 @@
           Assigned to {{ inquiry.assigned_to.name if inquiry.assigned_to else 'Technician' }}
         </span>
         {% endif %}
-        {% set is_pure_tech = current_user.is_technician and not (current_user.is_manager or current_user.is_admin) %}
         {% elif inquiry.status == 'checklist_submitted' and not inquiry.quotation_id and not is_pure_tech %}
         <form method="post" action="{{ url_for('admin.enquiry_generate_quotation', enq_id=inquiry.id) }}">
           <button type="submit"
@@ -72,7 +72,7 @@
         </a>
         {% endif %}
 
-        {% if inquiry.status != 'closed' %}
+        {% if inquiry.status != 'closed' and not is_pure_tech %}
         <form method="post" action="{{ url_for('admin.enquiry_close', enq_id=inquiry.id) }}" onsubmit="return confirm('Close this enquiry?');">
           <button type="submit" class="px-3 py-2 rounded-xl text-xs font-medium text-slate-500 hover:bg-slate-100 transition">
             Close Enquiry
