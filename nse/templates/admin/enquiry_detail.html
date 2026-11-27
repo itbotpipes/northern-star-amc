@@ -515,6 +515,87 @@
         {% endif %}
       </div>
 
+      {% if inquiry.repair_visits or (inquiry.quotation and inquiry.quotation.status == 'accepted') %}
+      <!-- Repair / Execution Visits (Post-Quotation Acceptance) -->
+      <div class="card p-5 space-y-4 border-2 border-emerald-200 bg-emerald-50/20">
+        <div class="flex items-center justify-between flex-wrap gap-2">
+          <div>
+            <h2 class="text-sm font-bold text-ink uppercase tracking-wider">Repair &amp; Execution Visits</h2>
+            <p class="text-xs text-ink-muted mt-0.5">Track work visits assigned after quotation acceptance. Add more visits if work cannot finish in one visit.</p>
+          </div>
+          <span class="text-xs font-semibold text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-full">
+            {{ inquiry.repair_visits|length }} Visit(s)
+          </span>
+        </div>
+
+        {% if inquiry.repair_visits %}
+        <div class="space-y-3">
+          {% for rv in inquiry.repair_visits %}
+          <div class="bg-white border border-slate-200 rounded-xl p-4 space-y-2.5">
+            <div class="flex items-center justify-between flex-wrap gap-2">
+              <div class="text-xs">
+                <span class="font-bold text-ink text-sm">Visit #{{ rv.visit_number }}</span>
+                · Assigned to <strong>{{ rv.technician.name if rv.technician else 'Unassigned' }}</strong>
+                · {{ rv.scheduled_date|datefmt if rv.scheduled_date else 'TBD' }} ({{ rv.time_slot or 'Standard' }})
+              </div>
+              <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase {% if rv.status == 'completed' %}bg-green-100 text-green-800{% elif rv.status == 'followup_needed' %}bg-amber-100 text-amber-800{% elif rv.status == 'in_progress' %}bg-blue-100 text-blue-800{% else %}bg-slate-100 text-slate-700{% endif %}">
+                {{ 'Needs More Visits' if rv.status == 'followup_needed' else rv.status.replace('_', ' ')|title }}
+              </span>
+            </div>
+            {% if rv.notes %}<p class="text-xs text-ink-subtle bg-slate-50 p-2 rounded-lg">Scope: {{ rv.notes }}</p>{% endif %}
+            {% if rv.tech_notes %}<p class="text-xs text-blue-900 bg-blue-50 p-2 rounded-lg font-medium">Technician Notes: {{ rv.tech_notes }}</p>{% endif %}
+
+            {% if rv.status != 'completed' and ((rv.technician_id and current_user.id == rv.technician_id) or not is_pure_tech) %}
+            <form method="post" action="{{ url_for('admin.enquiry_update_repair_visit', enq_id=inquiry.id, visit_id=rv.id) }}" class="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-2">
+              <input type="text" name="tech_notes" value="{{ rv.tech_notes or '' }}" placeholder="Work update / parts replaced / reason if incomplete..."
+                     class="flex-1 min-w-[200px] px-2.5 py-1.5 text-xs rounded-lg border border-slate-200">
+              <button type="submit" name="status" value="in_progress" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-blue-100 text-blue-800 hover:bg-blue-200 cursor-pointer">In Progress</button>
+              <button type="submit" name="status" value="followup_needed" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-amber-100 text-amber-900 hover:bg-amber-200 cursor-pointer">Need Another Visit</button>
+              <button type="submit" name="status" value="completed" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer">✓ Mark Completed</button>
+            </form>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if not is_pure_tech %}
+        <form method="post" action="{{ url_for('admin.enquiry_add_repair_visit', enq_id=inquiry.id) }}" class="pt-3 border-t border-emerald-200 grid sm:grid-cols-4 gap-2.5 items-end">
+          <div>
+            <label class="block text-[11px] font-semibold text-ink-muted mb-1">Assign Technician</label>
+            <select name="technician_id" required class="w-full px-2.5 py-2 text-xs rounded-lg border border-slate-300 bg-white">
+              <option value="">— Select Technician —</option>
+              {% for t in technicians %}
+              <option value="{{ t.id }}" {{ 'selected' if inquiry.assigned_to_id == t.id }}>{{ t.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label class="block text-[11px] font-semibold text-ink-muted mb-1">Visit Date</label>
+            <input type="date" name="scheduled_date" required class="w-full px-2.5 py-2 text-xs rounded-lg border border-slate-300 bg-white">
+          </div>
+          <div>
+            <label class="block text-[11px] font-semibold text-ink-muted mb-1">Time Slot</label>
+            <select name="time_slot" class="w-full px-2.5 py-2 text-xs rounded-lg border border-slate-300 bg-white">
+              <option value="Morning (10:00 AM – 01:00 PM)">Morning (10 AM – 1 PM)</option>
+              <option value="Afternoon (02:00 PM – 05:00 PM)">Afternoon (2 PM – 5 PM)</option>
+              <option value="Full Day (10:00 AM – 06:00 PM)">Full Day (10 AM – 6 PM)</option>
+            </select>
+          </div>
+          <div>
+            <button type="submit" class="w-full px-3.5 py-2 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition cursor-pointer">
+              {% if inquiry.repair_visits %}+ Add Visit #{{ inquiry.repair_visits|length + 1 }}{% else %}Assign Visit #1{% endif %}
+            </button>
+          </div>
+          <div class="sm:col-span-4">
+            <input type="text" name="notes" placeholder="Repair / work scope instructions (optional)..."
+                   class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 bg-white">
+          </div>
+        </form>
+        {% endif %}
+      </div>
+      {% endif %}
+
     </div>
 
     <!-- Right Column: Audit Trail & Complete Enquiry History -->

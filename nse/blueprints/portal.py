@@ -1026,6 +1026,28 @@ def enquiries():
     return render_template("portal/enquiries.html", enquiries=my_enquiries)
 
 
+@portal_bp.route("/enquiry/<int:enq_id>")
+@login_required
+@customer_required
+def enquiry_detail(enq_id):
+    """Customer Portal detail view for a single enquiry with live visits & history updates."""
+    from ..models import FormAttachment
+    e = db.session.get(Enquiry, enq_id) or abort(404)
+    phone_digits = "".join(filter(str.isdigit, current_user.phone or ""))
+    phone_last10 = phone_digits[-10:] if len(phone_digits) >= 10 else phone_digits
+    owns = (
+        e.customer_id == current_user.id
+        or (current_user.phone and e.phone == current_user.phone)
+        or (phone_last10 and e.phone and phone_last10 in e.phone)
+    )
+    if not owns:
+        abort(404)
+    attachments = FormAttachment.query.filter_by(
+        ref_type="enquiry", ref_id=e.id
+    ).order_by(FormAttachment.id.asc()).all()
+    return render_template("portal/enquiry_detail.html", e=e, attachments=attachments)
+
+
 @portal_bp.route("/journey", endpoint="journey")
 @login_required
 @customer_required

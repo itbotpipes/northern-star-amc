@@ -1,0 +1,132 @@
+{% extends "base_portal.html" %}
+{% from "_macros.html" import status_badge %}
+{% block title %}{{ e.ref_code }} — Enquiry Details &amp; Updates{% endblock %}
+{% block content %}
+<section class="max-w-5xl mx-auto px-4 py-8 space-y-6">
+  <div>
+    <a href="{{ url_for('portal.enquiries') }}" class="text-sm text-ink-subtle hover:text-ink">← Back to My Enquiries</a>
+    <div class="flex items-center justify-between flex-wrap gap-3 mt-2">
+      <div>
+        <div class="flex items-center gap-2.5">
+          <span class="font-mono text-xs font-bold bg-slate-100 text-navy-900 px-2.5 py-1 rounded-lg">{{ e.ref_code }}</span>
+          <h1 class="text-2xl font-extrabold text-navy-900">{{ e.subject or e.service_requirement or 'Fire Safety Enquiry' }}</h1>
+        </div>
+        <p class="text-xs text-slate-500 mt-1">Submitted on {{ e.created_at|datefmt }} · {{ e.address or '' }}{% if e.area %}, {{ e.area }}{% endif %}</p>
+      </div>
+      {{ status_badge(e.status) }}
+    </div>
+  </div>
+
+  <!-- Workflow Steps -->
+  <div class="card p-5">
+    <h2 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">Live Progress</h2>
+    <div class="grid grid-cols-2 sm:grid-cols-6 gap-2">
+      {% for step in e.workflow_steps %}
+      <div class="p-2.5 rounded-xl border text-xs {% if step.done %}bg-emerald-50 border-emerald-200 text-emerald-900{% elif step.active %}bg-blue-50 border-blue-300 text-blue-900 ring-1 ring-blue-200{% else %}bg-slate-50 border-slate-200 text-slate-400{% endif %}">
+        <div class="font-bold">{{ step.num }}. {{ step.label }}</div>
+        <div class="text-[10px] mt-0.5 opacity-80">{{ step.desc }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="grid md:grid-cols-3 gap-6">
+    <!-- Left 2 cols: Details, Repair Visits & Live Updates -->
+    <div class="md:col-span-2 space-y-5">
+      {% if e.message %}
+      <div class="card p-5">
+        <h2 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Requirement / Problem Description</h2>
+        <p class="text-sm text-slate-700 whitespace-pre-line">{{ e.message }}</p>
+      </div>
+      {% endif %}
+
+      {% if e.repair_visits %}
+      <div class="card p-5 border-2 border-blue-200 bg-blue-50/30 space-y-3">
+        <h2 class="text-sm font-bold text-navy-900 uppercase tracking-wider">Repair &amp; Execution Visits ({{ e.repair_visits|length }})</h2>
+        {% for rv in e.repair_visits %}
+        <div class="bg-white rounded-xl border border-blue-100 p-4 space-y-1.5">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <span class="font-bold text-sm text-navy-900">Visit #{{ rv.visit_number }}</span>
+            <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase {% if rv.status == 'completed' %}bg-green-100 text-green-800{% elif rv.status == 'followup_needed' %}bg-amber-100 text-amber-800{% elif rv.status == 'in_progress' %}bg-blue-100 text-blue-800{% else %}bg-slate-100 text-slate-700{% endif %}">
+              {{ 'Additional Visit Required' if rv.status == 'followup_needed' else rv.status.replace('_', ' ')|title }}
+            </span>
+          </div>
+          <div class="text-xs text-slate-600">
+            Technician: <strong>{{ rv.technician.name if rv.technician else 'Assigned Engineer' }}</strong>
+            {% if rv.technician and rv.technician.phone %} · <a href="tel:{{ rv.technician.phone }}" class="text-primary underline">{{ rv.technician.phone }}</a>{% endif %}
+          </div>
+          <div class="text-xs text-slate-600">Scheduled: <strong>{{ rv.scheduled_date|datefmt if rv.scheduled_date else 'TBD' }}</strong> ({{ rv.time_slot or 'Standard Hours' }})</div>
+          {% if rv.notes %}<div class="text-xs text-slate-500 mt-1">Scope: {{ rv.notes }}</div>{% endif %}
+          {% if rv.tech_notes %}<div class="text-xs text-blue-800 bg-blue-50 p-2.5 rounded-lg mt-2 font-medium">Technician Update: {{ rv.tech_notes }}</div>{% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <!-- Live Timeline Updates -->
+      <div class="card p-5 space-y-4">
+        <h2 class="text-sm font-bold text-navy-900 uppercase tracking-wider">All Live Updates ({{ e.history_logs|length }})</h2>
+        <div class="space-y-3 border-l-2 border-slate-200 pl-4">
+          {% for log in e.history_logs %}
+          <div class="relative">
+            <div class="absolute -left-[21px] top-1.5 w-2.5 h-2.5 rounded-full bg-primary"></div>
+            <div class="flex items-center justify-between flex-wrap gap-2">
+              <span class="text-xs font-bold text-navy-900">{{ log.action }}</span>
+              <span class="text-[11px] text-slate-400">{{ log.created_at|datefmt }}</span>
+            </div>
+            {% if log.details %}<p class="text-xs text-slate-600 mt-0.5 whitespace-pre-line">{{ log.details }}</p>{% endif %}
+          </div>
+          {% else %}
+          <p class="text-xs text-slate-400">Enquiry submitted — updates will appear here as our team progresses.</p>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Right col: Engineer & Quotation -->
+    <div class="space-y-4">
+      {% if e.assigned_to %}
+      <div class="card p-4 bg-slate-50/80 space-y-2">
+        <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">Assigned Engineer</span>
+        <div class="font-bold text-sm text-navy-900">{{ e.assigned_to.name }}</div>
+        {% if e.assigned_to.phone %}
+        <a href="tel:{{ e.assigned_to.phone }}" class="text-xs text-primary font-semibold hover:underline block">📞 {{ e.assigned_to.phone }}</a>
+        {% endif %}
+        {% if e.visit_scheduled_date %}
+        <div class="text-xs text-slate-600 pt-2 border-t border-slate-200">
+          Scheduled: <strong>{{ e.visit_scheduled_date|datefmt }}</strong>
+          {% if e.visit_time_slot %}<div class="text-[11px] text-slate-500">{{ e.visit_time_slot }}</div>{% endif %}
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      {% if e.quotation %}
+      <div class="card p-4 bg-emerald-50 border-emerald-200 space-y-2">
+        <span class="text-[11px] font-bold uppercase tracking-wider text-emerald-800 block">Quotation</span>
+        <div class="font-mono font-bold text-emerald-900">{{ e.quotation.reference }}</div>
+        <div class="text-xs text-emerald-800">Amount: <strong>{{ e.quotation.grand_total|rupees }}</strong> · {{ e.quotation.status_label }}</div>
+        <a href="{{ url_for('portal.service_quotation', sq_id=e.quotation.id) }}" class="inline-block text-xs bg-emerald-700 text-white font-bold px-3 py-1.5 rounded-lg hover:bg-emerald-800 transition">
+          View Quotation →
+        </a>
+      </div>
+      {% endif %}
+
+      {% if attachments %}
+      <div class="card p-4 space-y-2">
+        <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500 block">Your Attachments</span>
+        {% for att in attachments %}
+          {% if att.attachment_type == 'audio' %}
+          <audio controls preload="metadata" class="w-full h-8" src="{{ att.file_path|upload_url }}"></audio>
+          {% else %}
+          <a href="{{ att.file_path|upload_url }}" target="_blank" class="block">
+            <img src="{{ att.file_path|upload_url }}" class="w-full h-24 object-cover rounded-lg border border-slate-200">
+          </a>
+          {% endif %}
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</section>
+{% endblock %}

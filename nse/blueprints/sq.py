@@ -614,10 +614,15 @@ def detail_quotation(sq_id):
         whatsapp_creds_share = whatsapp_url(sq.customer_phone, creds_msg)
 
     amc_plans = AMCPlan.query.filter_by(active=True).order_by(AMCPlan.price.asc()).all()
+    linked_enquiry = Enquiry.query.filter_by(quotation_id=sq.id).first()
+    if not linked_enquiry and getattr(sq, "inquiry_id", None):
+        linked_enquiry = db.session.get(Enquiry, sq.inquiry_id)
+    technicians = User.query.filter(User.role.in_(["technician", "admin"])).order_by(User.name).all()
     return render_template("admin/sq_detail.html", sq=sq, journey=journey,
                            share_link=share_link, whatsapp_share=whatsapp_share,
                            share_qr=share_qr, whatsapp_creds_share=whatsapp_creds_share,
-                           amc_plans=amc_plans)
+                           amc_plans=amc_plans, linked_enquiry=linked_enquiry,
+                           technicians=technicians)
 
 
 @sq_bp.route("/<int:sq_id>/qr")

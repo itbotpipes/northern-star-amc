@@ -2270,3 +2270,23 @@ class UploadedFile(db.Model):
     mimetype   = db.Column(db.String(120), default="application/octet-stream")
     data       = db.Column(db.LargeBinary, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class EnquiryVisit(db.Model):
+    """Scheduled repair / execution visits for an enquiry after quotation acceptance."""
+    __tablename__ = "enquiry_visits"
+
+    id             = db.Column(db.Integer, primary_key=True)
+    inquiry_id     = db.Column(db.Integer, db.ForeignKey("enquiries.id"), nullable=False)
+    visit_number   = db.Column(db.Integer, default=1)
+    technician_id  = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    scheduled_date = db.Column(db.Date, nullable=True)
+    time_slot      = db.Column(db.String(60))
+    status         = db.Column(db.String(30), default="scheduled")  # scheduled / in_progress / completed / followup_needed
+    notes          = db.Column(db.Text)
+    tech_notes     = db.Column(db.Text)
+    completed_at   = db.Column(db.DateTime, nullable=True)
+    created_at     = db.Column(db.DateTime, default=datetime.utcnow)
+
+    inquiry    = db.relationship("Enquiry", backref=db.backref("repair_visits", order_by="EnquiryVisit.visit_number.asc()"), foreign_keys=[inquiry_id])
+    technician = db.relationship("User", foreign_keys=[technician_id])
