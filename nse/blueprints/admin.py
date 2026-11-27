@@ -1773,21 +1773,78 @@ def refill_order(order_id):
 # Enquiries
 # --------------------------------------------------------------------------- #
 # --------------------------------------------------------------------------- #
-# Predefined Fire Safety Inspection Checklist structure (aligned with HealthCheckReport)
+# Saved Site Inspection Checklist (archived for future reuse)
 # --------------------------------------------------------------------------- #
-DEFAULT_INQUIRY_CHECKLIST = [
-    {"category": sec_title, "items": [label for _, label in qs]}
-    for sec_title, qs in HealthCheckReport.SECTIONS
-] + [
+SAVED_SITE_INSPECTION_CHECKLIST = [
     {
-        "category": "Fire Hydrant & Sprinkler System",
-        "items": [label for _, label, _ in HealthCheckReport.HYDRANT_ITEMS],
+        "category": "Fire Extinguishers",
+        "items": [
+            "Cylinder physical condition, paint integrity & corrosion check",
+            "Pressure gauge needle located in operable green zone",
+            "Tamper seal, safety pull pin & discharge hose/nozzle intact",
+            "Hydro-static pressure test & refilling validity dates check",
+            "Extinguisher mounting height, accessibility & photoluminescent sign"
+        ]
     },
     {
-        "category": "Life Safety Extras",
-        "items": [label for _, label in HealthCheckReport.EXTRAS],
+        "category": "Fire Alarm & Detection",
+        "items": [
+            "Main Fire Alarm Control Panel (FACP) AC power & battery backup status",
+            "Smoke and heat detectors physical cleanliness & visual inspection",
+            "Manual Call Points (MCP) glass integrity & reset key test",
+            "Electronic hooters / strobes sounder output & audibility check",
+            "Fault, open-circuit & supervisory indicators check on panel"
+        ]
     },
+    {
+        "category": "Hydrant & Hose Reel System",
+        "items": [
+            "Landing valves operation, wheel smoothness & gland packing leakage",
+            "First-aid hose reel drum rotation, rubber hose condition & nozzle shut-off",
+            "Fire hose box integrity, canvas delivery hoses & instantaneous couplings",
+            "Riser pipeline hydrostatic pressure & booster pump auto cut-in test",
+            "Air release valves, drain valves & underground ring main isolation valves"
+        ]
+    },
+    {
+        "category": "Automatic Sprinkler System",
+        "items": [
+            "Main installation control valve (ICV) open, secured & locked",
+            "Sprinkler glass bulbs / fusible links unobstructed (minimum 0.5m clearance)",
+            "System water pressure gauge readings at riser base & alarm valve",
+            "Inspector's test & drain valve functional flow test"
+        ]
+    },
+    {
+        "category": "Fire Pumps & Reservoir Water Supply",
+        "items": [
+            "Main electrical fire pump automatic start on pressure drop",
+            "Standby diesel engine fire pump battery health, fuel level & crank test",
+            "Jockey pump automatic start/stop pressure regulation settings",
+            "Fire water underground / overhead reservoir storage capacity check"
+        ]
+    },
+    {
+        "category": "Emergency Exits & Signage",
+        "items": [
+            "Emergency fire exit staircases & doors unobstructed and unlocked",
+            "Photoluminescent exit signs & directional evacuation arrows visibility",
+            "Emergency secondary backup lighting units battery operation test",
+            "Evacuation floor plan diagram & safe assembly point identification"
+        ]
+    },
+    {
+        "category": "Electrical & Risk Observations",
+        "items": [
+            "Main electrical distribution boards clear of combustible materials",
+            "Fire-stopping seals intact on cable tray & pipe wall penetrations",
+            "Safe storage of flammable chemicals, gases or hazardous inventory",
+            "Overall site housekeeping & fire hazard risk assessment"
+        ]
+    }
 ]
+
+DEFAULT_INQUIRY_CHECKLIST = SAVED_SITE_INSPECTION_CHECKLIST
 
 
 # --------------------------------------------------------------------------- #
@@ -2138,69 +2195,92 @@ def enquiry_checklist(enq_id):
     if request.method == "POST":
         f = request.form
 
-        # Clear existing checklist items for this inquiry before saving fresh submission
-        InquiryChecklistItem.query.filter_by(inquiry_id=e.id).delete()
+        # Save full HealthCheckReport (FSHCR) with score, floor equipment, and recommended service
+        r = HealthCheckReport(created_by_id=current_user.id)
+        db.session.add(r)
+        r.property_name = (f.get("property_name") or "").strip() or e.subject or e.name
+        r.property_address = (f.get("property_address") or "").strip() or e.address
+        r.property_contact = (f.get("property_contact") or "").strip() or e.phone
+        r.inspector_name = (f.get("inspector_name") or "").strip() or current_user.name
+        r.inspector_contact = (f.get("inspector_contact") or "").strip()
+        if f.get("report_date"):
+            r.report_date = datetime.strptime(f.get("report_date"), "%Y-%m-%d").date()
+        r.status = "completed"
+        answers_payload = _collect_health_payload(f)
+        r.set_answers(answers_payload)
+        calc_score, calc_outcome, detected_defects = HealthCheckReport.compute_score(answers_payload)
+        score_raw = f.get("score", "").strip()
+        r.score = int(score_raw) if score_raw.isdigit() else calc_score
+        r.outcome = f.get("outcome") or calc_outcome
+        if r.score < 85 and r.outcome == "ok":
+            r.outcome = "issues"
 
-        # Extract items
-        item_keys = [k for k in f.keys() if k.startswith("item_status_")]
+        scan = request.files.get("scan")
+        scan_path = save_upload(scan, "health_reports", {"pdf", "png", "jpg", "jpeg"})
+        if scan_path:
+            r.scan_path = scan_path
+
+        # Clear existing checklist items and mirror FSHCR results into InquiryChecklistItem
+        InquiryChecklistItem.query.filter_by(inquiry_id=e.id).delete()
         pass_cnt = 0
         att_cnt = 0
         fail_cnt = 0
+        rec_service = (f.get("recommended_service") or "").strip()
 
-        for k in item_keys:
-            idx = k.replace("item_status_", "")
-            cat = f.get(f"item_cat_{idx}", "General")
-            name = f.get(f"item_name_{idx}", "Inspection Item")
-            st = f.get(k, "pass")
-            remarks = f.get(f"item_remarks_{idx}", "").strip()
-            rec = f.get(f"item_rec_{idx}", "").strip()
+        for sec_title, qs in HealthCheckReport.SECTIONS:
+            for key, label in qs:
+                val = answers_payload.get(key, "na")
+                st = "pass" if val == "yes" else ("fail" if val == "no" else "na")
+                if st == "pass":
+                    pass_cnt += 1
+                elif st == "fail":
+                    fail_cnt += 1
+                db.session.add(InquiryChecklistItem(
+                    inquiry_id=e.id,
+                    category=sec_title,
+                    item_name=label,
+                    status=st,
+                    remarks="",
+                    recommendation="Repair / rectify during service" if st == "fail" else ""
+                ))
 
+        for key, label, has_count in HealthCheckReport.HYDRANT_ITEMS:
+            val = answers_payload.get(key, "na")
+            st = "pass" if val == "yes" else ("fail" if val == "no" else "na")
             if st == "pass":
                 pass_cnt += 1
-            elif st == "attention":
-                att_cnt += 1
             elif st == "fail":
                 fail_cnt += 1
-
+            nos = answers_payload.get(f"{key}_nos", "") if has_count else ""
             db.session.add(InquiryChecklistItem(
                 inquiry_id=e.id,
-                category=cat,
-                item_name=name,
+                category="Fire Hydrant & Sprinkler System",
+                item_name=label,
                 status=st,
-                remarks=remarks,
-                recommendation=rec
+                remarks=f"Count: {nos}" if nos else "",
+                recommendation="Service / replace unit" if st == "fail" else ""
             ))
 
-        # Technician summary notes
-        tech_notes = f.get("technician_notes", "").strip()
-        if tech_notes:
-            e.technician_notes = tech_notes
-
-        # Photo uploads
-        photos = request.files.getlist("photos")
-        caption = f.get("photo_caption", "").strip()
-        photo_count = 0
-        for p in photos:
-            if p and p.filename:
-                saved = save_upload(p, f"inquiries/{e.id}", {"png", "jpg", "jpeg", "webp"})
-                if saved:
-                    db.session.add(InquiryPhoto(
-                        inquiry_id=e.id,
-                        file_path=saved,
-                        caption=caption or f"Site inspection photo — {e.ref_code}",
-                        uploaded_by_id=current_user.id
-                    ))
-                    photo_count += 1
+        remarks_summary = (f.get("remarks") or "").strip()
+        summary_parts = [f"FSHCR {r.reference} · Safety Score: {r.score}/100 ({'OK' if r.outcome == 'ok' else 'Issues Found'})"]
+        if rec_service:
+            summary_parts.append(f"Recommended Service: {rec_service}")
+        if remarks_summary:
+            summary_parts.append(f"Remarks: {remarks_summary}")
+        e.technician_notes = "\n".join(summary_parts)
 
         e.checklist_submitted_at = datetime.utcnow()
         e.visit_completed_at = datetime.utcnow()
         e.status = "checklist_submitted"
 
-        history_summary = f"Site Visit Checklist Submitted by {current_user.name}. Findings: {pass_cnt} passed, {att_cnt} attention needed, {fail_cnt} defects identified."
-        if photo_count:
-            history_summary += f" ({photo_count} photo(s) uploaded)"
-        if tech_notes:
-            history_summary += f"\nRemarks: {tech_notes}"
+        history_summary = (
+            f"Health Checkup Report {r.reference} submitted by {current_user.name}. "
+            f"Safety Score: {r.score}/100 · Findings: {pass_cnt} passed, {fail_cnt} defects."
+        )
+        if rec_service:
+            history_summary += f" Recommended: {rec_service}."
+        if remarks_summary:
+            history_summary += f"\nRemarks: {remarks_summary}"
 
         db.session.add(InquiryHistory(
             inquiry_id=e.id,
@@ -2215,8 +2295,8 @@ def enquiry_checklist(enq_id):
         # Notify Team Leader
         try:
             notify_team_leaders(
-                title=f"Checklist Submitted — {e.ref_code}",
-                body=f"{current_user.name} submitted site visit checklist for {e.name}. Ready for quotation generation.",
+                title=f"Checklist Submitted — {e.ref_code} (Score {r.score}/100)",
+                body=f"{current_user.name} submitted site inspection report for {e.name}. Ready for quotation generation.",
                 link=url_for("admin.enquiry_detail", enq_id=e.id)
             )
         except Exception:
@@ -2234,27 +2314,20 @@ def enquiry_checklist(enq_id):
             except Exception:
                 pass
 
-        flash(f"Visit checklist submitted successfully for {e.ref_code}! Quotation generation is now available.", "success")
+        flash(f"Inspection health report saved (Score: {r.score}/100) for {e.ref_code}!", "success")
         return redirect(url_for("admin.enquiry_detail", enq_id=e.id))
 
-    # GET: Load existing items if available, or populate from DEFAULT_INQUIRY_CHECKLIST
-    existing_items = InquiryChecklistItem.query.filter_by(inquiry_id=e.id).order_by(InquiryChecklistItem.id.asc()).all()
-    grouped_items = {}
-    if existing_items:
-        for it in existing_items:
-            grouped_items.setdefault(it.category, []).append(it)
-    else:
-        for cat_info in DEFAULT_INQUIRY_CHECKLIST:
-            cat_name = cat_info["category"]
-            grouped_items[cat_name] = [
-                {"item_name": item_text, "status": "pass", "remarks": "", "recommendation": ""}
-                for item_text in cat_info["items"]
-            ]
-
-    return render_template("admin/enquiry_checklist.html",
-                           inquiry=e,
-                           grouped_items=grouped_items,
-                           existing_photos=e.photos)
+    # GET: Render the AMC request inspection checklist (HealthCheckReport form with live score)
+    return render_template("admin/health_report_form.html",
+                           r=None,
+                           model=HealthCheckReport,
+                           contract=None,
+                           visit=None,
+                           contracts=[],
+                           is_lead=False,
+                           enquiry=e,
+                           whatsapp_share="",
+                           defects=[])
 
 
 @admin_bp.route("/enquiry/<int:enq_id>/generate-quotation", methods=["GET", "POST"])
