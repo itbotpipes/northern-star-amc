@@ -88,6 +88,63 @@
       {% endif %}
     </div>
 
+    {% if not sq.contract_id and sq.status in ('draft', 'sent', 'viewed', 'negotiation_requested') %}
+    <div class="mt-5 p-4 rounded-xl border {% if sq.service_type == 'amc' %}bg-emerald-50/70 border-emerald-200{% else %}bg-blue-50/60 border-blue-200{% endif %}">
+      {% if sq.service_type == 'amc' %}
+      <div class="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <span class="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-emerald-800">
+            ✓ Annual Maintenance Contract (AMC) Included
+          </span>
+          <p class="text-xs text-emerald-700 mt-0.5">When the customer accepts this quotation, the AMC flow (agreement, payment &amp; scheduled visits) will start automatically.</p>
+        </div>
+        <form method="post" class="m-0">
+          <input type="hidden" name="action" value="remove_amc">
+          <button type="submit" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 transition cursor-pointer">
+            No AMC (Simple Quotation Only)
+          </button>
+        </form>
+      </div>
+      {% else %}
+      <div class="flex items-center justify-between flex-wrap gap-3 mb-3">
+        <div>
+          <span class="text-xs font-bold uppercase tracking-wider text-blue-900">Want to add an AMC to this quotation?</span>
+          <p class="text-xs text-blue-700 mt-0.5">Add an Annual Maintenance Contract plan below, or send this as a simple inspection/service quotation.</p>
+        </div>
+        {% if sq.status == 'draft' %}
+        <form method="post" class="m-0">
+          <input type="hidden" name="action" value="send">
+          <button type="submit" class="px-3.5 py-2 rounded-lg text-xs font-semibold bg-white border border-blue-300 text-blue-900 hover:bg-blue-100 transition cursor-pointer">
+            No, Send Simple Quotation →
+          </button>
+        </form>
+        {% endif %}
+      </div>
+      <form method="post" class="flex flex-wrap items-end gap-2.5 m-0">
+        <input type="hidden" name="action" value="add_amc">
+        <div class="flex-1 min-w-[200px]">
+          <label class="block text-[11px] font-semibold text-blue-900 mb-1">Select AMC Plan</label>
+          <select name="amc_plan_id" class="w-full px-3 py-2 text-xs rounded-lg border border-blue-200 bg-white"
+                  onchange="var o=this.options[this.selectedIndex]; if(o.dataset.price) document.getElementById('amcRateInput').value=o.dataset.price;">
+            <option value="" data-price="24000">Standard Annual AMC (4 visits/yr) — ₹24,000</option>
+            {% for p in amc_plans %}
+            <option value="{{ p.id }}" data-price="{{ p.price|int }}">{{ p.name }} ({{ p.visits_per_year }} visits/yr) — ₹{{ p.price|int }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="w-32">
+          <label class="block text-[11px] font-semibold text-blue-900 mb-1">AMC Rate (₹)</label>
+          <input type="number" step="1" min="0" name="amc_rate" id="amcRateInput" value="24000"
+                 class="w-full px-3 py-2 text-xs rounded-lg border border-blue-200 bg-white">
+        </div>
+        <button type="submit" class="px-4 py-2 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition cursor-pointer">
+          + Yes, Add AMC
+        </button>
+      </form>
+      {% endif %}
+    </div>
+    {% endif %}
+
     <!-- Action buttons -->
     <div class="flex flex-wrap gap-3 mt-5">
       <a href="{{ url_for('sq.download_pdf', sq_id=sq.id) }}" class="btn btn-ghost text-sm">Download PDF</a>

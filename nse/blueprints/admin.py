@@ -2341,11 +2341,11 @@ def enquiry_generate_quotation(enq_id):
         flash(f"Quotation {e.quotation.reference} has already been generated for this enquiry.", "info")
         return redirect(url_for("sq.detail_quotation", sq_id=e.quotation_id))
 
-    # On POST: Create the quotation automatically from checklist findings
+    # On POST: Create the simple quotation automatically from checklist findings
     if request.method == "POST":
         f = request.form
         req_lower = (e.service_requirement or "").lower()
-        stype = f.get("service_type") or ("amc" if "amc" in req_lower else ("refilling" if "refill" in req_lower else "emergency"))
+        stype = f.get("service_type") or ("refilling" if "refill" in req_lower else ("emergency" if "emergency" in req_lower else "inspection"))
 
         sq = ServiceQuotation(
             service_type=stype,

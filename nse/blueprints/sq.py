@@ -17,7 +17,7 @@ from ..extensions import db
 from ..models import (ServiceQuotation, ServiceQuotationItem,
                       CustomerJourneyEvent, User, Contract,
                       RefillOrder, ServiceRequest, InventoryItem,
-                      Enquiry, InquiryHistory, HealthCheckReport)
+                      Enquiry, InquiryHistory, HealthCheckReport, AMCPlan)
 from ..utils import staff_required, manager_required, notify, notify_team_leaders, whatsapp_url, public_url, qr_data_uri
 from ..pdf_generator import generate_quotation_pdf
 from ..email_service import send_quotation_email
@@ -394,6 +394,42 @@ def detail_quotation(sq_id):
     if request.method == "POST":
         action = request.form.get("action", "save")
 
+        if action == "add_amc":
+            plan_id = request.form.get("amc_plan_id", type=int)
+            plan = db.session.get(AMCPlan, plan_id) if plan_id else None
+            raw_rate = (request.form.get("amc_rate") or "").strip()
+            try:
+                rate = float(raw_rate) if raw_rate else (float(plan.price) if plan and plan.price else 24000.0)
+            except (ValueError, TypeError):
+                rate = float(plan.price) if plan and plan.price else 24000.0
+            sq.service_type = "amc"
+            for it in list(sq.items):
+                if it.unit == "Annual Contract" or it.category == "Annual Maintenance Contract":
+                    db.session.delete(it)
+            db.session.flush()
+            plan_label = f"{plan.name} ({plan.visits_per_year} visits/yr)" if plan else "Standard Annual AMC Plan (4 Scheduled Visits)"
+            db.session.add(ServiceQuotationItem(
+                quotation_id=sq.id,
+                category="Annual Maintenance Contract",
+                description=f"Annual Fire Safety AMC — {plan_label}",
+                unit="Annual Contract",
+                quantity=1,
+                rate=max(0.0, rate),
+                sort_order=99,
+            ))
+            db.session.commit()
+            flash(f"AMC ({plan_label}) added to {sq.reference}.", "success")
+            return redirect(url_for("sq.detail_quotation", sq_id=sq.id))
+
+        elif action == "remove_amc":
+            sq.service_type = "inspection"
+            for it in list(sq.items):
+                if it.unit == "Annual Contract" or it.category == "Annual Maintenance Contract":
+                    db.session.delete(it)
+            db.session.commit()
+            flash(f"AMC removed — {sq.reference} is now a simple quotation.", "info")
+            return redirect(url_for("sq.detail_quotation", sq_id=sq.id))
+
         if action == "save":
             # Always editable by staff — no status restriction.
             # Log a revision entry in the activity history.
@@ -561,9 +597,11 @@ def detail_quotation(sq_id):
         )
         whatsapp_creds_share = whatsapp_url(sq.customer_phone, creds_msg)
 
+    amc_plans = AMCPlan.query.filter_by(active=True).order_by(AMCPlan.price.asc()).all()
     return render_template("admin/sq_detail.html", sq=sq, journey=journey,
                            share_link=share_link, whatsapp_share=whatsapp_share,
-                           share_qr=share_qr, whatsapp_creds_share=whatsapp_creds_share)
+                           share_qr=share_qr, whatsapp_creds_share=whatsapp_creds_share,
+                           amc_plans=amc_plans)
 
 
 @sq_bp.route("/<int:sq_id>/qr")
