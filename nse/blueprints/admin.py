@@ -1857,12 +1857,15 @@ DEFAULT_INQUIRY_CHECKLIST = SAVED_SITE_INSPECTION_CHECKLIST
 @staff_required
 def enquiries():
     """Enquiry Management Dashboard: view, search, filter and track enquiries."""
+    is_pure_tech = current_user.is_technician and not (current_user.is_manager or current_user.is_admin)
     default_tab = "my" if (current_user.is_authenticated and not current_user.is_manager) else "all"
     tab = request.args.get("tab", default_tab)
     q = request.args.get("q", "").strip()
     tech_filter = request.args.get("tech_id", type=int)
 
     query = Enquiry.query
+    if is_pure_tech:
+        query = query.filter(Enquiry.assigned_to_id == current_user.id)
 
     # Search filter
     if q:
@@ -1900,7 +1903,10 @@ def enquiries():
     items = query.order_by(Enquiry.created_at.desc()).all()
 
     # KPI counts
-    all_enquiries = Enquiry.query.all()
+    all_enquiries = (
+        Enquiry.query.filter(Enquiry.assigned_to_id == current_user.id).all()
+        if is_pure_tech else Enquiry.query.all()
+    )
     stats = {
         "total": len(all_enquiries),
         "new": sum(1 for e in all_enquiries if e.status == "new"),
