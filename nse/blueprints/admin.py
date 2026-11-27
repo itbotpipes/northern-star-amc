@@ -2003,7 +2003,7 @@ def enquiry_detail(enq_id):
 
     attachments = FormAttachment.query.filter_by(
         ref_type="enquiry", ref_id=e.id
-    ).order_by(FormAttachment.created_at.asc()).all()
+    ).order_by(FormAttachment.id.asc()).all()
 
     return render_template("admin/enquiry_detail.html",
                            inquiry=e,
