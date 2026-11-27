@@ -138,7 +138,7 @@
 <body>
 
 {% block body %}
-{% if current_user.is_authenticated and not current_user.is_staff %}
+{% if current_user.is_authenticated and not current_user.is_staff and request.endpoint not in ('public.home', 'public.plans', 'public.about', 'public.faq', 'public.noc', 'public.refill', 'public.emergency') %}
 {# ── CUSTOMER PORTAL UNIFIED NAV (Matches base_portal.html) ── #}
 <style>
   .nse-portal-nav{position:sticky;top:0;z-index:40;display:flex;align-items:center;justify-content:space-between;padding:10px 28px;background:rgba(255,255,255,.96);backdrop-filter:blur(10px);border-bottom:1px solid var(--hair);gap:12px;}
@@ -284,6 +284,13 @@
             {% endif %}
             <span>Ops Console</span>
           </a>
+          {% else %}
+          <a href="{{ url_for('portal.dashboard') }}" class="ml-1 px-3 py-1.5 rounded-md bg-primary text-white font-semibold text-sm hover:bg-primary-hover transition flex items-center gap-2">
+            {% if current_user.photo_path and not current_user.photo_path.lower().endswith('.pdf') %}
+            <img src="{{ current_user.photo_path|upload_url }}" alt="" onerror="this.style.display='none';" class="w-5 h-5 rounded-md object-cover border border-white/30">
+            {% endif %}
+            <span>My Portal</span>
+          </a>
           {% endif %}
           <a href="{{ url_for('auth.logout') }}" class="px-3 py-2 rounded-md text-ink-subtle hover:text-ink text-sm transition">Logout</a>
         {% else %}
@@ -300,6 +307,8 @@
       {% if current_user.is_authenticated %}
         {% if current_user.is_staff %}
         <a href="{{ url_for('admin.dashboard') }}" class="block px-3 py-2 rounded-md bg-surface-2 border border-hairline text-ink">Ops Console</a>
+        {% else %}
+        <a href="{{ url_for('portal.dashboard') }}" class="block px-3 py-2 rounded-md bg-primary text-white font-medium">My Portal</a>
         {% endif %}
         <a href="{{ url_for('auth.logout') }}" class="block px-3 py-2 rounded-md text-ink-subtle hover:text-ink transition">Logout</a>
       {% else %}
