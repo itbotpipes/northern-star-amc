@@ -52,6 +52,7 @@
         <a href="{{ url_for('portal.service_quotations') }}" class="pnav {{ 'active' if _pe in ('portal.service_quotations','portal.service_quotation','portal.quotation') }}">Quotations</a>
         <a href="{{ url_for('portal.tickets') }}" class="pnav {{ 'active' if _pe in ('portal.tickets','portal.ticket_detail') }}">Complaints</a>
         <a href="{{ url_for('portal.profile') }}" class="pnav {{ 'active' if _pe == 'portal.profile' }}">Profile</a>
+        <a href="{{ url_for('public.policy') }}" class="pnav {{ 'active' if _pe == 'public.policy' }}">Policy</a>
 
         <!-- Commented out tabs per request:
         <a href="{{ url_for('portal.equipment_list') }}" class="pnav {{ 'active' if _pe in ('portal.equipment_list','portal.equipment_detail') }}">Equipment</a>

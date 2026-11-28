@@ -71,10 +71,10 @@
       </table>
       <table class="items" style="margin-top:4px">
         <tr class="totrow"><td>Subtotal</td><td class="amt">{{ sq.subtotal|rupees }}</td></tr>
+        <tr class="totrow"><td>GST ({{ sq.gst_percent|round(0)|int }}%)</td><td class="amt">{{ sq.gst_amount|rupees }}</td></tr>
         {% if sq.discount > 0 %}
         <tr class="totrow" style="color:#15803d;"><td>Discount</td><td class="amt">-{{ sq.discount|rupees }}</td></tr>
         {% endif %}
-        <tr class="totrow"><td>GST ({{ sq.gst_percent|round(0)|int }}%)</td><td class="amt">{{ sq.gst_amount|rupees }}</td></tr>
         <tr class="totrow grand"><td>Total to pay</td><td class="amt">{{ sq.grand_total|rupees }}</td></tr>
       </table>
     </div>

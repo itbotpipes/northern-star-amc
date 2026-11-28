@@ -271,11 +271,16 @@
         <div class="flex items-center gap-3">{% if v.photos %}<span class="text-xs text-slate-400">{{ v.photos|length }} photos</span>{% endif %}{% if v.service_report_path %}<span class="text-xs text-green-700 font-medium">Report</span>{% endif %}{{ status_badge(v.status) }}</div>
       </div>
       {% if v.status not in ('completed','cancelled') %}
-      <form method="post" action="{{ url_for('admin.reschedule_visit', visit_id=v.id) }}" class="flex items-center gap-2 mt-2 pt-2 border-t border-slate-100">
+      <form method="post" action="{{ url_for('admin.reschedule_visit', visit_id=v.id) }}" class="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-slate-100">
         <span class="text-xs text-slate-500">Reschedule:</span>
         <input type="date" name="scheduled_date" value="{{ v.scheduled_date.isoformat() if v.scheduled_date }}" class="px-2 py-1 rounded border border-slate-300 text-xs">
-        <button class="bg-navy-800 text-white px-2.5 py-1 rounded text-xs hover:bg-navy-700">Save date</button>
+        <input type="text" name="technician_note" value="{{ v.technician_note or '' }}" placeholder="Note to technician (instructions / parts)..." class="flex-1 min-w-[200px] px-2.5 py-1 rounded border border-slate-300 text-xs">
+        <button class="bg-navy-800 text-white px-2.5 py-1 rounded text-xs hover:bg-navy-700 cursor-pointer">Save</button>
       </form>
+      {% elif v.technician_note %}
+      <div class="mt-2 pt-2 border-t border-slate-100 text-xs text-amber-800">
+        <strong>Note to Technician:</strong> {{ v.technician_note }}
+      </div>
       {% endif %}
     </div>
     {% endfor %}

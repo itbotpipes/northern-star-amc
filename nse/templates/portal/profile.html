@@ -6,7 +6,48 @@
   <a href="{{ url_for('portal.dashboard') }}" class="text-sm text-slate-500 hover:text-navy-700">← Back to portal</a>
   {% endif %}
 
-  <h1 class="text-2xl font-extrabold text-navy-800 mt-3 mb-6">My Profile</h1>
+  <h1 class="text-2xl font-extrabold text-navy-800 mt-3 mb-4">My Profile</h1>
+
+  {# Profile completion progress bar #}
+  {% set _fields = [
+    ('Full name', current_user.name and current_user.name.strip()),
+    ('Email', current_user.email and current_user.email.strip()),
+    ('Area', current_user.area and current_user.area.strip()),
+    ('City', current_user.city and current_user.city.strip()),
+    ('Address', current_user.address and current_user.address.strip()),
+    ('Photo / ID', current_user.photo_path and current_user.photo_path.strip()),
+    ('Company name', current_user.company_name and current_user.company_name.strip()),
+    ('GST number', current_user.gst_number and current_user.gst_number.strip()),
+  ] %}
+  {% set _done_count = _fields | selectattr(1) | list | length %}
+  {% set _total_count = _fields | length %}
+  {% set _pct = ((_done_count * 100) / _total_count) | round | int %}
+  {% set _bar_color = 'bg-emerald-500' if _pct == 100 else ('bg-primary' if current_user.has_completed_profile else 'bg-amber-500') %}
+  <div id="profile-progress-card" class="card p-5 mb-6" data-has-photo="{{ '1' if current_user.photo_path else '0' }}">
+    <div class="flex items-center justify-between gap-3 mb-2">
+      <div class="flex items-center gap-2">
+        <span class="text-sm font-bold text-ink">Profile Completion</span>
+        <span id="profile-progress-badge" class="text-[11px] font-semibold px-2 py-0.5 rounded-full {{ 'bg-emerald-100 text-emerald-800' if _pct == 100 else ('bg-blue-100 text-blue-800' if current_user.has_completed_profile else 'bg-amber-100 text-amber-800') }}">
+          {% if _pct == 100 %}100% Complete{% elif current_user.has_completed_profile %}Mandatory Done{% else %}Setup Required{% endif %}
+        </span>
+      </div>
+      <div class="text-sm font-extrabold text-navy-800 tabular-nums">
+        <span id="profile-progress-pct">{{ _pct }}%</span>
+        <span id="profile-progress-count" class="text-xs font-medium text-ink-subtle ml-1">({{ _done_count }}/{{ _total_count }})</span>
+      </div>
+    </div>
+    <div class="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+      <div id="profile-progress-bar" class="h-full rounded-full transition-all duration-300 {{ _bar_color }}" style="width: {{ _pct }}%"></div>
+    </div>
+    <p id="profile-progress-hint" class="text-xs text-ink-subtle mt-2">
+      {% set _missing = _fields | rejectattr(1) | map(attribute=0) | list %}
+      {% if _missing %}
+        Still missing: <span class="font-medium text-ink-muted">{{ _missing | join(', ') }}</span>
+      {% else %}
+        All profile details and verification documents are complete.
+      {% endif %}
+    </p>
+  </div>
 
   {% if my_reminders %}
   <div class="card p-5 mb-6 border-l-4 border-amber-400">
@@ -16,9 +57,17 @@
     </div>
     <div class="space-y-2">
       {% for r in my_reminders %}
-      <div class="text-sm bg-amber-50 rounded-lg p-3">
-        <div class="font-semibold text-amber-900">{{ r.title }}</div>
-        <div class="text-amber-800">{{ r.detail }}</div>
+      <div class="text-sm bg-amber-50 rounded-lg p-3 flex items-center justify-between gap-3 flex-wrap">
+        <div class="min-w-0 flex-1">
+          <div class="font-semibold text-amber-900">{{ r.title }}</div>
+          <div class="text-amber-800">{{ r.detail }}</div>
+        </div>
+        {% if r.portal_link or r.link %}
+        <a href="{{ r.portal_link or r.link }}"
+           class="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white whitespace-nowrap shadow-2xs transition">
+          {{ 'Open Contract →' if r.kind == 'amc_fee' else 'Open Quotation →' }}
+        </a>
+        {% endif %}
       </div>
       {% endfor %}
     </div>
@@ -136,4 +185,83 @@
     <button type="submit" class="btn btn-primary w-full py-3">Save Profile</button>
   </form>
 </section>
+<script>
+(function () {
+  const card = document.getElementById('profile-progress-card');
+  const bar = document.getElementById('profile-progress-bar');
+  const pctEl = document.getElementById('profile-progress-pct');
+  const countEl = document.getElementById('profile-progress-count');
+  const badgeEl = document.getElementById('profile-progress-badge');
+  const hintEl = document.getElementById('profile-progress-hint');
+  if (!card || !bar) return;
+
+  const hasSavedPhoto = card.dataset.hasPhoto === '1';
+  const form = card.parentElement.querySelector('form');
+  if (!form) return;
+
+  const textFields = [
+    { name: 'name', label: 'Full name', mandatory: true },
+    { name: 'email', label: 'Email', mandatory: true },
+    { name: 'area', label: 'Area', mandatory: true },
+    { name: 'city', label: 'City', mandatory: true },
+    { name: 'address', label: 'Address', mandatory: true },
+    { name: 'company_name', label: 'Company name', mandatory: false },
+    { name: 'gst_number', label: 'GST number', mandatory: false },
+  ];
+  const photoInput = form.querySelector('input[name="photo"]');
+
+  function updateProgress() {
+    let done = 0;
+    let mandatoryDone = true;
+    const missing = [];
+
+    textFields.forEach(f => {
+      const el = form.querySelector(`[name="${f.name}"]`);
+      const ok = el && el.value.trim().length > 0;
+      if (ok) done += 1;
+      else {
+        missing.push(f.label);
+        if (f.mandatory) mandatoryDone = false;
+      }
+    });
+
+    const hasPhoto = hasSavedPhoto || (photoInput && photoInput.files && photoInput.files.length > 0);
+    if (hasPhoto) done += 1;
+    else missing.splice(5, 0, 'Photo / ID');
+
+    const total = textFields.length + 1;
+    const pct = Math.round((done * 100) / total);
+
+    bar.style.width = pct + '%';
+    bar.classList.remove('bg-emerald-500', 'bg-primary', 'bg-amber-500');
+    badgeEl.classList.remove('bg-emerald-100', 'text-emerald-800', 'bg-blue-100', 'text-blue-800', 'bg-amber-100', 'text-amber-800');
+
+    if (pct === 100) {
+      bar.classList.add('bg-emerald-500');
+      badgeEl.classList.add('bg-emerald-100', 'text-emerald-800');
+      badgeEl.textContent = '100% Complete';
+    } else if (mandatoryDone) {
+      bar.classList.add('bg-primary');
+      badgeEl.classList.add('bg-blue-100', 'text-blue-800');
+      badgeEl.textContent = 'Mandatory Done';
+    } else {
+      bar.classList.add('bg-amber-500');
+      badgeEl.classList.add('bg-amber-100', 'text-amber-800');
+      badgeEl.textContent = 'Setup Required';
+    }
+
+    pctEl.textContent = pct + '%';
+    countEl.textContent = `(${done}/${total})`;
+    if (missing.length > 0) {
+      hintEl.innerHTML = 'Still missing: <span class="font-medium text-ink-muted"></span>';
+      hintEl.querySelector('span').textContent = missing.join(', ');
+    } else {
+      hintEl.textContent = 'All profile details and verification documents are complete.';
+    }
+  }
+
+  form.addEventListener('input', updateProgress);
+  form.addEventListener('change', updateProgress);
+})();
+</script>
 {% endblock %}

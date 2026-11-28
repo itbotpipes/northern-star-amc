@@ -409,10 +409,11 @@ def notify(user_id, title, body=None, link=None):
 
 
 def notify_staff(title, body=None, link=None):
-    """Fan a notification out to every staff member (admin + technician + manager + team_leader)."""
+    """Fan a notification out to operations/management staff (admin + manager + team_leader).
+    Technicians receive targeted notifications via notify(tech_id, ...) only for assigned work."""
     try:
         from .models import User
-        staff = User.query.filter(User.role.in_(["admin", "technician", "manager", "team_leader"])).all()
+        staff = User.query.filter(User.role.in_(["admin", "manager", "team_leader"])).all()
         safe_title = _safe_str(title, 160) or "Notification"
         safe_body = _safe_str(body, 255)
         safe_link = _safe_str(link, 255)

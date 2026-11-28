@@ -366,6 +366,10 @@
           <td colspan="4" class="px-4 py-2 text-right text-ink-muted font-medium">Subtotal</td>
           <td class="px-4 py-2 text-right font-semibold text-ink">{{ sq.subtotal|rupees }}</td>
         </tr>
+        <tr>
+          <td colspan="4" class="px-4 py-2 text-right text-ink-muted font-medium">GST ({{ sq.gst_percent }}%)</td>
+          <td class="px-4 py-2 text-right font-semibold text-ink">{{ sq.gst_amount|rupees }}</td>
+        </tr>
         {% if not sq.is_paid and sq.status in ('draft', 'sent', 'viewed', 'negotiation_requested') %}
         <tr>
           <td colspan="4" class="px-4 py-2 text-right text-emerald-700 font-medium">Discount (₹)</td>
@@ -384,10 +388,6 @@
           <td class="px-4 py-2 text-right font-semibold text-emerald-700">-{{ sq.discount|rupees }}</td>
         </tr>
         {% endif %}
-        <tr>
-          <td colspan="4" class="px-4 py-2 text-right text-ink-muted font-medium">GST ({{ sq.gst_percent }}%)</td>
-          <td class="px-4 py-2 text-right font-semibold text-ink">{{ sq.gst_amount|rupees }}</td>
-        </tr>
         <tr class="bg-navy-50">
           <td colspan="4" class="px-4 py-3 text-right font-extrabold text-navy-800 text-base">Grand Total</td>
           <td class="px-4 py-3 text-right font-extrabold text-navy-800 text-base">{{ sq.grand_total|rupees }}</td>

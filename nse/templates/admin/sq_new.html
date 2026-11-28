@@ -177,12 +177,12 @@
       <div class="mt-4 flex flex-col items-end gap-1.5 text-sm">
         <div class="flex gap-8"><span class="text-ink-subtle">Subtotal:</span><span id="previewSubtotal" class="font-semibold w-28 text-right">₹0.00</span></div>
         <div class="flex gap-8 items-center">
-          <span class="text-ink-subtle">Discount (₹): <input name="discount_amount" id="discountAmt" type="number" step="0.01" min="0" value="0" class="w-24 px-2 py-0.5 text-right text-xs inline border border-hairline-strong rounded" oninput="updateTotals()"></span>
-          <span id="previewDiscount" class="font-semibold text-emerald-700 w-28 text-right">-₹0.00</span>
-        </div>
-        <div class="flex gap-8 items-center">
           <span class="text-ink-subtle">GST <input name="gst_percent" id="gstPct" type="number" step="0.1" min="0" value="18" class="w-14 px-1 py-0.5 text-center text-xs inline border border-hairline-strong rounded" oninput="updateTotals()"> %:</span>
           <span id="previewGST" class="font-semibold w-28 text-right">₹0.00</span>
+        </div>
+        <div class="flex gap-8 items-center">
+          <span class="text-ink-subtle">Discount (₹): <input name="discount_amount" id="discountAmt" type="number" step="0.01" min="0" value="0" class="w-24 px-2 py-0.5 text-right text-xs inline border border-hairline-strong rounded" oninput="updateTotals()"></span>
+          <span id="previewDiscount" class="font-semibold text-emerald-700 w-28 text-right">-₹0.00</span>
         </div>
         <div class="flex gap-8 border-t border-hairline pt-2 mt-1"><span class="font-bold text-ink">Grand Total:</span><span id="previewTotal" class="font-extrabold text-ink w-28 text-right">₹0.00</span></div>
       </div>
@@ -327,13 +327,13 @@ function updateTotals() {
     const rate = Math.max(0, parseFloat(row.querySelector('[name=item_rate]')?.value || 0));
     sub += qty * rate;
   });
-  const disc = Math.min(sub, Math.max(0, parseFloat(document.getElementById('discountAmt')?.value || 0)));
-  const taxable = Math.max(0, sub - disc);
-  const gst = taxable * (Math.max(0, parseFloat(document.getElementById('gstPct').value || 18)) / 100);
+  const gst = sub * (Math.max(0, parseFloat(document.getElementById('gstPct').value || 18)) / 100);
+  const totalWithGst = sub + gst;
+  const disc = Math.min(totalWithGst, Math.max(0, parseFloat(document.getElementById('discountAmt')?.value || 0)));
   document.getElementById('previewSubtotal').textContent = fmt(sub);
-  if (document.getElementById('previewDiscount')) document.getElementById('previewDiscount').textContent = '-' + fmt(disc);
   document.getElementById('previewGST').textContent = fmt(gst);
-  document.getElementById('previewTotal').textContent = fmt(taxable + gst);
+  if (document.getElementById('previewDiscount')) document.getElementById('previewDiscount').textContent = '-' + fmt(disc);
+  document.getElementById('previewTotal').textContent = fmt(Math.max(0, totalWithGst - disc));
 }
 updateTotals();
 </script>

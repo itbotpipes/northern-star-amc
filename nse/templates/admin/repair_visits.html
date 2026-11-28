@@ -1,0 +1,125 @@
+{% extends "base_ops.html" %}
+{% block title %}Repair Visits — Ops Console{% endblock %}
+{% block content %}
+<section class="max-w-6xl mx-auto px-4 py-8 space-y-6">
+  <div class="flex items-center justify-between flex-wrap gap-3">
+    <div>
+      <h1 class="text-2xl font-extrabold text-ink">Repair &amp; Execution Visits</h1>
+      <p class="text-xs text-ink-muted mt-1">
+        {% if is_pure_tech %}All site repair and follow-up work visits assigned to you.{% else %}All scheduled and completed repair visits across enquiries.{% endif %}
+      </p>
+    </div>
+    <span class="px-3 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-800 border border-blue-200">
+      {{ counts.all }} Total Visits
+    </span>
+  </div>
+
+  <!-- Status Filter Tabs -->
+  <div class="flex flex-wrap gap-2">
+    {% set tabs = [
+      ('all', 'All', counts.all),
+      ('scheduled', 'Scheduled', counts.scheduled),
+      ('in_progress', 'In Progress', counts.in_progress),
+      ('followup_needed', 'Needs More Visits', counts.followup_needed),
+      ('completed', 'Completed', counts.completed)
+    ] %}
+    {% for key, label, cnt in tabs %}
+    <a href="{{ url_for('admin.repair_visits', status=key) }}"
+       class="px-3.5 py-1.5 rounded-xl text-xs font-semibold border transition {{ 'bg-primary text-white border-primary shadow-xs' if status_filter == key else 'bg-white text-ink-muted border-slate-200 hover:bg-slate-50' }}">
+      {{ label }} ({{ cnt }})
+    </a>
+    {% endfor %}
+  </div>
+
+  {% if visits %}
+  <div class="space-y-4">
+    {% for rv in visits %}
+    {% set e = rv.inquiry %}
+    <div class="card p-5 space-y-3 border-l-4 {% if rv.status == 'completed' %}border-l-emerald-500{% elif rv.status == 'followup_needed' %}border-l-amber-500{% elif rv.status == 'in_progress' %}border-l-blue-600{% else %}border-l-slate-400{% endif %}">
+      <div class="flex items-start justify-between flex-wrap gap-3">
+        <div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="px-2.5 py-0.5 rounded-lg text-xs font-extrabold bg-slate-100 text-navy-900">Visit #{{ rv.visit_number }}</span>
+            {% if e %}
+            <span class="font-mono text-xs font-bold text-primary">{{ e.ref_code }}</span>
+            <h2 class="text-base font-bold text-ink">{{ e.name }}{% if e.subject %} — {{ e.subject }}{% endif %}</h2>
+            {% endif %}
+          </div>
+          {% if e %}
+          <p class="text-xs text-ink-subtle mt-1 flex flex-wrap items-center gap-2">
+            <span>📍 {{ e.address or 'Site Address' }}{% if e.area %}, {{ e.area }}{% endif %}{% if e.city %}, {{ e.city }}{% endif %}</span>
+            {% if e.address or e.area %}
+            <a href="https://maps.google.com/?q={{ (e.address ~ ' ' ~ (e.area or '') ~ ' ' ~ (e.city or ''))|urlencode }}" target="_blank" class="text-primary font-semibold hover:underline">Map ↗</a>
+            {% endif %}
+            {% if e.phone and can_see_customer_contact %}
+            <span>· 📞 <a href="tel:{{ e.phone }}" class="hover:underline">{{ e.phone }}</a></span>
+            {% endif %}
+          </p>
+          {% endif %}
+        </div>
+
+        <div class="text-right flex flex-col items-end gap-1">
+          <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase {% if rv.status == 'completed' %}bg-green-100 text-green-800{% elif rv.status == 'followup_needed' %}bg-amber-100 text-amber-800{% elif rv.status == 'in_progress' %}bg-blue-100 text-blue-800{% else %}bg-slate-100 text-slate-700{% endif %}">
+            {{ 'Needs More Visits' if rv.status == 'followup_needed' else rv.status.replace('_', ' ')|title }}
+          </span>
+          <span class="text-xs font-semibold text-ink">
+            {{ rv.scheduled_date|datefmt if rv.scheduled_date else 'Date TBD' }}
+          </span>
+          <span class="text-[11px] text-ink-subtle">{{ rv.time_slot or 'Standard Hours' }}</span>
+        </div>
+      </div>
+
+      <div class="grid sm:grid-cols-2 gap-3 text-xs">
+        <div class="bg-slate-50 border border-slate-100 rounded-xl p-3">
+          <span class="font-bold uppercase tracking-wider text-[10px] text-slate-400 block mb-1">Repair Scope &amp; Instructions</span>
+          <p class="text-ink">{{ rv.notes or 'Standard site repair / execution visit.' }}</p>
+          {% if not is_pure_tech and rv.technician %}
+          <p class="text-ink-subtle mt-1">Assigned Technician: <strong>{{ rv.technician.name }}</strong></p>
+          {% endif %}
+        </div>
+        <div class="bg-blue-50/50 border border-blue-100 rounded-xl p-3">
+          <span class="font-bold uppercase tracking-wider text-[10px] text-blue-700 block mb-1">Technician Work Update</span>
+          <p class="text-blue-950">{{ rv.tech_notes or 'No technician work notes recorded yet.' }}</p>
+        </div>
+      </div>
+
+      {% if e %}
+      <div class="pt-2 border-t border-slate-100 flex items-center justify-between flex-wrap gap-3">
+        {% if rv.status != 'completed' %}
+        <div class="flex-1 flex flex-wrap items-center gap-2">
+          <form method="post" action="{{ url_for('admin.tech_leaving', kind='repair_visit', target_id=rv.id) }}" class="m-0">
+            <button type="submit"
+                    class="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500 text-white hover:bg-amber-600 shadow-2xs whitespace-nowrap cursor-pointer">
+              🚗 Leaving Now
+            </button>
+          </form>
+          <a href="{{ url_for('admin.enquiry_repair_checklist', enq_id=e.id, visit_id=rv.id) }}"
+             class="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-primary text-white hover:opacity-95 shadow-2xs whitespace-nowrap">
+            📋 Conduct Repair Checklist
+          </a>
+          <form method="post" action="{{ url_for('admin.enquiry_update_repair_visit', enq_id=e.id, visit_id=rv.id) }}" class="flex-1 flex flex-wrap items-center gap-2 m-0">
+            <input type="text" name="tech_notes" value="{{ rv.tech_notes or '' }}" placeholder="Enter work update, parts replaced, or reason if incomplete..."
+                   class="flex-1 min-w-[200px] px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-white">
+            <button type="submit" name="status" value="in_progress" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-100 text-blue-800 hover:bg-blue-200 cursor-pointer">In Progress</button>
+            <button type="submit" name="status" value="followup_needed" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-100 text-amber-900 hover:bg-amber-200 cursor-pointer">Need Another Visit</button>
+            <button type="submit" name="status" value="completed" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer">✓ Mark Completed</button>
+          </form>
+        </div>
+        {% else %}
+        <span class="text-xs font-semibold text-emerald-700">✓ Completed {{ rv.completed_at|datefmt if rv.completed_at else '' }}</span>
+        {% endif %}
+        <a href="{{ url_for('admin.enquiry_detail', enq_id=e.id) }}" class="text-xs font-bold text-primary hover:underline whitespace-nowrap">
+          Open Enquiry {{ e.ref_code }} →
+        </a>
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="card p-10 text-center text-ink-subtle text-sm">
+    No repair visits found in this view.
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

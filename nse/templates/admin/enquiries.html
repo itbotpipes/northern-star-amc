@@ -244,6 +244,11 @@
             <!-- Status -->
             <td class="py-3 px-4 whitespace-nowrap">
               {{ status_badge(e.status) }}
+              {% if e.status == 'closed' and e.close_reason %}
+              <div class="mt-1 text-[10px] text-rose-700 font-medium max-w-[180px] whitespace-normal leading-tight">
+                Reason: {{ e.close_reason }}
+              </div>
+              {% endif %}
               {% if e.quotation %}
               <div class="mt-1">
                 <a href="{{ url_for('sq.detail_quotation', sq_id=e.quotation.id) }}"

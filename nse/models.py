@@ -1213,6 +1213,17 @@ class Enquiry(db.Model):
             {"num": 5, "label": "Quotation", "desc": quote_desc, "done": s5_done, "active": s5_active},
         ]
 
+    @property
+    def close_reason(self):
+        for log in getattr(self, "history_logs", []) or []:
+            if log.action == "Enquiry Closed" and log.details:
+                if "Reason:" in log.details:
+                    return log.details.split("Reason:", 1)[1].strip().splitlines()[0].strip()
+                return log.details.splitlines()[0].strip()
+            if log.action == "Converted to AMC":
+                return "Converted to AMC"
+        return None
+
 
 class InquiryChecklistItem(db.Model):
     __tablename__ = "inquiry_checklist_items"
@@ -1351,22 +1362,19 @@ class ServiceQuotation(db.Model):
         return max(0.0, round(sum(i.total for i in self.items), 2))
 
     @property
-    def discount(self):
-        return min(self.subtotal, max(0.0, round(float(self.discount_amount or 0), 2)))
-
-    @property
-    def taxable_subtotal(self):
-        return max(0.0, round(self.subtotal - self.discount, 2))
-
-    @property
     def gst_amount(self):
         gst_pct = max(0.0, float(self.gst_percent or 0))
-        return round(self.taxable_subtotal * gst_pct / 100, 2)
+        return round(self.subtotal * gst_pct / 100, 2)
+
+    @property
+    def discount(self):
+        total_with_gst = round(self.subtotal + self.gst_amount, 2)
+        return min(total_with_gst, max(0.0, round(float(self.discount_amount or 0), 2)))
 
     @property
     def grand_total(self):
         # Grand total must never be negative
-        return max(0.0, round(self.taxable_subtotal + self.gst_amount, 2))
+        return max(0.0, round(self.subtotal + self.gst_amount - self.discount, 2))
 
     @property
     def total(self):

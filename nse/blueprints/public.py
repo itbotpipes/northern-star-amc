@@ -511,6 +511,11 @@ def about():
     return render_template("site/about.html")
 
 
+@public_bp.route("/policy")
+def policy():
+    return render_template("site/policy.html")
+
+
 @public_bp.route("/qr")
 def qr():
     """Mobile QR code page — QR generated server-side (no CDN dependency)."""

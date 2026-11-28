@@ -121,6 +121,46 @@
       </div>
     </div>
 
+    {% if inquiry.status == 'closed' and not is_pure_tech %}
+    <!-- Post-Closure AMC Suggestion Card -->
+    <div class="mt-4 p-4 rounded-xl border-2 border-emerald-200 bg-emerald-50/50 space-y-3">
+      <div class="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <span class="text-xs font-bold uppercase tracking-wider text-emerald-900">Suggest AMC to Customer (Post-Closure)</span>
+          <p class="text-xs text-emerald-700 mt-0.5">Recommend an Annual Maintenance Contract plan to {{ inquiry.name }} in their Customer Portal &amp; notifications.</p>
+        </div>
+        {% if inquiry.phone %}
+        <a href="https://wa.me/91{{ inquiry.phone.replace('+91','').replace(' ','') }}?text={{ ('Namaste ' ~ inquiry.name ~ ', following your ' ~ inquiry.ref_code ~ ' fire safety service, we recommend our Annual Maintenance Contract (AMC) for year-round compliance & scheduled visits.')|urlencode }}"
+           target="_blank"
+           class="px-3 py-1.5 rounded-lg text-xs font-semibold text-white shadow-2xs" style="background:#25D366;">
+          Share on WhatsApp ↗
+        </a>
+        {% endif %}
+      </div>
+      <form method="post" action="{{ url_for('admin.enquiry_suggest_amc', enq_id=inquiry.id) }}" class="grid sm:grid-cols-3 gap-2.5 items-end m-0">
+        <div>
+          <label class="block text-[11px] font-semibold text-emerald-900 mb-1">Recommended AMC Plan</label>
+          <select name="amc_plan_id" class="w-full px-3 py-2 text-xs rounded-lg border border-emerald-200 bg-white">
+            <option value="">Standard Annual AMC (4 visits/yr)</option>
+            {% for p in amc_plans %}
+            <option value="{{ p.id }}">{{ p.name }} — ₹{{ p.price|int }} ({{ p.visits_per_year }} visits/yr)</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="block text-[11px] font-semibold text-emerald-900 mb-1">Message to Customer (optional)</label>
+          <input type="text" name="suggestion_note" placeholder="e.g. Keep your fire system compliant year-round..."
+                 class="w-full px-3 py-2 text-xs rounded-lg border border-emerald-200 bg-white">
+        </div>
+        <div>
+          <button type="submit" class="w-full px-4 py-2 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition cursor-pointer">
+            Send AMC Suggestion →
+          </button>
+        </div>
+      </form>
+    </div>
+    {% endif %}
+
     <!-- Workflow Progression Roadmap -->
     <div class="mt-6 pt-5 border-t border-slate-100">
       <div class="text-[11px] font-bold uppercase tracking-wider text-ink-subtle mb-3">Enquiry Lifecycle</div>
@@ -583,17 +623,31 @@
                 {{ 'Needs More Visits' if rv.status == 'followup_needed' else rv.status.replace('_', ' ')|title }}
               </span>
             </div>
-            {% if rv.notes %}<p class="text-xs text-ink-subtle bg-slate-50 p-2 rounded-lg">Scope: {{ rv.notes }}</p>{% endif %}
+            {% if rv.notes %}<p class="text-xs text-ink-subtle bg-slate-50 p-2 rounded-lg">Note to Technician: {{ rv.notes }}</p>{% endif %}
+            {% if not is_pure_tech and rv.status != 'completed' %}
+            <form method="post" action="{{ url_for('admin.enquiry_update_repair_visit', enq_id=inquiry.id, visit_id=rv.id) }}" class="flex items-center gap-2 m-0">
+              <input type="hidden" name="action" value="save_admin_note">
+              <input type="text" name="admin_note" value="{{ rv.notes or '' }}" placeholder="Add or update note to technician for Visit #{{ rv.visit_number }}..."
+                     class="flex-1 px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-white">
+              <button type="submit" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-white hover:bg-slate-700 cursor-pointer">Save Note</button>
+            </form>
+            {% endif %}
             {% if rv.tech_notes %}<p class="text-xs text-blue-900 bg-blue-50 p-2 rounded-lg font-medium">Technician Notes: {{ rv.tech_notes }}</p>{% endif %}
 
             {% if rv.status != 'completed' and ((rv.technician_id and current_user.id == rv.technician_id) or not is_pure_tech) %}
-            <form method="post" action="{{ url_for('admin.enquiry_update_repair_visit', enq_id=inquiry.id, visit_id=rv.id) }}" class="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-2">
-              <input type="text" name="tech_notes" value="{{ rv.tech_notes or '' }}" placeholder="Work update / parts replaced / reason if incomplete..."
-                     class="flex-1 min-w-[200px] px-2.5 py-1.5 text-xs rounded-lg border border-slate-200">
-              <button type="submit" name="status" value="in_progress" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-blue-100 text-blue-800 hover:bg-blue-200 cursor-pointer">In Progress</button>
-              <button type="submit" name="status" value="followup_needed" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-amber-100 text-amber-900 hover:bg-amber-200 cursor-pointer">Need Another Visit</button>
-              <button type="submit" name="status" value="completed" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer">✓ Mark Completed</button>
-            </form>
+            <div class="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-2">
+              <a href="{{ url_for('admin.enquiry_repair_checklist', enq_id=inquiry.id, visit_id=rv.id) }}"
+                 class="px-3 py-1.5 rounded-lg text-xs font-bold bg-primary text-white hover:opacity-95 whitespace-nowrap">
+                📋 Conduct Repair Checklist
+              </a>
+              <form method="post" action="{{ url_for('admin.enquiry_update_repair_visit', enq_id=inquiry.id, visit_id=rv.id) }}" class="flex-1 flex flex-wrap items-center gap-2 m-0">
+                <input type="text" name="tech_notes" value="{{ rv.tech_notes or '' }}" placeholder="Work update / parts replaced / reason if incomplete..."
+                       class="flex-1 min-w-[200px] px-2.5 py-1.5 text-xs rounded-lg border border-slate-200">
+                <button type="submit" name="status" value="in_progress" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-blue-100 text-blue-800 hover:bg-blue-200 cursor-pointer">In Progress</button>
+                <button type="submit" name="status" value="followup_needed" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-amber-100 text-amber-900 hover:bg-amber-200 cursor-pointer">Need Another Visit</button>
+                <button type="submit" name="status" value="completed" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer">✓ Mark Completed</button>
+              </form>
+            </div>
             {% endif %}
           </div>
           {% endfor %}

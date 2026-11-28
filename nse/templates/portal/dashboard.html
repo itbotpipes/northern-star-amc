@@ -55,6 +55,125 @@
     </div>
   </div>
 
+  <!-- Referral Reward & Money-Back Guarantee Note (Visible on every customer dashboard) -->
+  <div class="mt-5 bg-gradient-to-r from-indigo-50 via-blue-50 to-sky-50 border border-indigo-200 rounded-2xl p-4 flex items-center justify-between flex-wrap gap-3 shadow-2xs">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-xl bg-primary text-white grid place-items-center shrink-0 font-bold text-base shadow-xs">🎁</div>
+      <div>
+        <div class="text-sm font-extrabold text-navy-900 flex items-center flex-wrap gap-2">
+          <span>Refer 2 Clients &amp; Get Your AMC Free!</span>
+          <span class="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+            ★ 100% Money-Back Guarantee*
+          </span>
+        </div>
+        <p class="text-xs text-slate-600 mt-0.5">
+          Refer us to 2 clients — when they take an AMC with {{ COMPANY_NAME }}, your next AMC will be <strong>100% free</strong>.
+          <span class="text-[11px] text-slate-500 ml-1">*100% money-back guarantee subject to <a href="{{ url_for('public.policy') }}#terms-of-service" class="text-primary underline">Policy terms</a>.</span>
+        </p>
+      </div>
+    </div>
+    {% if contracts %}
+    <a href="{{ url_for('portal.contract', contract_id=contracts[0].id) }}#refer"
+       class="px-3.5 py-2 rounded-xl text-xs font-bold bg-primary text-white hover:bg-primary-hover shadow-2xs transition whitespace-nowrap">
+      Refer a Client →
+    </a>
+    {% else %}
+    <a href="{{ url_for('public.apply') }}"
+       class="px-3.5 py-2 rounded-xl text-xs font-bold bg-primary text-white hover:bg-primary-hover shadow-2xs transition whitespace-nowrap">
+      Explore AMC Plans →
+    </a>
+    {% endif %}
+  </div>
+
+  {% set active_inquiries = inquiries | rejectattr('status', 'in', ['closed', 'responded']) | list %}
+  {% if active_inquiries %}
+  <!-- Ongoing Enquiries (Prioritized Above All) -->
+  <div class="mt-6">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-lg font-bold text-navy-800 flex items-center gap-2">
+        Ongoing Enquiries &amp; Site Inspections
+        <span class="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">{{ active_inquiries|length }} Active</span>
+      </h2>
+      <a href="{{ url_for('portal.enquiries') }}" class="text-xs text-primary font-semibold hover:underline">View all →</a>
+    </div>
+    <div class="bg-white rounded-2xl border-2 border-blue-200 overflow-x-auto shadow-sm">
+      <table class="w-full text-sm min-w-[600px]">
+        <thead class="bg-blue-50/70 text-slate-600 text-left text-xs uppercase">
+          <tr>
+            <th class="px-4 py-2.5">Reference</th>
+            <th class="px-4 py-2.5">Service Required</th>
+            <th class="px-4 py-2.5">Status</th>
+            <th class="px-4 py-2.5">Scheduled Visit</th>
+            <th class="px-4 py-2.5">Assigned Tech</th>
+            <th class="px-4 py-2.5">Details</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for inq in active_inquiries %}
+          <tr class="border-t border-slate-100 hover:bg-slate-50/50 transition">
+            <td class="px-4 py-2.5 font-bold text-navy-700">{{ inq.ref_code }}</td>
+            <td class="px-4 py-2.5 text-slate-700 font-medium">{{ inq.service_requirement }}</td>
+            <td class="px-4 py-2.5">{{ status_badge(inq.status) }}</td>
+            <td class="px-4 py-2.5 text-slate-600">
+              {% if inq.visit_scheduled_date %}
+              {{ inq.visit_scheduled_date|datefmt }}
+              {% if inq.visit_time_slot %}<span class="text-xs text-slate-400 block">{{ inq.visit_time_slot }}</span>{% endif %}
+              {% else %}
+              <span class="text-slate-400">Scheduling...</span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-2.5 text-slate-600">{{ inq.assigned_to.name if inq.assigned_to else 'Pending' }}</td>
+            <td class="px-4 py-2.5 text-slate-500">
+              <a href="{{ url_for('portal.enquiry_detail', enq_id=inq.id) }}" class="text-primary hover:underline text-xs font-semibold">Track →</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {% set closed_amc_eligible = [] %}
+  {% for inq in inquiries %}
+    {% if inq.status == 'closed' and not (inq.quotation and inq.quotation.contract_id) %}
+      {% set _ = closed_amc_eligible.append(inq) %}
+    {% endif %}
+  {% endfor %}
+  {% if closed_amc_eligible %}
+  <!-- Post-Closure AMC Recommendation Banner on Customer Dashboard -->
+  <div class="mt-6 space-y-3">
+    {% for inq in closed_amc_eligible %}
+    {% set amc_sug = (inq.history_logs | selectattr('action', 'equalto', 'AMC Suggested to Customer') | list) %}
+    <div class="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-300 rounded-2xl p-4 flex items-center justify-between flex-wrap gap-3 shadow-xs">
+      <div class="flex items-start gap-3">
+        <div class="w-9 h-9 rounded-xl bg-emerald-600 text-white grid place-items-center shrink-0 mt-0.5 font-bold text-sm">🛡️</div>
+        <div>
+          <div class="text-sm font-extrabold text-emerald-950">
+            Take AMC for {{ inq.subject or inq.service_requirement or 'Your Site' }} ({{ inq.ref_code }})
+          </div>
+          <p class="text-xs text-emerald-800 mt-0.5">
+            {% if amc_sug %}
+            {{ amc_sug[0].details }}
+            {% else %}
+            Your enquiry is complete — keep your fire safety equipment compliant year-round with scheduled maintenance visits under an AMC.
+            {% endif %}
+          </p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <a href="{{ url_for('portal.enquiry_detail', enq_id=inq.id) }}" class="px-3 py-2 rounded-xl text-xs font-semibold bg-white border border-emerald-200 text-emerald-900 hover:bg-emerald-50">
+          View Details
+        </a>
+        <a href="{{ url_for('public.apply') }}" class="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition">
+          Take AMC for This Site →
+        </a>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
   {% if unsigned_agreements %}
   <!-- AMC Agreement Action Required Banner -->
   <div class="mt-6 bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-400 rounded-2xl p-5 shadow-sm">
@@ -592,7 +711,8 @@
   </div>
   {% endif %}
 
-  <!-- Customer Enquiries & Inspection Visits -->
+  {% if not active_inquiries %}
+  <!-- Customer Enquiries & Inspection Visits (Only open/non-closed enquiries or AMC scheduled inspections) -->
   <div class="flex items-center justify-between mt-10 mb-3">
     <h2 class="text-lg font-bold text-navy-800">Service Enquiries &amp; Site Inspections</h2>
     <a href="{{ url_for('public.enquiry') }}"
@@ -603,7 +723,7 @@
       New Enquiry / Site Visit
     </a>
   </div>
-  {% if inquiries or scheduled_inspections %}
+  {% if scheduled_inspections %}
   <div class="bg-white rounded-2xl border border-slate-200 overflow-x-auto shadow-sm">
     <table class="w-full text-sm min-w-[600px]">
       <thead class="bg-slate-50 text-slate-500 text-left text-xs uppercase">
@@ -617,25 +737,6 @@
         </tr>
       </thead>
       <tbody>
-        {% for inq in inquiries %}
-        <tr class="border-t border-slate-100 hover:bg-slate-50/50 transition">
-          <td class="px-4 py-2.5 font-bold text-navy-700">{{ inq.ref_code }}</td>
-          <td class="px-4 py-2.5 text-slate-700 font-medium">{{ inq.service_requirement }}</td>
-          <td class="px-4 py-2.5">{{ status_badge(inq.status) }}</td>
-          <td class="px-4 py-2.5 text-slate-600">
-            {% if inq.visit_scheduled_date %}
-            {{ inq.visit_scheduled_date|datefmt }}
-            {% if inq.visit_time_slot %}<span class="text-xs text-slate-400 block">{{ inq.visit_time_slot }}</span>{%
-            endif %}
-            {% else %}
-            <span class="text-slate-400">Scheduling...</span>
-            {% endif %}
-          </td>
-          <td class="px-4 py-2.5 text-slate-600">{{ inq.assigned_to.name if inq.assigned_to else 'Pending' }}</td>
-          <td class="px-4 py-2.5 text-slate-500"><a href="{{ url_for('portal.enquiries') }}"
-              class="text-primary hover:underline text-xs font-semibold">Track →</a></td>
-        </tr>
-        {% endfor %}
         {% for insp in scheduled_inspections if insp.type == 'amc_request' %}
         <tr class="border-t border-slate-100 hover:bg-slate-50/50 transition bg-sky-50/30">
           <td class="px-4 py-2.5 font-bold text-navy-700">{{ insp.reference }}</td>
@@ -666,6 +767,7 @@
       Request Site Visit / Submit Enquiry →
     </a>
   </div>
+  {% endif %}
   {% endif %}
 
   <!-- Complaints & Support Tickets -->

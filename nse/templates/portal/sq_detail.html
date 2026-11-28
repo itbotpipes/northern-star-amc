@@ -270,10 +270,10 @@
         </tbody>
         <tfoot class="border-t-2 border-hairline-strong bg-slate-50">
           <tr><td colspan="4" class="px-4 py-2 text-right text-ink-muted">Subtotal</td><td class="px-4 py-2 text-right font-semibold">{{ sq.subtotal|rupees }}</td></tr>
+          <tr><td colspan="4" class="px-4 py-2 text-right text-ink-muted">GST ({{ sq.gst_percent }}%)</td><td class="px-4 py-2 text-right font-semibold">{{ sq.gst_amount|rupees }}</td></tr>
           {% if sq.discount > 0 %}
           <tr><td colspan="4" class="px-4 py-2 text-right text-emerald-700">Discount</td><td class="px-4 py-2 text-right font-semibold text-emerald-700">-{{ sq.discount|rupees }}</td></tr>
           {% endif %}
-          <tr><td colspan="4" class="px-4 py-2 text-right text-ink-muted">GST ({{ sq.gst_percent }}%)</td><td class="px-4 py-2 text-right font-semibold">{{ sq.gst_amount|rupees }}</td></tr>
           <tr class="bg-navy-50"><td colspan="4" class="px-4 py-3 text-right font-extrabold text-navy-800 text-base">Grand Total</td><td class="px-4 py-3 text-right font-extrabold text-navy-800 text-base">{{ sq.grand_total|rupees }}</td></tr>
         </tfoot>
       </table>

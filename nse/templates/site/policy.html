@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Privacy Policy &amp; Terms of Service — {{ COMPANY_NAME }}{% endblock %}
+{% block content %}
+<section class="max-w-4xl mx-auto px-4 py-12 space-y-8">
+  <div>
+    <span class="eyebrow">Legal &amp; Compliance</span>
+    <h1 class="text-3xl md:text-4xl font-extrabold text-ink mt-2">Privacy Policy &amp; Terms of Service</h1>
+    <p class="text-sm text-ink-subtle mt-2">{{ COMPANY_NAME }} · {{ COMPANY_CITY }} · Last updated November 2026</p>
+  </div>
+
+  <!-- Quick Jump -->
+  <div class="flex flex-wrap gap-2">
+    <a href="#privacy-policy" class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-surface-2 border border-hairline text-ink hover:border-primary transition">Privacy Policy</a>
+    <a href="#terms-of-service" class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-surface-2 border border-hairline text-ink hover:border-primary transition">Terms of Service</a>
+  </div>
+
+  <!-- Privacy Policy -->
+  <div id="privacy-policy" class="card p-6 md:p-8 space-y-4">
+    <h2 class="text-xl font-extrabold text-ink">1. Privacy Policy</h2>
+    <p class="text-sm text-ink-muted leading-relaxed">
+      {{ COMPANY_NAME }} ("we", "our", "us") respects your privacy and is committed to protecting the personal and site-safety information you share with us when using our website, Customer Portal, and Fire Safety Annual Maintenance Contract (AMC) services.
+    </p>
+
+    <div class="space-y-3 text-sm text-ink-muted leading-relaxed">
+      <div>
+        <h3 class="font-bold text-ink">1.1 Information We Collect</h3>
+        <ul class="list-disc pl-5 mt-1 space-y-1">
+          <li><strong>Contact &amp; Account Details:</strong> Name, phone number, email address, company name, GSTIN, and site/building address.</li>
+          <li><strong>Site &amp; Safety Records:</strong> Fire safety inspection checklists, health checkup reports, equipment inventory, uploaded site photos/videos, and optional voice notes recorded for technicians.</li>
+          <li><strong>Location Data:</strong> Approximate or GPS coordinates only when you explicitly click "Use my current location" on enquiry/application forms to help our technician locate your site.</li>
+          <li><strong>Service &amp; Billing History:</strong> Quotations, agreements, maintenance visit logs, and payment references (UPI/cash/cheque/online gateway references).</li>
+        </ul>
+      </div>
+
+      <div>
+        <h3 class="font-bold text-ink">1.2 How We Use Your Information</h3>
+        <ul class="list-disc pl-5 mt-1 space-y-1">
+          <li>To schedule site inspections, maintenance visits, refilling, and emergency fire safety support.</li>
+          <li>To prepare accurate quotations, AMC agreements, Fire Safety Health Checkup Reports (FSHCR), and compliance certificates.</li>
+          <li>To send service reminders, visit schedules, and status updates via portal notifications, WhatsApp, SMS, or email.</li>
+        </ul>
+      </div>
+
+      <div>
+        <h3 class="font-bold text-ink">1.3 Data Protection &amp; Sharing</h3>
+        <p class="mt-1">
+          We never sell your personal data. Customer contact details are restricted to authorized operations/management staff; field technicians only see site address and technical scope required to perform inspections or repairs.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Terms of Service -->
+  <div id="terms-of-service" class="card p-6 md:p-8 space-y-4">
+    <h2 class="text-xl font-extrabold text-ink">2. Terms of Service</h2>
+    <div class="space-y-3 text-sm text-ink-muted leading-relaxed">
+      <div>
+        <h3 class="font-bold text-ink">2.1 Inspections, Quotations &amp; AMC Scope</h3>
+        <ul class="list-disc pl-5 mt-1 space-y-1">
+          <li>All quotations issued after site inspection are valid for the validity period stated on the quotation and include applicable GST unless noted otherwise.</li>
+          <li>Annual Maintenance Contracts (AMC) cover scheduled preventive maintenance visits as specified in your signed agreement. Spare parts, refilling, or major repairs outside the standard AMC scope are quoted separately for your approval.</li>
+          <li>If a client declines a recommended repair or replacement item, {{ COMPANY_NAME }} records a safety waiver acknowledging that the unaddressed item remains the client's responsibility.</li>
+        </ul>
+      </div>
+
+      <div>
+        <h3 class="font-bold text-ink">2.2 Site Access &amp; Safety</h3>
+        <p class="mt-1">
+          Clients agree to provide safe, timely access to pump rooms, fire panels, hydrants, risers, and extinguishers during scheduled inspection and maintenance windows.
+        </p>
+      </div>
+
+      <div>
+        <h3 class="font-bold text-ink">2.3 Payments, Cancellations &amp; ★ 100% Money-Back Guarantee*</h3>
+        <p class="mt-1">
+          Payments may be made via UPI, cheque, cash, or online checkout. AMC activation and scheduled maintenance visits commence upon quotation acceptance, payment confirmation, and digital agreement acceptance.
+        </p>
+        <p class="mt-1.5">
+          <strong>*100% Money-Back Guarantee:</strong> If {{ COMPANY_NAME }} fails to deliver scheduled AMC services or resolve a valid service deficiency after written notice and reasonable opportunity to cure, eligible unused AMC fees are covered under our 100% money-back guarantee (excluding third-party spare parts/consumables already installed on site).
+        </p>
+      </div>
+
+      <div>
+        <h3 class="font-bold text-ink">2.4 Referral Program</h3>
+        <p class="mt-1">
+          Customers who refer 2 new clients that successfully purchase and activate an AMC plan with {{ COMPANY_NAME }} are eligible for a complimentary AMC on their next renewal/plan term, subject to verification by our operations team.
+        </p>
+      </div>
+
+      <div>
+        <h3 class="font-bold text-ink">2.5 Contact Us</h3>
+        <p class="mt-1">
+          For any privacy or service questions, contact {{ COMPANY_NAME }} at <a href="tel:{{ COMPANY_PHONE }}" class="text-primary font-semibold hover:underline">{{ COMPANY_PHONE }}</a> or <a href="mailto:{{ COMPANY_EMAIL }}" class="text-primary font-semibold hover:underline">{{ COMPANY_EMAIL }}</a>.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

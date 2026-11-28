@@ -498,12 +498,17 @@ def schedule_inspection(lead_id):
         ))
 
     # In-app notifications
-    if c.customer_id:
+    cust_uid = c.customer_id
+    if not cust_uid and c.applicant_phone:
+        _cu = User.query.filter_by(phone=c.applicant_phone).first()
+        if _cu:
+            cust_uid = _cu.id
+    if cust_uid:
         cust_title = "Your inspection date has been updated" if was_scheduled else "Your site inspection is scheduled"
         cust_body = (f"Our technician {tech.name if tech else 'from Northern Star'} will now visit {c.site_name or 'your site'} on {when}."
                      if was_scheduled else
                      f"Our technician {tech.name if tech else 'from Northern Star'} will visit {c.site_name or 'your site'} on {when}.")
-        notify(c.customer_id, cust_title, cust_body, link=url_for("portal.contract", contract_id=c.id))
+        notify(cust_uid, cust_title, cust_body, link=url_for("portal.contract", contract_id=c.id))
 
     if tech:
         tech_title = f"Inspection rescheduled — {c.reference}" if was_scheduled else f"Inspection assigned — {c.reference}"
@@ -1298,16 +1303,25 @@ def quotation_resend(quote_id):
 @login_required
 @manager_required
 def reschedule_visit(visit_id):
-    """Quick date change from the contract page (calendar picker per visit row)."""
+    """Quick date / technician note update from the contract page."""
     v = db.session.get(Visit, visit_id) or abort(404)
     ds = request.form.get("scheduled_date")
+    changed = False
     if ds:
         new_date = datetime.strptime(ds, "%Y-%m-%d").date()
         if _apply_reschedule(v, new_date):
-            db.session.commit()
+            changed = True
             flash(f"{v.label} rescheduled to {new_date:%d %b %Y}. Client notified.", "success")
-        else:
-            flash("No change — same date.", "info")
+    if "technician_note" in request.form:
+        new_note = (request.form.get("technician_note") or "").strip() or None
+        if new_note != v.technician_note:
+            v.technician_note = new_note
+            changed = True
+            flash(f"Note to technician updated for {v.label}.", "success")
+    if changed:
+        db.session.commit()
+    else:
+        flash("No changes saved.", "info")
     return redirect(request.referrer or url_for("admin.contract", contract_id=v.contract_id))
 
 
@@ -2072,13 +2086,16 @@ def enquiry_detail(enq_id):
         or e.repair_visits
     )
 
+    amc_plans = AMCPlan.query.filter_by(active=True).order_by(AMCPlan.price.asc()).all()
+
     return render_template("admin/enquiry_detail.html",
                            inquiry=e,
                            technicians=technicians,
                            grouped_checklist=grouped_checklist,
                            checklist_stats=checklist_stats,
                            attachments=attachments,
-                           needs_repair=needs_repair)
+                           needs_repair=needs_repair,
+                           amc_plans=amc_plans)
 
 
 @admin_bp.route("/enquiry/<int:enq_id>/assign", methods=["POST"])
@@ -2103,6 +2120,9 @@ def enquiry_assign(enq_id):
     time_slot = f.get("visit_time_slot", "").strip()
     leader_notes = f.get("team_leader_notes", "").strip()
 
+    old_date = e.visit_scheduled_date
+    old_slot = e.visit_time_slot or ""
+
     e.assigned_to_id = tech.id
     e.assigned_by_id = current_user.id
     e.assigned_at = datetime.utcnow()
@@ -2114,20 +2134,30 @@ def enquiry_assign(enq_id):
     e.visit_time_slot = time_slot
     e.team_leader_notes = leader_notes
 
+    is_rescheduled = bool(
+        old_date and e.visit_scheduled_date and
+        (e.visit_scheduled_date != old_date or time_slot != old_slot)
+    )
+
     # Progress status to site_visit_scheduled if visit date set, else assigned
     if e.status in ("new", "assigned", "site_visit_scheduled"):
         e.status = "site_visit_scheduled" if e.visit_scheduled_date else "assigned"
 
     # Log in history
-    history_desc = f"Assigned to Technician: {tech.name} by Team Leader ({current_user.name})."
-    if e.visit_scheduled_date:
+    history_action = "Site Visit Rescheduled" if is_rescheduled else "Assigned to Technician"
+    history_desc = (
+        f"Site visit rescheduled to {e.visit_scheduled_date.strftime('%d %b %Y')} ({time_slot or 'Standard Hours'}) with Technician {tech.name} by {current_user.name}."
+        if is_rescheduled else
+        f"Assigned to Technician: {tech.name} by Team Leader ({current_user.name})."
+    )
+    if not is_rescheduled and e.visit_scheduled_date:
         history_desc += f" Visit Date: {e.visit_scheduled_date.strftime('%d %b %Y')} ({time_slot or 'Standard Hours'})."
     if leader_notes:
         history_desc += f" Notes: {leader_notes}"
 
     db.session.add(InquiryHistory(
         inquiry_id=e.id,
-        action="Assigned to Technician",
+        action=history_action,
         actor_id=current_user.id,
         actor_name=current_user.name,
         details=history_desc
@@ -2137,28 +2167,50 @@ def enquiry_assign(enq_id):
 
     # Notify Technician
     try:
+        tech_title = f"Site Visit Rescheduled — {e.ref_code}" if is_rescheduled else f"Enquiry Assigned — {e.ref_code}"
         notify(
             tech.id,
-            title=f"Enquiry Assigned — {e.ref_code}",
+            title=tech_title,
             body=f"Visit scheduled for {e.name} at {e.address or e.city} on {e.visit_scheduled_date or 'TBD'}. Tap to review site details.",
             link=url_for("admin.enquiry_detail", enq_id=e.id)
         )
     except Exception:
         pass
 
-    # Notify Customer if account exists
-    if e.customer_id:
+    # Notify Customer if account exists (by customer_id or phone)
+    cust_uid = e.customer_id
+    if not cust_uid and e.phone:
+        _cu = User.query.filter_by(phone=e.phone).first()
+        if _cu:
+            cust_uid = _cu.id
+    if cust_uid:
         try:
+            if is_rescheduled:
+                cust_title = f"Site Visit Rescheduled — {e.ref_code}"
+                cust_body = (
+                    f"Your site visit for {e.ref_code} has been rescheduled to "
+                    f"{e.visit_scheduled_date.strftime('%d %b %Y')} ({time_slot or 'Standard Hours'}) "
+                    f"with technician {tech.name}."
+                )
+            else:
+                cust_title = f"Technician Assigned — {e.ref_code}"
+                cust_body = (
+                    f"Technician {tech.name} has been assigned for your fire safety visit on "
+                    f"{e.visit_scheduled_date.strftime('%d %b %Y') if e.visit_scheduled_date else 'upcoming schedule'}."
+                )
             notify(
-                e.customer_id,
-                title=f"Technician Assigned — {e.ref_code}",
-                body=f"Technician {tech.name} has been assigned for your fire safety visit on {e.visit_scheduled_date or 'upcoming schedule'}.",
-                link=url_for("portal.dashboard")
+                cust_uid,
+                title=cust_title,
+                body=cust_body,
+                link=url_for("portal.enquiry_detail", enq_id=e.id)
             )
         except Exception:
             pass
 
-    flash(f"Enquiry {e.ref_code} assigned to {tech.name}. Notification sent.", "success")
+    flash(
+        f"Site visit for {e.ref_code} {'rescheduled' if is_rescheduled else 'assigned'} to {tech.name}. Notification sent.",
+        "success"
+    )
     return redirect(url_for("admin.enquiry_detail", enq_id=e.id))
 
 
@@ -2469,6 +2521,49 @@ def enquiry_close(enq_id):
     return redirect(url_for("admin.enquiry_detail", enq_id=e.id))
 
 
+@admin_bp.route("/enquiry/<int:enq_id>/suggest-amc", methods=["POST"])
+@login_required
+@manager_required
+def enquiry_suggest_amc(enq_id):
+    """Suggest an AMC plan to the customer after closing an enquiry."""
+    e = db.session.get(Enquiry, enq_id) or abort(404)
+    plan_id = request.form.get("amc_plan_id", type=int)
+    plan = db.session.get(AMCPlan, plan_id) if plan_id else None
+    plan_label = f"{plan.name} (₹{plan.price:,.0f} · {plan.visits_per_year} visits/yr)" if plan else "Annual Maintenance Contract (AMC)"
+    note = (request.form.get("suggestion_note") or "").strip() or (
+        "Based on your recent site inspection & service, we recommend an Annual Maintenance Contract for year-round fire safety compliance."
+    )
+    details = f"Recommended Plan: {plan_label}. {note}"
+
+    db.session.add(InquiryHistory(
+        inquiry_id=e.id,
+        action="AMC Suggested to Customer",
+        actor_id=current_user.id,
+        actor_name=current_user.name,
+        details=details,
+    ))
+    if e.customer_id:
+        try:
+            notify(
+                e.customer_id,
+                title=f"Recommended AMC Plan — {e.ref_code}",
+                body=f"{plan_label}: {note}",
+                link=url_for("public.apply")
+            )
+            db.session.add(CustomerJourneyEvent(
+                customer_id=e.customer_id,
+                event_type="amc_suggested",
+                description=f"Recommended {plan_label} after {e.ref_code}",
+                ref_type="enquiry",
+                ref_id=e.id,
+            ))
+        except Exception:
+            pass
+    db.session.commit()
+    flash(f"AMC suggestion ({plan_label}) sent to {e.name}!", "success")
+    return redirect(url_for("admin.enquiry_detail", enq_id=e.id))
+
+
 @admin_bp.route("/enquiry/<int:enq_id>/add-note", methods=["POST"])
 @login_required
 @staff_required
@@ -2550,10 +2645,15 @@ def enquiry_add_repair_visit(enq_id):
     except Exception:
         pass
 
-    if e.customer_id:
+    cust_uid = e.customer_id
+    if not cust_uid and e.phone:
+        _cu = User.query.filter_by(phone=e.phone).first()
+        if _cu:
+            cust_uid = _cu.id
+    if cust_uid:
         try:
             notify(
-                e.customer_id,
+                cust_uid,
                 title=f"Technician Visit #{next_num} Scheduled — {e.ref_code}",
                 body=f"{tech.name} has been assigned for your repair/work visit on {sched_date.strftime('%d %b %Y')} ({time_slot}).",
                 link=url_for("portal.enquiry_detail", enq_id=e.id)
@@ -2574,6 +2674,30 @@ def enquiry_update_repair_visit(enq_id, visit_id):
     ev = db.session.get(EnquiryVisit, visit_id) or abort(404)
     if ev.inquiry_id != e.id:
         abort(404)
+
+    if request.form.get("action") == "save_admin_note":
+        admin_note = (request.form.get("admin_note") or "").strip()
+        ev.notes = admin_note or None
+        db.session.add(InquiryHistory(
+            inquiry_id=e.id,
+            action=f"Note to Technician Updated (Visit #{ev.visit_number})",
+            actor_id=current_user.id,
+            actor_name=current_user.name,
+            details=admin_note or "Note cleared.",
+        ))
+        db.session.commit()
+        if ev.technician_id and admin_note:
+            try:
+                notify(
+                    ev.technician_id,
+                    title=f"Note for Visit #{ev.visit_number} — {e.ref_code}",
+                    body=admin_note,
+                    link=url_for("admin.repair_visits")
+                )
+            except Exception:
+                pass
+        flash(f"Note to technician saved for Visit #{ev.visit_number}.", "success")
+        return redirect(request.referrer or url_for("admin.enquiry_detail", enq_id=e.id))
 
     new_status = (request.form.get("status") or "").strip()
     tech_notes = (request.form.get("tech_notes") or "").strip()
@@ -2632,7 +2756,204 @@ def enquiry_update_repair_visit(enq_id, visit_id):
             pass
 
     flash(f"Visit #{ev.visit_number} updated.", "success")
-    return redirect(url_for("admin.enquiry_detail", enq_id=e.id))
+    return redirect(request.referrer or url_for("admin.enquiry_detail", enq_id=e.id))
+
+
+@admin_bp.route("/enquiry/<int:enq_id>/repair-visit/<int:visit_id>/checklist", methods=["GET", "POST"])
+@login_required
+@staff_required
+def enquiry_repair_checklist(enq_id, visit_id):
+    """Post-repair inspection checklist for a repair visit; updates the enquiry's checklist for admin."""
+    e = db.session.get(Enquiry, enq_id) or abort(404)
+    ev = db.session.get(EnquiryVisit, visit_id) or abort(404)
+    if ev.inquiry_id != e.id:
+        abort(404)
+
+    is_assigned_tech = bool(
+        (ev.technician_id and current_user.id == ev.technician_id)
+        or (e.assigned_to_id and current_user.id == e.assigned_to_id)
+    )
+    is_tl_or_admin = bool(current_user.is_team_leader or current_user.is_admin or current_user.is_manager)
+    if not (is_assigned_tech or is_tl_or_admin):
+        flash("Access restricted: Only the assigned technician or Team Leader can conduct this repair checklist.", "danger")
+        return redirect(url_for("admin.repair_visits"))
+
+    if request.method == "POST":
+        f = request.form
+        r = HealthCheckReport(created_by_id=current_user.id)
+        db.session.add(r)
+        r.property_name = (f.get("property_name") or "").strip() or e.subject or e.name
+        r.property_address = (f.get("property_address") or "").strip() or e.address
+        r.property_contact = (f.get("property_contact") or "").strip() or e.phone
+        r.inspector_name = (f.get("inspector_name") or "").strip() or current_user.name
+        r.inspector_contact = (f.get("inspector_contact") or "").strip()
+        if f.get("report_date"):
+            r.report_date = datetime.strptime(f.get("report_date"), "%Y-%m-%d").date()
+        r.status = "completed"
+        answers_payload = _collect_health_payload(f)
+        r.set_answers(answers_payload)
+        calc_score, calc_outcome, _ = HealthCheckReport.compute_score(answers_payload)
+        score_raw = f.get("score", "").strip()
+        r.score = int(score_raw) if score_raw.isdigit() else calc_score
+        r.outcome = f.get("outcome") or calc_outcome
+        if r.score < 85 and r.outcome == "ok":
+            r.outcome = "issues"
+
+        scan = request.files.get("scan")
+        scan_path = save_upload(scan, "health_reports", {"pdf", "png", "jpg", "jpeg"})
+        if scan_path:
+            r.scan_path = scan_path
+
+        # Update InquiryChecklistItem so admin sees the latest post-repair checklist on the enquiry
+        InquiryChecklistItem.query.filter_by(inquiry_id=e.id).delete()
+        pass_cnt = 0
+        fail_cnt = 0
+        rec_service = (f.get("recommended_service") or "").strip()
+
+        for sec_title, qs in HealthCheckReport.SECTIONS:
+            for key, label in qs:
+                val = answers_payload.get(key, "na")
+                st = "pass" if val == "yes" else ("fail" if val == "no" else "na")
+                if st == "pass":
+                    pass_cnt += 1
+                elif st == "fail":
+                    fail_cnt += 1
+                db.session.add(InquiryChecklistItem(
+                    inquiry_id=e.id,
+                    category=sec_title,
+                    item_name=label,
+                    status=st,
+                    remarks="",
+                    recommendation="Further repair required" if st == "fail" else ""
+                ))
+
+        for key, label, has_count in HealthCheckReport.HYDRANT_ITEMS:
+            val = answers_payload.get(key, "na")
+            st = "pass" if val == "yes" else ("fail" if val == "no" else "na")
+            if st == "pass":
+                pass_cnt += 1
+            elif st == "fail":
+                fail_cnt += 1
+            nos = answers_payload.get(f"{key}_nos", "") if has_count else ""
+            db.session.add(InquiryChecklistItem(
+                inquiry_id=e.id,
+                category="Fire Hydrant & Sprinkler System",
+                item_name=label,
+                status=st,
+                remarks=f"Count: {nos}" if nos else "",
+                recommendation="Further repair required" if st == "fail" else ""
+            ))
+
+        remarks_summary = (f.get("remarks") or "").strip()
+        summary_parts = [
+            f"Post-Repair FSHCR {r.reference} (Visit #{ev.visit_number}) · Safety Score: {r.score}/100 ({'OK' if r.outcome == 'ok' else 'Issues Found'})"
+        ]
+        if rec_service:
+            summary_parts.append(f"Recommended Service: {rec_service}")
+        if remarks_summary:
+            summary_parts.append(f"Remarks: {remarks_summary}")
+        summary_text = "\n".join(summary_parts)
+
+        e.technician_notes = summary_text
+        e.checklist_submitted_at = datetime.utcnow()
+
+        visit_outcome = (f.get("repair_visit_status") or "completed").strip()
+        if visit_outcome not in ("completed", "followup_needed", "in_progress"):
+            visit_outcome = "completed"
+        ev.status = visit_outcome
+        ev.tech_notes = summary_text
+        if visit_outcome == "completed":
+            ev.completed_at = datetime.utcnow()
+
+        db.session.add(InquiryHistory(
+            inquiry_id=e.id,
+            action=f"Post-Repair Checklist Submitted (Visit #{ev.visit_number})",
+            actor_id=current_user.id,
+            actor_name=current_user.name,
+            details=f"Updated checklist after repair Visit #{ev.visit_number}. Score: {r.score}/100 ({pass_cnt} passed, {fail_cnt} defects). Visit status: {visit_outcome.replace('_', ' ').title()}."
+        ))
+        db.session.commit()
+
+        try:
+            notify_team_leaders(
+                title=f"Post-Repair Checklist Updated — {e.ref_code} (Score {r.score}/100)",
+                body=f"{current_user.name} updated the checklist after Repair Visit #{ev.visit_number}.",
+                link=url_for("admin.enquiry_detail", enq_id=e.id)
+            )
+        except Exception:
+            pass
+
+        if e.customer_id:
+            try:
+                notify(
+                    e.customer_id,
+                    title=f"Repair Visit #{ev.visit_number} Checklist Updated — {e.ref_code}",
+                    body=f"Technician {current_user.name} completed the post-repair checkup (Safety Score: {r.score}/100).",
+                    link=url_for("portal.enquiry_detail", enq_id=e.id)
+                )
+            except Exception:
+                pass
+
+        flash(f"Post-repair checklist saved (Score: {r.score}/100) and updated on enquiry {e.ref_code}!", "success")
+        return redirect(url_for("admin.repair_visits"))
+
+    # Pre-fill answers from the enquiry's current InquiryChecklistItem rows so technician sees prior state
+    prefill_answers = {}
+    label_to_key = {}
+    for _sec, qs in HealthCheckReport.SECTIONS:
+        for key, label in qs:
+            label_to_key[label] = key
+    for key, label, _ in HealthCheckReport.HYDRANT_ITEMS:
+        label_to_key[label] = key
+    for it in e.checklist_items:
+        k = label_to_key.get(it.item_name)
+        if k:
+            prefill_answers[k] = "yes" if it.status == "pass" else ("no" if it.status == "fail" else "na")
+
+    return render_template("admin/health_report_form.html",
+                           r=None,
+                           model=HealthCheckReport,
+                           contract=None,
+                           visit=None,
+                           contracts=[],
+                           is_lead=False,
+                           enquiry=e,
+                           repair_visit=ev,
+                           prefill_answers=prefill_answers,
+                           whatsapp_share="",
+                           defects=[])
+
+
+@admin_bp.route("/repair-visits")
+@login_required
+@staff_required
+def repair_visits():
+    """Dedicated Repair Visits tab showing all assigned repair/execution visits."""
+    is_pure_tech = current_user.is_technician and not (current_user.is_manager or current_user.is_admin)
+    status_filter = (request.args.get("status") or "all").strip()
+    query = EnquiryVisit.query.options(
+        joinedload(EnquiryVisit.inquiry),
+        joinedload(EnquiryVisit.technician),
+    )
+    if is_pure_tech:
+        query = query.filter(EnquiryVisit.technician_id == current_user.id)
+    all_visits = query.order_by(EnquiryVisit.scheduled_date.asc(), EnquiryVisit.id.desc()).all()
+    if status_filter != "all":
+        visits = [v for v in all_visits if v.status == status_filter]
+    else:
+        visits = all_visits
+    counts = {
+        "all": len(all_visits),
+        "scheduled": sum(1 for v in all_visits if v.status == "scheduled"),
+        "in_progress": sum(1 for v in all_visits if v.status == "in_progress"),
+        "followup_needed": sum(1 for v in all_visits if v.status == "followup_needed"),
+        "completed": sum(1 for v in all_visits if v.status == "completed"),
+    }
+    return render_template("admin/repair_visits.html",
+                           visits=visits,
+                           counts=counts,
+                           status_filter=status_filter,
+                           is_pure_tech=is_pure_tech)
 
 
 @admin_bp.route("/enquiry/<int:enq_id>/respond", methods=["POST"])
@@ -3492,6 +3813,86 @@ def visit_checkout(visit_id):
 # =========================================================================== #
 # Wave 11 — Photo-based defect reports
 # =========================================================================== #
+@admin_bp.route("/tech/leaving/<kind>/<int:target_id>", methods=["POST"])
+@login_required
+@staff_required
+def tech_leaving(kind, target_id):
+    """Technician marks that they are leaving now for a visit/inspection; notifies the customer."""
+    tech_name = current_user.name or "Your technician"
+    customer_id = None
+    title = None
+    body = None
+    link = None
+    label = "visit"
+
+    def _find_customer_id(cid=None, phone=None):
+        if cid:
+            return cid
+        if phone:
+            u = User.query.filter_by(phone=phone).first()
+            if u:
+                return u.id
+        return None
+
+    if kind == "visit":
+        v = db.session.get(Visit, target_id) or abort(404)
+        c = v.contract
+        label = f"{v.label} ({c.reference})" if c else v.label
+        customer_id = _find_customer_id(c.customer_id if c else None, c.applicant_phone if c else None)
+        title = f"Technician is on the way — {v.label}"
+        body = f"{tech_name} is leaving now for your {v.label} at {c.reference if c else 'your site'}."
+        link = url_for("portal.contract", contract_id=c.id) if c else url_for("portal.dashboard")
+    elif kind == "enquiry":
+        e = db.session.get(Enquiry, target_id) or abort(404)
+        label = f"Site Inspection ({e.ref_code})"
+        customer_id = _find_customer_id(e.customer_id, e.phone)
+        title = f"Technician is on the way — {e.ref_code}"
+        body = f"{tech_name} is leaving now for your site inspection ({e.ref_code})."
+        link = url_for("portal.enquiry_detail", enq_id=e.id)
+        db.session.add(InquiryHistory(
+            inquiry_id=e.id,
+            action="Technician Leaving for Site Inspection",
+            actor_id=current_user.id,
+            actor_name=tech_name,
+            details=f"{tech_name} marked that they are leaving for the site inspection.",
+        ))
+        db.session.commit()
+    elif kind == "lead":
+        c = db.session.get(Contract, target_id) or abort(404)
+        label = f"AMC Inspection ({c.reference})"
+        customer_id = _find_customer_id(c.customer_id, c.applicant_phone)
+        title = f"Technician is on the way — {c.reference}"
+        body = f"{tech_name} is leaving now for your AMC site inspection at {c.site_name or c.applicant_name or c.reference}."
+        link = url_for("portal.contract", contract_id=c.id)
+    elif kind == "repair_visit":
+        ev = db.session.get(EnquiryVisit, target_id) or abort(404)
+        e = ev.inquiry
+        label = f"Repair Visit #{ev.visit_number}" + (f" ({e.ref_code})" if e else "")
+        customer_id = _find_customer_id(e.customer_id if e else None, e.phone if e else None)
+        title = f"Technician is on the way — Repair Visit #{ev.visit_number}" + (f" ({e.ref_code})" if e else "")
+        body = f"{tech_name} is leaving now for Repair Visit #{ev.visit_number}" + (f" ({e.ref_code})." if e else ".")
+        link = url_for("portal.enquiry_detail", enq_id=e.id) if e else url_for("portal.dashboard")
+        if e:
+            db.session.add(InquiryHistory(
+                inquiry_id=e.id,
+                action=f"Technician Leaving for Repair Visit #{ev.visit_number}",
+                actor_id=current_user.id,
+                actor_name=tech_name,
+                details=f"{tech_name} marked that they are leaving for Repair Visit #{ev.visit_number}.",
+            ))
+            db.session.commit()
+    else:
+        abort(404)
+
+    if customer_id:
+        notify(customer_id, title=title, body=body, link=link)
+        flash(f"Customer notified that you are leaving for {label}.", "success")
+    else:
+        flash(f"Marked as leaving for {label}. (No linked customer portal account found to notify.)", "info")
+
+    return redirect(request.referrer or url_for("admin.day_plan"))
+
+
 @admin_bp.route("/visit/<int:visit_id>/defect", methods=["POST"])
 @login_required
 @staff_required

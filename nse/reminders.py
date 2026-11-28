@@ -35,6 +35,7 @@ def payment_reminders(customer_id=None):
                 "customer_id": c.customer_id,
                 "customer_name": (c.customer.name if c.customer else c.applicant_name),
                 "link": url_for("admin.contract", contract_id=c.id),
+                "portal_link": url_for("portal.contract", contract_id=c.id),
             })
 
     # 2) Visit-linked material quotes approved but unpaid --------------------
@@ -54,6 +55,7 @@ def payment_reminders(customer_id=None):
             "customer_name": m.customer_name,
             "link": (url_for("admin.visit", visit_id=m.visit_id) if m.visit_id
                      else url_for("admin.contract", contract_id=m.contract_id)),
+            "portal_link": url_for("portal.quotation", quote_id=m.id),
         })
 
     # 3) Service quotations accepted but payment not confirmed ----------------
@@ -77,6 +79,7 @@ def payment_reminders(customer_id=None):
             "customer_id": s.customer_id,
             "customer_name": s.customer_name,
             "link": url_for("sq.detail_quotation", sq_id=s.id),
+            "portal_link": url_for("portal.service_quotation", sq_id=s.id),
         })
 
     return reminders
